@@ -1,0 +1,49 @@
+# Perf Analysis Service Configuration
+
+# Analysis settings
+analysis:
+  version: "1.0.0"
+  data_dir: "./data"
+  max_worker: 5
+
+# Database configuration
+database:
+  type: postgres  # postgres or mysql
+  host: localhost
+  port: 5432
+  database: perf_analysis
+  user: postgres
+  password: your_password_here
+  max_conns: 10
+
+# Object storage configuration
+storage:
+  type: local  # cos or local
+  # For local storage
+  local_path: ./storage
+  
+  # For COS storage (uncomment and fill in)
+  # type: cos
+  # bucket: your-bucket-name
+  # region: ap-guangzhou
+  # secret_id: your-secret-id
+  # secret_key: your-secret-key
+
+# APM callback configuration
+apm:
+  enabled: false
+  url: ""
+  request_yunapi: true
+
+# Scheduler configuration
+scheduler:
+  poll_interval: 2  # seconds
+  worker_count: 5
+  priority_slots: 2  # reserved slots for high-priority tasks
+  task_batch_size: 10
+
+# Logging configuration
+log:
+  level: info  # debug, info, warn, error
+  output_path: ./logs
+  format: text  # text or json

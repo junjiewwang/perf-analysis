@@ -1,0 +1,7 @@
+main-thread-?/1234;java.lang.Thread.run(Thread.java);com.example.App.main(App.java);com.example.App.process(App.java) 100
+main-thread-?/1234;java.lang.Thread.run(Thread.java);com.example.App.main(App.java);com.example.App.init(App.java) 50
+worker-1-?/5678;java.lang.Thread.run(Thread.java);com.example.Worker.run(Worker.java);com.example.Worker.process(Worker.java) 80
+worker-1-?/5678;java.lang.Thread.run(Thread.java);com.example.Worker.run(Worker.java);com.example.Worker.doWork(Worker.java) 30
+worker-2-?/9012;java.lang.Thread.run(Thread.java);com.example.Worker.run(Worker.java);com.example.Worker.process(Worker.java) 60
+gc-thread-?/3456;java.lang.Thread.run(Thread.java);sun.misc.GC.run(GC.java);sun.misc.GC.collect(GC.java) 20
+swapper-?/0;cpu_idle(kernel);default_idle(kernel) 500

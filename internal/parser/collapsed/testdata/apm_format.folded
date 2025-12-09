@@ -1,0 +1,4 @@
+[Thread-7 tid=1060369];java.lang.Thread.run;com.example.async.AsyncHandler.handle;com.example.async.AsyncHandler.process 150
+[worker-pool-1 tid=1060370];java.lang.Thread.run;com.example.async.Worker.run;com.example.async.Worker.execute 100
+[main thread tid=1];java.lang.Thread.run;com.example.App.main;com.example.App.startup 80
+[GC-thread tid=2];java.lang.ref.Finalizer.run;java.lang.ref.Finalizer.runFinalizer 30
