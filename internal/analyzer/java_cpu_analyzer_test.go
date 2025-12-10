@@ -48,22 +48,22 @@ main-thread;java.lang.Thread.run;com.example.App.init 30`
 		TaskUUID:     "test-java-cpu-uuid",
 		TaskType:     model.TaskTypeJava,
 		ProfilerType: model.ProfilerTypePerf,
+		OutputDir:    filepath.Join(tempDir, "test-java-cpu-uuid"),
 	}
 
-	result, err := analyzer.Analyze(context.Background(), req, strings.NewReader(input))
+	// Ensure output directory exists
+	os.MkdirAll(req.OutputDir, 0755)
+
+	result, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader(input))
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
 	assert.Equal(t, "test-java-cpu-uuid", result.TaskUUID)
-	assert.Equal(t, int64(180), result.TotalRecords)
-
-	// Check namespace result
-	nsResult, ok := result.Result[""]
-	require.True(t, ok)
-	assert.Contains(t, nsResult.TopFuncs, "com.example.App.main")
-	assert.Contains(t, nsResult.FlameGraphFile, "collapsed_data.json.gz")
-	assert.Contains(t, nsResult.CallGraphFile, "collapsed_data.json")
+	assert.Equal(t, 180, result.TotalRecords)
+	assert.Contains(t, result.TopFuncs, "com.example.App.main")
+	assert.Contains(t, result.FlameGraphFile, "collapsed_data.json.gz")
+	assert.Contains(t, result.CallGraphFile, "collapsed_data.json")
 }
 
 func TestJavaCPUAnalyzer_Analyze_EmptyData(t *testing.T) {
@@ -81,7 +81,7 @@ func TestJavaCPUAnalyzer_Analyze_EmptyData(t *testing.T) {
 		ProfilerType: model.ProfilerTypePerf,
 	}
 
-	_, err := analyzer.Analyze(context.Background(), req, strings.NewReader(""))
+	_, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader(""))
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrEmptyData, err)
@@ -97,7 +97,7 @@ func TestJavaCPUAnalyzer_Analyze_WrongProfilerType(t *testing.T) {
 		ProfilerType: model.ProfilerTypeAsyncAlloc, // Wrong type
 	}
 
-	_, err := analyzer.Analyze(context.Background(), req, strings.NewReader("data"))
+	_, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader("data"))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "only supports profiler type perf")
@@ -127,7 +127,7 @@ func TestJavaCPUAnalyzer_Analyze_ContextCancellation(t *testing.T) {
 		ProfilerType: model.ProfilerTypePerf,
 	}
 
-	_, err := analyzer.Analyze(ctx, req, strings.NewReader(sb.String()))
+	_, err := analyzer.AnalyzeFromReader(ctx, req, strings.NewReader(sb.String()))
 
 	assert.Error(t, err)
 }
@@ -158,19 +158,21 @@ func TestJavaCPUAnalyzer_OutputFilesCreated(t *testing.T) {
 
 	input := `main-thread;java.lang.Thread.run;com.example.App.main 100`
 
+	taskDir := filepath.Join(tempDir, "test-output-uuid")
+	os.MkdirAll(taskDir, 0755)
+
 	req := &model.AnalysisRequest{
 		TaskID:       1,
 		TaskUUID:     "test-output-uuid",
 		TaskType:     model.TaskTypeJava,
 		ProfilerType: model.ProfilerTypePerf,
+		OutputDir:    taskDir,
 	}
 
-	_, err := analyzer.Analyze(context.Background(), req, strings.NewReader(input))
+	_, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader(input))
 	require.NoError(t, err)
 
 	// Check output files exist
-	taskDir := filepath.Join(tempDir, "test-output-uuid")
-
 	fgPath := filepath.Join(taskDir, "collapsed_data.json.gz")
 	_, err = os.Stat(fgPath)
 	assert.NoError(t, err)
@@ -200,13 +202,16 @@ func BenchmarkJavaCPUAnalyzer_Analyze(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
+		taskDir := filepath.Join(tempDir, "bench-uuid-"+string(rune('0'+i%10)))
+		os.MkdirAll(taskDir, 0755)
 		req := &model.AnalysisRequest{
 			TaskID:       int64(i),
 			TaskUUID:     "bench-uuid-" + string(rune('0'+i%10)),
 			TaskType:     model.TaskTypeJava,
 			ProfilerType: model.ProfilerTypePerf,
+			OutputDir:    taskDir,
 		}
 
-		_, _ = analyzer.Analyze(context.Background(), req, strings.NewReader(input))
+		_, _ = analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader(input))
 	}
 }

@@ -2,6 +2,8 @@ package analyzer
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -67,26 +69,26 @@ func TestJavaMemAnalyzer_Analyze_Success(t *testing.T) {
 worker-1;java.util.ArrayList.<init>;com.example.Worker.allocate 5000
 main-thread;java.lang.String.valueOf;com.example.App.stringify 3000`
 
+	taskDir := filepath.Join(tempDir, "test-java-mem-uuid")
+	os.MkdirAll(taskDir, 0755)
+
 	req := &model.AnalysisRequest{
 		TaskID:       1,
 		TaskUUID:     "test-java-mem-uuid",
 		TaskType:     model.TaskTypeJava,
 		ProfilerType: model.ProfilerTypeAsyncAlloc,
+		OutputDir:    taskDir,
 	}
 
-	result, err := analyzer.Analyze(context.Background(), req, strings.NewReader(input))
+	result, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader(input))
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
 	assert.Equal(t, "test-java-mem-uuid", result.TaskUUID)
-	assert.Equal(t, int64(18000), result.TotalRecords)
-
-	// Check namespace result
-	nsResult, ok := result.Result[""]
-	require.True(t, ok)
-	assert.Contains(t, nsResult.FlameGraphFile, "alloc_data.json.gz")
-	assert.Contains(t, nsResult.CallGraphFile, "alloc_data.json")
+	assert.Equal(t, 18000, result.TotalRecords)
+	assert.Contains(t, result.FlameGraphFile, "alloc_data.json.gz")
+	assert.Contains(t, result.CallGraphFile, "alloc_data.json")
 }
 
 func TestJavaMemAnalyzer_Analyze_EmptyData(t *testing.T) {
@@ -104,7 +106,7 @@ func TestJavaMemAnalyzer_Analyze_EmptyData(t *testing.T) {
 		ProfilerType: model.ProfilerTypeAsyncAlloc,
 	}
 
-	_, err := analyzer.Analyze(context.Background(), req, strings.NewReader(""))
+	_, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader(""))
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrEmptyData, err)
@@ -120,7 +122,7 @@ func TestJavaMemAnalyzer_Analyze_WrongProfilerType(t *testing.T) {
 		ProfilerType: model.ProfilerTypePerf, // Wrong type
 	}
 
-	_, err := analyzer.Analyze(context.Background(), req, strings.NewReader("data"))
+	_, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader("data"))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "only supports profiler type async_alloc")
@@ -140,7 +142,6 @@ func TestJavaMemAnalyzer_GenerateMemorySuggestions(t *testing.T) {
 
 	// Should have suggestion for function > 10%
 	require.Len(t, suggestions, 1)
-	assert.Equal(t, "memory_allocation", suggestions[0].Type)
 	assert.Contains(t, suggestions[0].Suggestion, "com.example.App.allocate")
 }
 

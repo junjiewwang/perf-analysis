@@ -11,7 +11,10 @@ import (
 // Analyzer is the interface for all profiling data analyzers.
 type Analyzer interface {
 	// Analyze performs the analysis on the given request.
-	Analyze(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResult, error)
+	Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error)
+
+	// AnalyzeFromReader performs the analysis using a reader.
+	AnalyzeFromReader(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResponse, error)
 
 	// SupportedTypes returns the task types supported by this analyzer.
 	SupportedTypes() []model.TaskType
@@ -52,12 +55,12 @@ func (m *Manager) GetAnalyzer(taskType model.TaskType) (Analyzer, bool) {
 }
 
 // AnalyzeTask routes a task to the appropriate analyzer and performs analysis.
-func (m *Manager) AnalyzeTask(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResult, error) {
+func (m *Manager) AnalyzeTask(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResponse, error) {
 	analyzer, ok := m.GetAnalyzer(req.TaskType)
 	if !ok {
 		return nil, ErrUnsupportedTaskType
 	}
-	return analyzer.Analyze(ctx, req, dataReader)
+	return analyzer.AnalyzeFromReader(ctx, req, dataReader)
 }
 
 // ListAnalyzers returns all registered analyzers.

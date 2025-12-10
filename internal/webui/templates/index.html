@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perf Analysis - Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .tab:hover {
+            background: #f0f0f0;
+        }
+        .tab.active {
+            background: #667eea;
+            color: white;
+        }
+        .panel {
+            display: none;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            padding: 20px;
+        }
+        .panel.active {
+            display: block;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .top-funcs-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .top-funcs-table th,
+        .top-funcs-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .top-funcs-table th {
+            background: #f9f9f9;
+            font-weight: 600;
+            font-size: 13px;
+            color: #666;
+        }
+        .top-funcs-table tr:hover {
+            background: #f5f7fa;
+        }
+        .func-name {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            word-break: break-all;
+        }
+        .percentage-bar {
+            width: 100px;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        .percentage-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+        }
+        .thread-list {
+            list-style: none;
+        }
+        .thread-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .thread-name {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            color: #333;
+        }
+        .thread-samples {
+            color: #666;
+            font-size: 13px;
+        }
+        #flamegraph {
+            width: 100%;
+            min-height: 400px;
+        }
+        .flamegraph-controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .flamegraph-controls input {
+            flex: 1;
+            max-width: 400px;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .flamegraph-controls button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .flamegraph-controls button:hover {
+            background: #5a6fd6;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .loading::after {
+            content: '';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+        }
+        .task-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+        .task-selector select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1);
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .task-selector select option {
+            color: #333;
+            background: white;
+        }
+        .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .d3-flame-graph rect {
+            stroke: #fff;
+            stroke-width: 0.5px;
+        }
+        .d3-flame-graph-tip {
+            background: rgba(0, 0, 0, 0.85) !important;
+            color: white !important;
+            padding: 10px 15px !important;
+            border-radius: 8px !important;
+            font-size: 13px !important;
+            max-width: 500px !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div>
+                <h1>🔥 Perf Analysis Viewer</h1>
+                <div class="subtitle">Interactive performance profiling visualization</div>
+            </div>
+            <div class="task-selector">
+                <label>Task:</label>
+                <select id="taskSelect" onchange="loadTask(this.value)">
+                    <option value="">Loading...</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" onclick="showPanel('overview')">📊 Overview</button>
+            <button class="tab" onclick="showPanel('flamegraph')">🔥 Flame Graph</button>
+            <button class="tab" onclick="showPanel('topfuncs')">📈 Top Functions</button>
+            <button class="tab" onclick="showPanel('threads')">🧵 Threads</button>
+        </div>
+
+        <!-- Overview Panel -->
+        <div id="overview" class="panel active">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalSamples">-</div>
+                    <div class="stat-label">Total Samples</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="topFuncsCount">-</div>
+                    <div class="stat-label">Functions Analyzed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="threadsCount">-</div>
+                    <div class="stat-label">Active Threads</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="taskUUID">-</div>
+                    <div class="stat-label">Task UUID</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Top 5 Hot Functions</h2>
+                <table class="top-funcs-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px">#</th>
+                            <th>Function</th>
+                            <th style="width: 200px">Self %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topFuncsPreview"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Flame Graph Panel -->
+        <div id="flamegraph-panel" class="panel">
+            <div class="flamegraph-controls">
+                <input type="text" id="searchInput" placeholder="Search function name..." onkeyup="searchFlameGraph(this.value)">
+                <button onclick="resetFlameGraph()">Reset View</button>
+                <button onclick="clearSearch()">Clear Search</button>
+            </div>
+            <div id="flamegraph">
+                <div class="loading">Loading flame graph</div>
+            </div>
+        </div>
+
+        <!-- Top Functions Panel -->
+        <div id="topfuncs" class="panel">
+            <div class="card" style="box-shadow: none; padding: 0;">
+                <h2>All Functions (sorted by self %)</h2>
+                <table class="top-funcs-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px">#</th>
+                            <th>Function</th>
+                            <th style="width: 200px">Self %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topFuncsAll"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Threads Panel -->
+        <div id="threads" class="panel">
+            <div class="card" style="box-shadow: none; padding: 0;">
+                <h2>Thread Statistics</h2>
+                <ul class="thread-list" id="threadList"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let flameChart = null;
+        let currentTask = '';
+        let summaryData = null;
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTasks();
+        });
+
+        // Load available tasks
+        async function loadTasks() {
+            try {
+                const response = await fetch('/api/tasks');
+                const tasks = await response.json();
+                
+                const select = document.getElementById('taskSelect');
+                select.innerHTML = '';
+                
+                if (tasks && tasks.length > 0) {
+                    tasks.forEach((task, idx) => {
+                        const option = document.createElement('option');
+                        option.value = task.id;
+                        option.textContent = task.id + (idx === 0 ? ' (latest)' : '');
+                        select.appendChild(option);
+                    });
+                    
+                    // Load the first (latest) task
+                    loadTask(tasks[0].id);
+                } else {
+                    select.innerHTML = '<option value="">No tasks found</option>';
+                }
+            } catch (err) {
+                console.error('Failed to load tasks:', err);
+                document.getElementById('taskSelect').innerHTML = '<option value="">Error loading tasks</option>';
+            }
+        }
+
+        // Load a specific task
+        async function loadTask(taskId) {
+            currentTask = taskId;
+            await Promise.all([
+                loadSummary(taskId),
+                loadFlameGraph(taskId)
+            ]);
+        }
+
+        // Load summary data
+        async function loadSummary(taskId) {
+            try {
+                const response = await fetch(`/api/summary?task=${taskId}`);
+                summaryData = await response.json();
+                renderSummary(summaryData);
+            } catch (err) {
+                console.error('Failed to load summary:', err);
+            }
+        }
+
+        // Render summary data
+        function renderSummary(data) {
+            // Stats
+            document.getElementById('totalSamples').textContent = data.total_records || 0;
+            document.getElementById('topFuncsCount').textContent = Object.keys(data.top_funcs || {}).length;
+            document.getElementById('threadsCount').textContent = (data.threads || []).length;
+            document.getElementById('taskUUID').textContent = data.task_uuid || '-';
+
+            // Top functions preview (top 5)
+            const funcs = Object.entries(data.top_funcs || {})
+                .map(([name, val]) => ({ name, self: val.self || 0 }))
+                .sort((a, b) => b.self - a.self);
+
+            const previewBody = document.getElementById('topFuncsPreview');
+            previewBody.innerHTML = funcs.slice(0, 5).map((f, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td class="func-name">${escapeHtml(f.name)}</td>
+                    <td>
+                        <div class="percentage-bar">
+                            <div class="percentage-bar-fill" style="width: ${Math.min(f.self, 100)}%"></div>
+                        </div>
+                        ${f.self.toFixed(2)}%
+                    </td>
+                </tr>
+            `).join('');
+
+            // All functions
+            const allBody = document.getElementById('topFuncsAll');
+            allBody.innerHTML = funcs.map((f, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td class="func-name">${escapeHtml(f.name)}</td>
+                    <td>
+                        <div class="percentage-bar">
+                            <div class="percentage-bar-fill" style="width: ${Math.min(f.self, 100)}%"></div>
+                        </div>
+                        ${f.self.toFixed(2)}%
+                    </td>
+                </tr>
+            `).join('');
+
+            // Threads
+            const threadList = document.getElementById('threadList');
+            threadList.innerHTML = (data.threads || []).map(t => `
+                <li class="thread-item">
+                    <span class="thread-name">${escapeHtml(t.thread_name || 'Unknown')}</span>
+                    <span class="thread-samples">${t.samples} samples (${(t.percentage || 0).toFixed(2)}%)</span>
+                </li>
+            `).join('');
+        }
+
+        // Load and render flame graph
+        async function loadFlameGraph(taskId) {
+            const container = document.getElementById('flamegraph');
+            container.innerHTML = '<div class="loading">Loading flame graph</div>';
+
+            try {
+                const response = await fetch(`/api/flamegraph?task=${taskId}`);
+                const data = await response.json();
+                
+                container.innerHTML = '';
+                
+                // Create flame graph
+                flameChart = flamegraph()
+                    .width(container.clientWidth)
+                    .cellHeight(20)
+                    .transitionDuration(500)
+                    .minFrameSize(2)
+                    .transitionEase(d3.easeCubic)
+                    .sort(true)
+                    .title('')
+                    .selfValue(false)
+                    .inverted(false)
+                    .tooltip(tip);
+
+                d3.select('#flamegraph')
+                    .datum(data)
+                    .call(flameChart);
+
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    if (flameChart) {
+                        flameChart.width(container.clientWidth);
+                        d3.select('#flamegraph').call(flameChart);
+                    }
+                });
+            } catch (err) {
+                console.error('Failed to load flame graph:', err);
+                container.innerHTML = '<div class="loading">Failed to load flame graph</div>';
+            }
+        }
+
+        // Tooltip function
+        function tip(d) {
+            const data = d.data;
+            const name = data.name || 'root';
+            const value = data.value || 0;
+            const total = summaryData ? summaryData.total_records : value;
+            const pct = total > 0 ? ((value / total) * 100).toFixed(2) : 0;
+            return `<b>${escapeHtml(name)}</b><br>Samples: ${value} (${pct}%)`;
+        }
+
+        // Search in flame graph
+        function searchFlameGraph(term) {
+            if (flameChart && term) {
+                flameChart.search(term);
+            }
+        }
+
+        // Clear search
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            if (flameChart) {
+                flameChart.clear();
+            }
+        }
+
+        // Reset flame graph view
+        function resetFlameGraph() {
+            if (flameChart) {
+                flameChart.resetZoom();
+            }
+        }
+
+        // Show panel
+        function showPanel(panelId) {
+            // Update tabs
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update panels
+            document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
+            
+            if (panelId === 'flamegraph') {
+                document.getElementById('flamegraph-panel').classList.add('active');
+            } else {
+                document.getElementById(panelId).classList.add('active');
+            }
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

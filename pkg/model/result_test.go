@@ -116,7 +116,7 @@ func TestAnalysisRequest(t *testing.T) {
 		UserName:      "testuser",
 		MasterTaskTID: &masterTID,
 		COSBucket:     "bucket-1",
-		RequestParams: &RequestParams{
+		RequestParams: RequestParams{
 			Duration: 60,
 		},
 	}

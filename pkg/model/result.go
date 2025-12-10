@@ -94,11 +94,34 @@ type AnalysisRequest struct {
 	TaskUUID      string
 	TaskType      TaskType
 	ProfilerType  ProfilerType
+	InputFile     string
+	OutputDir     string
 	ResultFile    string
 	UserName      string
 	MasterTaskTID *string
 	COSBucket     string
-	RequestParams *RequestParams
+	RequestParams RequestParams
+}
+
+// AnalysisResponse represents the response from an analysis.
+type AnalysisResponse struct {
+	TaskUUID          string           `json:"task_uuid"`
+	TopFuncs          string           `json:"top_funcs"`
+	TotalRecords      int              `json:"total_records"`
+	FlameGraphFile    string           `json:"flamegraph_file"`
+	CallGraphFile     string           `json:"callgraph_file"`
+	ActiveThreadsJSON string           `json:"active_threads_json"`
+	Suggestions       []SuggestionItem `json:"suggestions"`
+	Error             string           `json:"error,omitempty"`
+}
+
+// SuggestionItem represents a single suggestion from analysis.
+type SuggestionItem struct {
+	Suggestion   string `json:"suggestion"`
+	FuncName     string `json:"func,omitempty"`
+	Namespace    string `json:"namespace,omitempty"`
+	CallStack    string `json:"callstack,omitempty"`
+	AISuggestion string `json:"ai_suggestion,omitempty"`
 }
 
 // AnalysisContext holds the context during analysis.

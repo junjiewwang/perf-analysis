@@ -2,8 +2,10 @@ package analyzer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/perf-analysis/internal/statistics"
@@ -29,7 +31,6 @@ func (a *JavaMemAnalyzer) Name() string {
 
 // SupportedTypes returns the task types supported by this analyzer.
 func (a *JavaMemAnalyzer) SupportedTypes() []model.TaskType {
-	// Java memory is TaskTypeJava with ProfilerTypeAsyncAlloc
 	return []model.TaskType{model.TaskTypeJava}
 }
 
@@ -38,9 +39,23 @@ func (a *JavaMemAnalyzer) CanHandle(req *model.AnalysisRequest) bool {
 	return req.TaskType == model.TaskTypeJava && req.ProfilerType == model.ProfilerTypeAsyncAlloc
 }
 
-// Analyze performs Java memory profiling analysis.
-func (a *JavaMemAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResult, error) {
-	// Only handle allocation profiling (profiler type 1)
+// Analyze performs Java memory profiling analysis using an input file.
+func (a *JavaMemAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
+	if req.ProfilerType != model.ProfilerTypeAsyncAlloc {
+		return nil, fmt.Errorf("java mem analyzer only supports profiler type async_alloc, got %v", req.ProfilerType)
+	}
+
+	file, err := os.Open(req.InputFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer file.Close()
+
+	return a.AnalyzeFromReader(ctx, req, file)
+}
+
+// AnalyzeFromReader performs Java memory profiling analysis from a reader.
+func (a *JavaMemAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResponse, error) {
 	if req.ProfilerType != model.ProfilerTypeAsyncAlloc {
 		return nil, fmt.Errorf("java mem analyzer only supports profiler type async_alloc, got %v", req.ProfilerType)
 	}
@@ -55,10 +70,13 @@ func (a *JavaMemAnalyzer) Analyze(ctx context.Context, req *model.AnalysisReques
 		return nil, ErrEmptyData
 	}
 
-	// Step 2: Ensure output directory
-	taskDir, err := a.EnsureOutputDir(req.TaskUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create output directory: %w", err)
+	// Step 2: Determine output directory
+	taskDir := req.OutputDir
+	if taskDir == "" {
+		taskDir, err = a.EnsureOutputDir(req.TaskUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create output directory: %w", err)
+		}
 	}
 
 	// Step 3: Generate flame graph (allocation flame graph)
@@ -87,55 +105,58 @@ func (a *JavaMemAnalyzer) Analyze(ctx context.Context, req *model.AnalysisReques
 	topFuncsResult := a.CalculateTopFuncs(parseResult.Samples)
 	threadStatsResult := a.CalculateThreadStats(parseResult.Samples)
 
-	// Step 6: Collect suggestions
-	suggestions := parseResult.Suggestions
-	if suggestions == nil {
-		suggestions = make([]model.Suggestion, 0)
+	// Step 6: Build top funcs JSON
+	topFuncsMap := make(model.TopFuncsMap)
+	for _, tf := range topFuncsResult.TopFuncs {
+		topFuncsMap[tf.Name] = model.TopFuncValue{Self: tf.SelfPercent}
+	}
+	topFuncsJSON, _ := json.Marshal(topFuncsMap)
+
+	// Step 7: Build active threads JSON
+	activeThreads := make([]model.ThreadInfo, 0, len(threadStatsResult.Threads))
+	for _, t := range threadStatsResult.Threads {
+		activeThreads = append(activeThreads, model.ThreadInfo{
+			TID:        t.TID,
+			ThreadName: t.ThreadName,
+			Samples:    t.Samples,
+			Percentage: t.Percentage,
+		})
+	}
+	activeThreadsJSON, _ := json.Marshal(activeThreads)
+
+	// Step 8: Convert suggestions and add memory-specific ones
+	suggestions := make([]model.SuggestionItem, 0, len(parseResult.Suggestions))
+	for _, sug := range parseResult.Suggestions {
+		suggestions = append(suggestions, model.SuggestionItem{
+			Suggestion: sug.Suggestion,
+			FuncName:   sug.FuncName,
+			Namespace:  sug.Namespace,
+		})
 	}
 
 	// Add memory-specific suggestions
 	memSuggestions := a.generateMemorySuggestions(topFuncsResult)
 	suggestions = append(suggestions, memSuggestions...)
 
-	// Step 7: Build namespace result
-	nsResult, err := a.BuildNamespaceResult(
-		req.TaskUUID,
-		parseResult,
-		topFuncsResult,
-		threadStatsResult,
-		req.TaskUUID+"/alloc_data.json.gz",
-		req.TaskUUID+"/alloc_data.json",
-		suggestions,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build namespace result: %w", err)
-	}
-
-	// Step 8: Build analysis result
-	result := &model.AnalysisResult{
-		TaskUUID:       req.TaskUUID,
-		ContainersInfo: make(map[string]model.ContainerInfo),
-		Result: map[string]model.NamespaceResult{
-			"": *nsResult,
-		},
-		TotalRecords:            parseResult.TotalSamples,
-		TotalRecordsWithSwapper: parseResult.TotalSamples,
-	}
-
-	return result, nil
+	// Step 9: Build response
+	return &model.AnalysisResponse{
+		TaskUUID:          req.TaskUUID,
+		TopFuncs:          string(topFuncsJSON),
+		TotalRecords:      int(parseResult.TotalSamples),
+		FlameGraphFile:    flameGraphFile,
+		CallGraphFile:     callGraphFile,
+		ActiveThreadsJSON: string(activeThreadsJSON),
+		Suggestions:       suggestions,
+	}, nil
 }
 
 // generateMemorySuggestions generates memory-specific suggestions.
-func (a *JavaMemAnalyzer) generateMemorySuggestions(topFuncsResult *statistics.TopFuncsResult) []model.Suggestion {
-	suggestions := make([]model.Suggestion, 0)
+func (a *JavaMemAnalyzer) generateMemorySuggestions(topFuncsResult *statistics.TopFuncsResult) []model.SuggestionItem {
+	suggestions := make([]model.SuggestionItem, 0)
 
-	// Check for high allocation functions
 	for _, tf := range topFuncsResult.TopFuncs {
 		if tf.SelfPercent > 10.0 {
-			// High allocation function
-			suggestions = append(suggestions, model.Suggestion{
-				Type:       "memory_allocation",
-				Severity:   "warning",
+			suggestions = append(suggestions, model.SuggestionItem{
 				Suggestion: fmt.Sprintf("函数 %s 分配内存占比 %.2f%%，建议检查是否存在频繁内存分配", tf.Name, tf.SelfPercent),
 				FuncName:   tf.Name,
 			})

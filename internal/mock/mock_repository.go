@@ -122,3 +122,64 @@ func (m *MockSuggestionRepository) GetSuggestionsByTaskUUID(ctx context.Context,
 func (m *MockSuggestionRepository) ExpectSaveSuggestions(err error) *mock.Call {
 	return m.On("SaveSuggestions", mock.Anything, mock.Anything).Return(err)
 }
+
+// GetAnalysisRules mocks the GetAnalysisRules method.
+func (m *MockSuggestionRepository) GetAnalysisRules(ctx context.Context) ([]model.SuggestionRule, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]model.SuggestionRule), args.Error(1)
+}
+
+// UpdateResult mocks the UpdateResult method.
+func (m *MockResultRepository) UpdateResult(ctx context.Context, result *model.AnalysisResult) error {
+	args := m.Called(ctx, result)
+	return args.Error(0)
+}
+
+// MockMasterTaskRepository is a mock implementation of the MasterTaskRepository interface.
+type MockMasterTaskRepository struct {
+	mock.Mock
+}
+
+// MasterTask represents a master task for mocking.
+type MasterTask struct {
+	TID                 string                       `json:"tid"`
+	SubTIDs             []string                     `json:"sub_tids"`
+	AnalysisSuggestions *model.MasterTaskSuggestions `json:"analysis_suggestions"`
+	AnalysisStatus      model.AnalysisStatus         `json:"analysis_status"`
+}
+
+// GetMasterTask mocks the GetMasterTask method.
+func (m *MockMasterTaskRepository) GetMasterTask(ctx context.Context, masterTID string) (*MasterTask, error) {
+	args := m.Called(ctx, masterTID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*MasterTask), args.Error(1)
+}
+
+// UpdateMasterTaskSuggestions mocks the UpdateMasterTaskSuggestions method.
+func (m *MockMasterTaskRepository) UpdateMasterTaskSuggestions(ctx context.Context, masterTID string, resourceType string, suggestions *model.SuggestionGroup) error {
+	args := m.Called(ctx, masterTID, resourceType, suggestions)
+	return args.Error(0)
+}
+
+// UpdateMasterTaskStatus mocks the UpdateMasterTaskStatus method.
+func (m *MockMasterTaskRepository) UpdateMasterTaskStatus(ctx context.Context, masterTID string, status model.AnalysisStatus) error {
+	args := m.Called(ctx, masterTID, status)
+	return args.Error(0)
+}
+
+// GetIncompleteSubTaskCount mocks the GetIncompleteSubTaskCount method.
+func (m *MockMasterTaskRepository) GetIncompleteSubTaskCount(ctx context.Context, masterTID string) (int, error) {
+	args := m.Called(ctx, masterTID)
+	return args.Int(0), args.Error(1)
+}
+
+// CheckAndCompleteIfReady mocks the CheckAndCompleteIfReady method.
+func (m *MockMasterTaskRepository) CheckAndCompleteIfReady(ctx context.Context, masterTID string) error {
+	args := m.Called(ctx, masterTID)
+	return args.Error(0)
+}
