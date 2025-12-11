@@ -34,7 +34,7 @@
             margin-top: 5px;
         }
         .container {
-            max-width: 1600px;
+            max-width: 1800px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -42,6 +42,7 @@
             display: flex;
             gap: 10px;
             margin-bottom: 20px;
+            flex-wrap: wrap;
         }
         .tab {
             padding: 10px 20px;
@@ -168,23 +169,26 @@
         }
         #flamegraph {
             width: 100%;
-            min-height: 400px;
+            min-height: 500px;
+            overflow: auto;
         }
-        .flamegraph-controls {
+        .controls {
             margin-bottom: 15px;
             display: flex;
             gap: 10px;
             align-items: center;
+            flex-wrap: wrap;
         }
-        .flamegraph-controls input {
+        .controls input[type="text"] {
             flex: 1;
+            min-width: 200px;
             max-width: 400px;
             padding: 10px 15px;
             border: 1px solid #ddd;
             border-radius: 8px;
             font-size: 14px;
         }
-        .flamegraph-controls button {
+        .controls button {
             padding: 10px 20px;
             background: #667eea;
             color: white;
@@ -194,8 +198,33 @@
             font-size: 14px;
             transition: background 0.2s;
         }
-        .flamegraph-controls button:hover {
+        .controls button:hover {
             background: #5a6fd6;
+        }
+        .controls button.secondary {
+            background: #6c757d;
+        }
+        .controls button.secondary:hover {
+            background: #5a6268;
+        }
+        .controls label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .controls input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+        }
+        .tips {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+        .tips span {
+            margin-right: 15px;
         }
         .loading {
             text-align: center;
@@ -236,6 +265,8 @@
             align-items: center;
             justify-content: space-between;
         }
+        
+        /* Flame Graph Styles */
         .d3-flame-graph rect {
             stroke: #fff;
             stroke-width: 0.5px;
@@ -246,7 +277,536 @@
             padding: 10px 15px !important;
             border-radius: 8px !important;
             font-size: 13px !important;
-            max-width: 500px !important;
+            max-width: 600px !important;
+            word-break: break-all;
+        }
+        /* Search highlight styles for d3-flame-graph */
+        /* Use GPU-accelerated properties and avoid transitions during zoom */
+        #flamegraph .d3-flame-graph rect {
+            will-change: fill-opacity;
+        }
+        
+        /* Only apply transitions when not zooming */
+        #flamegraph:not(.zooming) .d3-flame-graph rect {
+            transition: fill-opacity 0.15s ease-out, stroke 0.15s ease-out;
+        }
+        
+        /* Matching frames get highlighted with bright magenta color */
+        #flamegraph .d3-flame-graph g.search-match > rect,
+        #flamegraph .d3-flame-graph g[highlight] > rect {
+            fill: #e040fb !important;
+            stroke: #7b1fa2 !important;
+            stroke-width: 2px !important;
+        }
+        
+        /* Non-matching frames get dimmed when searching */
+        #flamegraph.searching .d3-flame-graph g:not(.search-match):not([highlight]) > rect {
+            fill-opacity: 0.2 !important;
+        }
+        #flamegraph.searching .d3-flame-graph g:not(.search-match):not([highlight]) > text {
+            fill-opacity: 0.3 !important;
+        }
+        /* Search result badge */
+        .search-result-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: #9b59b6;
+            color: white;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .search-result-badge.no-match {
+            background: #e74c3c;
+        }
+        .search-result-badge.hidden {
+            display: none;
+        }
+        #flame-details {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        #flame-details .detail-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        #flame-details .detail-label {
+            color: #666;
+        }
+        #flame-details .detail-value {
+            font-weight: 600;
+            color: #333;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+        
+        /* Call Graph Styles */
+        .callgraph-container {
+            display: flex;
+            gap: 15px;
+            height: 700px;
+        }
+        #callgraph {
+            flex: 1;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        #callgraph svg {
+            width: 100%;
+            height: 100%;
+        }
+        /* Call chain sidebar */
+        .callchain-sidebar {
+            width: 280px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .callchain-sidebar.active {
+            display: flex;
+        }
+        .callchain-header {
+            padding: 12px 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .callchain-close {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 18px;
+            opacity: 0.8;
+        }
+        .callchain-close:hover {
+            opacity: 1;
+        }
+        .callchain-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 0;
+        }
+        .callchain-section {
+            padding: 8px 15px;
+        }
+        .callchain-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .callchain-node {
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            cursor: pointer;
+            transition: all 0.2s;
+            word-break: break-all;
+            border-left: 3px solid transparent;
+        }
+        .callchain-node:hover {
+            background: #f5f5f5;
+        }
+        .callchain-node.root {
+            background: linear-gradient(90deg, rgba(0, 200, 83, 0.1) 0%, transparent 100%);
+            border-left-color: #00c853;
+        }
+        .callchain-node.chain {
+            background: linear-gradient(90deg, rgba(124, 77, 255, 0.1) 0%, transparent 100%);
+            border-left-color: #7c4dff;
+        }
+        .callchain-node.match {
+            background: linear-gradient(90deg, rgba(224, 64, 251, 0.15) 0%, transparent 100%);
+            border-left-color: #e040fb;
+            font-weight: 600;
+        }
+        .callchain-arrow {
+            text-align: center;
+            color: #999;
+            font-size: 16px;
+            padding: 2px 0;
+        }
+        /* Minimap */
+        .callgraph-minimap {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 150px;
+            height: 100px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .callgraph-minimap svg {
+            width: 100%;
+            height: 100%;
+        }
+        .minimap-viewport {
+            fill: rgba(102, 126, 234, 0.2);
+            stroke: #667eea;
+            stroke-width: 1px;
+        }
+        /* View mode toggle - iOS style switch */
+        .view-mode-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 4px 12px;
+            background: #f5f5f5;
+            border-radius: 20px;
+            font-size: 13px;
+            color: #666;
+        }
+        .view-mode-switch .switch-label {
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        .view-mode-switch .switch-label.active {
+            color: #333;
+        }
+        .view-mode-switch .switch-label.left.active {
+            color: #667eea;
+        }
+        .view-mode-switch .switch-label.right.active {
+            color: #e040fb;
+        }
+        .switch-track {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .switch-track.focus-mode {
+            background: linear-gradient(135deg, #e040fb 0%, #9c27b0 100%);
+        }
+        .switch-thumb {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .switch-track.focus-mode .switch-thumb {
+            transform: translateX(20px);
+        }
+        .callgraph-node {
+            cursor: pointer;
+            transition: opacity 0.3s ease;
+        }
+        .callgraph-node rect {
+            stroke: #333;
+            stroke-width: 1px;
+            transition: all 0.3s ease;
+        }
+        .callgraph-node text {
+            font-size: 11px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            pointer-events: none;
+        }
+        .callgraph-edge {
+            fill: none;
+            stroke: #999;
+            stroke-opacity: 0.6;
+            transition: all 0.3s ease;
+        }
+        .callgraph-edge.highlighted {
+            stroke: #e74c3c;
+            stroke-opacity: 1;
+            stroke-width: 2px;
+        }
+        .callgraph-node.highlighted rect {
+            stroke: #e74c3c;
+            stroke-width: 3px;
+        }
+        /* Search mode - hide non-relevant nodes */
+        .callgraph-node.search-hidden {
+            display: none;
+        }
+        .callgraph-edge.search-hidden {
+            display: none;
+        }
+        /* Call graph search styles - Match node (target) */
+        .callgraph-node.search-match rect {
+            fill: #e040fb !important;
+            stroke: #9c27b0;
+            stroke-width: 3px;
+            filter: drop-shadow(0 0 10px rgba(224, 64, 251, 0.7));
+        }
+        .callgraph-node.search-match text {
+            fill: white;
+            font-weight: bold;
+        }
+        .callgraph-node.current-focus rect {
+            stroke: #7b1fa2;
+            stroke-width: 4px;
+            filter: drop-shadow(0 0 15px rgba(224, 64, 251, 1));
+            animation: callgraph-pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes callgraph-pulse {
+            0%, 100% { filter: drop-shadow(0 0 10px rgba(224, 64, 251, 0.7)); }
+            50% { filter: drop-shadow(0 0 20px rgba(224, 64, 251, 1)); }
+        }
+        /* Root nodes - entry points (green) */
+        .callgraph-node.search-root rect {
+            fill: #00c853 !important;
+            stroke: #00a844;
+            stroke-width: 3px;
+            filter: drop-shadow(0 0 8px rgba(0, 200, 83, 0.6));
+        }
+        .callgraph-node.search-root text {
+            fill: white;
+            font-weight: bold;
+        }
+        /* Call chain nodes - intermediate callers (purple gradient) */
+        .callgraph-node.search-chain rect {
+            fill: #7c4dff !important;
+            stroke: #651fff;
+            stroke-width: 2px;
+            filter: drop-shadow(0 0 6px rgba(124, 77, 255, 0.5));
+        }
+        .callgraph-node.search-chain text {
+            fill: white;
+        }
+        /* Callee nodes - what the match calls (orange) - REMOVED, only upstream tracing */
+        /* Dimmed nodes */
+        .callgraph-node.search-dimmed {
+            opacity: 0.08;
+        }
+        .callgraph-edge.search-dimmed {
+            opacity: 0.05;
+        }
+        /* Call chain edges - upstream path */
+        .callgraph-edge.search-chain {
+            stroke: #7c4dff;
+            stroke-opacity: 1;
+            stroke-width: 2.5px;
+        }
+        /* Connected to match edges */
+        .callgraph-edge.search-connected {
+            stroke: #e040fb;
+            stroke-opacity: 1;
+            stroke-width: 2.5px;
+        }
+        /* Depth indicator badge */
+        .depth-badge {
+            font-size: 9px;
+            fill: white;
+            font-weight: bold;
+        }
+        /* Stats bar */
+        .callgraph-stats {
+            display: flex;
+            gap: 20px;
+            padding: 10px 15px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+        .callgraph-stats .stat {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .callgraph-stats .stat-label {
+            color: #666;
+        }
+        .callgraph-stats .stat-value {
+            font-weight: 600;
+            color: #333;
+        }
+        .nav-btn {
+            padding: 8px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+        .nav-btn:hover:not(:disabled) {
+            background: #5a6fd6;
+        }
+        .nav-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .search-nav {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .search-counter {
+            font-size: 13px;
+            color: #666;
+            min-width: 60px;
+            text-align: center;
+        }
+        .node-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            max-width: 400px;
+            word-break: break-all;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #666;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 12px;
+            border-radius: 2px;
+        }
+        /* Action buttons for function list */
+        .action-btn {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            margin-right: 4px;
+        }
+        .action-btn:hover {
+            transform: scale(1.1);
+        }
+        .action-btn.flame {
+            background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+            color: white;
+        }
+        .action-btn.flame:hover {
+            background: linear-gradient(135deg, #ff5722 0%, #ff9800 100%);
+        }
+        .action-btn.callgraph {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .action-btn.callgraph:hover {
+            background: linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%);
+        }
+        .func-name-clickable {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .func-name-clickable:hover {
+            color: #667eea;
+            text-decoration: underline;
+        }
+        /* System function filter styles */
+        .filter-section {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        .filter-section .filter-label {
+            color: #666;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .filter-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .filter-chip:hover {
+            border-color: #667eea;
+            background: #f5f7ff;
+        }
+        .filter-chip.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+        .filter-chip .chip-icon {
+            font-size: 11px;
+        }
+        .filter-chip.active .chip-icon {
+            opacity: 0.9;
+        }
+        /* Dimmed system functions in flame graph - no longer used, data is filtered */
+        /* Hidden system functions in call graph */
+        .callgraph-node.filter-hidden {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .callgraph-edge.filter-hidden {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        /* Bridge edges that connect through filtered nodes */
+        .callgraph-edge.bridge-edge {
+            stroke: #9c27b0;
+            stroke-opacity: 0.7;
+            stroke-dasharray: 5, 3;
+            transition: opacity 0.3s ease;
         }
     </style>
 </head>
@@ -270,7 +830,8 @@
         <div class="tabs">
             <button class="tab active" onclick="showPanel('overview')">📊 Overview</button>
             <button class="tab" onclick="showPanel('flamegraph')">🔥 Flame Graph</button>
-            <button class="tab" onclick="showPanel('topfuncs')">📈 Top Functions</button>
+            <button class="tab" onclick="showPanel('callgraph')">📈 Call Graph</button>
+            <button class="tab" onclick="showPanel('topfuncs')">� Top Functions</button>
             <button class="tab" onclick="showPanel('threads')">🧵 Threads</button>
         </div>
 
@@ -297,12 +858,16 @@
 
             <div class="card">
                 <h2>Top 5 Hot Functions</h2>
+                <div class="tips" style="margin-bottom: 10px;">
+                    <span>💡 Click action buttons to search in Flame Graph or Call Graph</span>
+                </div>
                 <table class="top-funcs-table">
                     <thead>
                         <tr>
                             <th style="width: 50px">#</th>
                             <th>Function</th>
                             <th style="width: 200px">Self %</th>
+                            <th style="width: 100px">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="topFuncsPreview"></tbody>
@@ -312,13 +877,160 @@
 
         <!-- Flame Graph Panel -->
         <div id="flamegraph-panel" class="panel">
-            <div class="flamegraph-controls">
-                <input type="text" id="searchInput" placeholder="Search function name..." onkeyup="searchFlameGraph(this.value)">
-                <button onclick="resetFlameGraph()">Reset View</button>
-                <button onclick="clearSearch()">Clear Search</button>
+            <div class="tips">
+                <span>💡 Click to zoom in, double-click to zoom out</span>
+                <span>🔍 Use search to highlight functions</span>
+            </div>
+            <div class="controls">
+                <input type="text" id="searchInput" placeholder="Search function name (e.g. HashMap, alibaba, netty)..." onkeyup="handleSearchKeyup(event)">
+                <button onclick="searchFlameGraph()">🔍 Search</button>
+                <button class="secondary" onclick="clearSearch()">Clear</button>
+                <button class="secondary" onclick="resetFlameGraph()">Reset View</button>
+                <span id="searchResultBadge" class="search-result-badge hidden"></span>
+            </div>
+            <div class="filter-section" id="flameFilterSection">
+                <span class="filter-label">🔧 Filter:</span>
+                <div class="filter-chips">
+                    <div class="filter-chip" data-filter="jvm" onclick="toggleFlameFilter('jvm')" title="JDK/JVM internal functions">
+                        <span class="chip-icon">☕</span> JVM
+                    </div>
+                    <div class="filter-chip" data-filter="gc" onclick="toggleFlameFilter('gc')" title="Garbage Collection functions">
+                        <span class="chip-icon">🗑️</span> GC
+                    </div>
+                    <div class="filter-chip" data-filter="native" onclick="toggleFlameFilter('native')" title="Native/C++ runtime functions">
+                        <span class="chip-icon">⚙️</span> Native
+                    </div>
+                    <div class="filter-chip" data-filter="kernel" onclick="toggleFlameFilter('kernel')" title="Linux kernel functions">
+                        <span class="chip-icon">🐧</span> Kernel
+                    </div>
+                    <div class="filter-chip" data-filter="reflect" onclick="toggleFlameFilter('reflect')" title="Reflection and proxy functions">
+                        <span class="chip-icon">🔄</span> Reflect
+                    </div>
+                </div>
+            </div>
+            <div id="flame-details">
+                <div class="detail-item">
+                    <span class="detail-label">📊 Total Samples:</span>
+                    <span class="detail-value" id="flame-total-samples">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">📈 Unique Functions:</span>
+                    <span class="detail-value" id="flame-unique-funcs">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">🔥 Max Depth:</span>
+                    <span class="detail-value" id="flame-max-depth">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">💡 Tip:</span>
+                    <span style="color: #666;">Click frame to zoom, right-click to zoom out</span>
+                </div>
             </div>
             <div id="flamegraph">
                 <div class="loading">Loading flame graph</div>
+            </div>
+        </div>
+
+        <!-- Call Graph Panel -->
+        <div id="callgraph-panel" class="panel">
+            <div class="tips">
+                <span>💡 Drag nodes to reposition</span>
+                <span>🔍 Scroll to zoom</span>
+                <span>🖱️ Hover on nodes for details</span>
+                <span>⌨️ Arrow keys to navigate matches</span>
+            </div>
+            <div class="controls">
+                <input type="text" id="callgraphSearchInput" placeholder="Search function name..." onkeyup="handleCallGraphSearchKeyup(event)">
+                <button onclick="searchCallGraph()">🔍 Search</button>
+                <button class="secondary" onclick="clearCallGraphSearch()">Clear</button>
+                <div class="search-nav">
+                    <button class="nav-btn" id="cgPrevBtn" onclick="navigateCallGraphMatch(-1)" disabled>← Prev</button>
+                    <span class="search-counter" id="cgSearchCounter"></span>
+                    <button class="nav-btn" id="cgNextBtn" onclick="navigateCallGraphMatch(1)" disabled>Next →</button>
+                </div>
+                <div class="view-mode-switch">
+                    <span class="switch-label left active">All</span>
+                    <div class="switch-track" id="viewModeSwitch" onclick="toggleViewMode()" title="Toggle between All nodes and Focus mode">
+                        <div class="switch-thumb"></div>
+                    </div>
+                    <span class="switch-label right">Focus</span>
+                </div>
+                <button class="secondary" onclick="fitCallGraph()">Fit to View</button>
+                <button class="secondary" onclick="resetCallGraph()">Reset Layout</button>
+            </div>
+            <div class="filter-section" id="callgraphFilterSection">
+                <span class="filter-label">🔧 Filter:</span>
+                <div class="filter-chips">
+                    <div class="filter-chip" data-filter="jvm" onclick="toggleCallGraphFilter('jvm')" title="JDK/JVM internal functions">
+                        <span class="chip-icon">☕</span> JVM
+                    </div>
+                    <div class="filter-chip" data-filter="gc" onclick="toggleCallGraphFilter('gc')" title="Garbage Collection functions">
+                        <span class="chip-icon">🗑️</span> GC
+                    </div>
+                    <div class="filter-chip" data-filter="native" onclick="toggleCallGraphFilter('native')" title="Native/C++ runtime functions">
+                        <span class="chip-icon">⚙️</span> Native
+                    </div>
+                    <div class="filter-chip" data-filter="kernel" onclick="toggleCallGraphFilter('kernel')" title="Linux kernel functions">
+                        <span class="chip-icon">🐧</span> Kernel
+                    </div>
+                    <div class="filter-chip" data-filter="reflect" onclick="toggleCallGraphFilter('reflect')" title="Reflection and proxy functions">
+                        <span class="chip-icon">🔄</span> Reflect
+                    </div>
+                </div>
+            </div>
+            <div class="callgraph-stats" id="callgraphStats" style="display: none;">
+                <div class="stat">
+                    <span class="stat-label">🎯 Matches:</span>
+                    <span class="stat-value" id="cgStatMatches">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">📍 Entry Points:</span>
+                    <span class="stat-value" id="cgStatRoots">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">🔗 Chain Depth:</span>
+                    <span class="stat-value" id="cgStatDepth">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">📊 Visible Nodes:</span>
+                    <span class="stat-value" id="cgStatVisible">0</span>
+                </div>
+            </div>
+            <div class="callgraph-container">
+                <div id="callgraph">
+                    <div class="loading">Loading call graph</div>
+                </div>
+                <div class="callchain-sidebar" id="callchainSidebar">
+                    <div class="callchain-header">
+                        <span>📋 Call Chain</span>
+                        <button class="callchain-close" onclick="toggleCallChainSidebar(false)">×</button>
+                    </div>
+                    <div class="callchain-content" id="callchainContent">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+            </div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00c853;"></div>
+                    <span>Entry Point (Root)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #7c4dff;"></div>
+                    <span>Call Chain</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #e040fb;"></div>
+                    <span>Target (Match)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #f8d568;"></div>
+                    <span>Other Nodes</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #9c27b0; border: 1px dashed #9c27b0;"></div>
+                    <span>Bridge Edge (filtered bypass)</span>
+                </div>
             </div>
         </div>
 
@@ -326,12 +1038,16 @@
         <div id="topfuncs" class="panel">
             <div class="card" style="box-shadow: none; padding: 0;">
                 <h2>All Functions (sorted by self %)</h2>
+                <div class="tips" style="margin-bottom: 10px;">
+                    <span>💡 Click action buttons to search in Flame Graph or Call Graph</span>
+                </div>
                 <table class="top-funcs-table">
                     <thead>
                         <tr>
                             <th style="width: 50px">#</th>
                             <th>Function</th>
                             <th style="width: 200px">Self %</th>
+                            <th style="width: 100px">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="topFuncsAll"></tbody>
@@ -348,10 +1064,140 @@
         </div>
     </div>
 
+    <!-- Node Tooltip -->
+    <div id="nodeTooltip" class="node-tooltip" style="display: none;"></div>
+
     <script>
         let flameChart = null;
         let currentTask = '';
         let summaryData = null;
+        let flameGraphData = null;
+        let isInverted = true;  // Default to inverted (root at top)
+        let callGraphSvg = null;
+        let callGraphZoom = null;
+        let callGraphSimulation = null;
+        let currentSearchTerm = '';  // Track current search term
+        
+        // Call graph search state
+        let callGraphNodes = [];      // Store nodes reference
+        let callGraphLinks = [];      // Store links reference
+        let callGraphNodeSelection = null;  // D3 node selection
+        let callGraphLinkSelection = null;  // D3 link selection
+        let cgSearchMatches = [];     // Matched nodes
+        let cgSearchIndex = 0;        // Current match index
+        let cgSearchTerm = '';        // Current search term
+        let cgViewMode = 'all';       // 'all' or 'focus'
+        let cgCallersMap = null;      // Adjacency map for callers
+        let cgCalleesMap = null;      // Adjacency map for callees
+        let cgChainSet = new Set();   // Nodes in call chain
+        let cgRootSet = new Set();    // Root nodes
+        let cgChainEdges = new Set(); // Edges in call chain
+        let cgNodeDepths = new Map(); // Node depths from root
+        
+        // Performance limits to prevent stack overflow
+        const CG_MAX_MATCHES = 200;       // Max matches to process
+        const CG_MAX_CHAIN_DEPTH = 50;    // Max depth to trace
+        const CG_MAX_CHAIN_NODES = 2000;  // Max nodes in chain
+        
+        // System function filter state
+        let flameFilters = new Set();     // Active filters for flame graph
+        let callGraphFilters = new Set(); // Active filters for call graph
+        let originalFlameGraphData = null; // Original unfiltered flame graph data
+        let originalCallGraphData = null;  // Original unfiltered call graph data
+        
+        // Call graph filter state for hide-based filtering
+        let cgFilteredNodeIndices = new Set();  // Indices of filtered (hidden) nodes
+        let cgBridgeEdges = [];                  // Bridge edges connecting through filtered nodes
+        let cgBridgeEdgeSelection = null;        // D3 selection for bridge edges
+        let cgLinkContainer = null;              // Container for edges
+        
+        // System function patterns for filtering
+        const SYSTEM_PATTERNS = {
+            jvm: [
+                /^java\./,
+                /^javax\./,
+                /^jdk\./,
+                /^sun\./,
+                /^com\.sun\./,
+                /^org\.openjdk\./,
+                /^java\.lang\./,
+                /^java\.util\./,
+                /^java\.io\./,
+                /^java\.nio\./,
+                /^java\.net\./,
+                /^java\.security\./,
+                /^java\.concurrent\./,
+                /Unsafe\./,
+                /^jdk\.internal\./
+            ],
+            gc: [
+                /GC/i,
+                /Garbage/i,
+                /^G1/,
+                /^ZGC/,
+                /^Shenandoah/,
+                /ParallelGC/,
+                /ConcurrentMark/,
+                /SafePoint/i,
+                /safepoint/i,
+                /VMThread/,
+                /Reference.*Handler/
+            ],
+            native: [
+                /^\[native\]/,
+                /^libc\./,
+                /^libpthread/,
+                /^ld-linux/,
+                /^__/,
+                /^_Z/,
+                /^std::/,
+                /::operator/,
+                /^pthread_/,
+                /^malloc/,
+                /^free$/,
+                /^mmap/,
+                /^munmap/,
+                /^brk$/,
+                /^clone$/,
+                /^futex/,
+                /^epoll_/,
+                /^syscall/
+            ],
+            kernel: [
+                /^\[kernel\]/,
+                /^vmlinux/,
+                /^do_syscall/,
+                /^sys_/,
+                /^__x64_sys/,
+                /^entry_SYSCALL/,
+                /^page_fault/,
+                /^handle_mm_fault/,
+                /^__schedule/,
+                /^schedule$/,
+                /^ret_from_fork/,
+                /^irq_/,
+                /^softirq/,
+                /^ksoftirqd/,
+                /^kworker/,
+                /^rcu_/
+            ],
+            reflect: [
+                /reflect/i,
+                /Reflect/,
+                /\$Proxy/,
+                /CGLIB/,
+                /ByteBuddy/,
+                /javassist/,
+                /MethodHandle/,
+                /LambdaForm/,
+                /GeneratedMethodAccessor/,
+                /DelegatingMethodAccessor/,
+                /NativeMethodAccessor/,
+                /invoke0/,
+                /invokespecial/,
+                /invokevirtual/
+            ]
+        };
 
         // Initialize on load
         document.addEventListener('DOMContentLoaded', function() {
@@ -391,7 +1237,8 @@
             currentTask = taskId;
             await Promise.all([
                 loadSummary(taskId),
-                loadFlameGraph(taskId)
+                loadFlameGraph(taskId),
+                loadCallGraph(taskId)
             ]);
         }
 
@@ -423,12 +1270,16 @@
             previewBody.innerHTML = funcs.slice(0, 5).map((f, i) => `
                 <tr>
                     <td>${i + 1}</td>
-                    <td class="func-name">${escapeHtml(f.name)}</td>
+                    <td class="func-name func-name-clickable" title="Click to copy function name" onclick="copyFuncName('${escapeHtml(f.name).replace(/'/g, "\\'")}')">${escapeHtml(f.name)}</td>
                     <td>
                         <div class="percentage-bar">
                             <div class="percentage-bar-fill" style="width: ${Math.min(f.self, 100)}%"></div>
                         </div>
                         ${f.self.toFixed(2)}%
+                    </td>
+                    <td>
+                        <button class="action-btn flame" title="Search in Flame Graph" onclick="searchInFlameGraph('${escapeHtml(f.name).replace(/'/g, "\\'")}')">🔥</button>
+                        <button class="action-btn callgraph" title="Search in Call Graph" onclick="searchInCallGraph('${escapeHtml(f.name).replace(/'/g, "\\'")}')">📈</button>
                     </td>
                 </tr>
             `).join('');
@@ -438,12 +1289,16 @@
             allBody.innerHTML = funcs.map((f, i) => `
                 <tr>
                     <td>${i + 1}</td>
-                    <td class="func-name">${escapeHtml(f.name)}</td>
+                    <td class="func-name func-name-clickable" title="Click to copy function name" onclick="copyFuncName('${escapeHtml(f.name).replace(/'/g, "\\'")}')">${escapeHtml(f.name)}</td>
                     <td>
                         <div class="percentage-bar">
                             <div class="percentage-bar-fill" style="width: ${Math.min(f.self, 100)}%"></div>
                         </div>
                         ${f.self.toFixed(2)}%
+                    </td>
+                    <td>
+                        <button class="action-btn flame" title="Search in Flame Graph" onclick="searchInFlameGraph('${escapeHtml(f.name).replace(/'/g, "\\'")}')">🔥</button>
+                        <button class="action-btn callgraph" title="Search in Call Graph" onclick="searchInCallGraph('${escapeHtml(f.name).replace(/'/g, "\\'")}')">📈</button>
                     </td>
                 </tr>
             `).join('');
@@ -458,6 +1313,47 @@
             `).join('');
         }
 
+        // Transform flame graph data to d3-flamegraph format
+        function transformFlameData(data) {
+            if (!data) return null;
+            
+            // Handle both { root: {...} } and direct node format
+            const node = data.root || data;
+            
+            const result = {
+                name: node.func || node.name || 'root',
+                value: node.value || 0,
+                children: []
+            };
+            
+            if (node.children && Array.isArray(node.children)) {
+                result.children = node.children.map(child => transformFlameData(child)).filter(c => c !== null);
+            }
+            
+            return result;
+        }
+
+        // Calculate flame graph statistics
+        function calculateFlameStats(node, depth = 0, funcSet = new Set()) {
+            if (!node) return { totalSamples: 0, uniqueFuncs: 0, maxDepth: 0 };
+            
+            funcSet.add(node.name);
+            let maxDepth = depth;
+            
+            if (node.children && node.children.length > 0) {
+                for (const child of node.children) {
+                    const childStats = calculateFlameStats(child, depth + 1, funcSet);
+                    maxDepth = Math.max(maxDepth, childStats.maxDepth);
+                }
+            }
+            
+            return {
+                totalSamples: node.value || 0,
+                uniqueFuncs: funcSet.size,
+                maxDepth: maxDepth
+            };
+        }
+
         // Load and render flame graph
         async function loadFlameGraph(taskId) {
             const container = document.getElementById('flamegraph');
@@ -465,60 +1361,244 @@
 
             try {
                 const response = await fetch(`/api/flamegraph?task=${taskId}`);
-                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const rawData = await response.json();
                 
-                container.innerHTML = '';
+                // Transform data format
+                flameGraphData = transformFlameData(rawData);
+                // Store a deep clone of original data to prevent modification
+                originalFlameGraphData = deepCloneFlameData(flameGraphData);
                 
-                // Create flame graph
-                flameChart = flamegraph()
-                    .width(container.clientWidth)
-                    .cellHeight(20)
-                    .transitionDuration(500)
-                    .minFrameSize(2)
-                    .transitionEase(d3.easeCubic)
-                    .sort(true)
-                    .title('')
-                    .selfValue(false)
-                    .inverted(false)
-                    .tooltip(tip);
-
-                d3.select('#flamegraph')
-                    .datum(data)
-                    .call(flameChart);
-
-                // Handle window resize
-                window.addEventListener('resize', () => {
-                    if (flameChart) {
-                        flameChart.width(container.clientWidth);
-                        d3.select('#flamegraph').call(flameChart);
-                    }
-                });
+                if (!flameGraphData || flameGraphData.value === 0) {
+                    container.innerHTML = '<div class="loading">No flame graph data available</div>';
+                    return;
+                }
+                
+                renderFlameGraph();
             } catch (err) {
                 console.error('Failed to load flame graph:', err);
-                container.innerHTML = '<div class="loading">Failed to load flame graph</div>';
+                container.innerHTML = '<div class="loading">Failed to load flame graph: ' + err.message + '</div>';
             }
         }
 
-        // Tooltip function
-        function tip(d) {
-            const data = d.data;
-            const name = data.name || 'root';
-            const value = data.value || 0;
-            const total = summaryData ? summaryData.total_records : value;
-            const pct = total > 0 ? ((value / total) * 100).toFixed(2) : 0;
-            return `<b>${escapeHtml(name)}</b><br>Samples: ${value} (${pct}%)`;
+        // Render flame graph
+        function renderFlameGraph() {
+            const container = document.getElementById('flamegraph');
+            const panel = document.getElementById('flamegraph-panel');
+            
+            // Always clear container first
+            container.innerHTML = '';
+            
+            // If panel is hidden, defer rendering until it becomes visible
+            if (!panel.classList.contains('active')) {
+                // Don't show any message, just wait for panel to become active
+                return;
+            }
+            
+            if (!flameGraphData) return;
+
+            // Get container width, use parent container width as fallback
+            let width = container.clientWidth;
+            if (width <= 0) {
+                width = document.querySelector('.container').clientWidth - 40 || 1200;
+            }
+            
+            // Calculate flame graph statistics
+            const stats = calculateFlameStats(flameGraphData);
+            document.getElementById('flame-total-samples').textContent = stats.totalSamples.toLocaleString();
+            document.getElementById('flame-unique-funcs').textContent = stats.uniqueFuncs.toLocaleString();
+            document.getElementById('flame-max-depth').textContent = stats.maxDepth;
+            
+            // Create flame graph with d3-flamegraph
+            flameChart = flamegraph()
+                .width(width)
+                .cellHeight(22)
+                .transitionDuration(400)
+                .minFrameSize(1)
+                .transitionEase(d3.easeCubicOut)  // Smoother easing for zoom
+                .sort(true)
+                .title('')
+                .inverted(isInverted)
+                .selfValue(false)
+                .onClick(handleFlameClick);  // Custom click handler for smooth zoom
+
+            // Color scheme based on function name hash
+            flameChart.setColorMapper(function(d, originalColor) {
+                // Use warm colors (oranges/reds/yellows) like typical flame graphs
+                const name = d.data.name || '';
+                let hash = 0;
+                for (let i = 0; i < name.length; i++) {
+                    hash = ((hash << 5) - hash) + name.charCodeAt(i);
+                    hash |= 0;
+                }
+                
+                // Generate warm flame colors
+                const hue = 30 + (Math.abs(hash) % 30); // 30-60 (orange to yellow)
+                const saturation = 70 + (Math.abs(hash >> 8) % 30); // 70-100%
+                const lightness = 50 + (Math.abs(hash >> 16) % 20); // 50-70%
+                
+                return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+            });
+
+            try {
+                d3.select('#flamegraph')
+                    .datum(flameGraphData)
+                    .call(flameChart);
+            } catch (err) {
+                console.error('Error rendering flame graph:', err);
+                container.innerHTML = '<div class="loading" style="color: #e74c3c;">⚠️ Error rendering flame graph: ' + err.message + '</div>';
+                return;
+            }
+
+            // Add click listener to re-apply search highlight after zoom
+            d3.select('#flamegraph').on('click', function() {
+                // Add zooming class to disable CSS transitions during animation
+                const container = document.getElementById('flamegraph');
+                container.classList.add('zooming');
+                
+                // Remove zooming class and re-apply search after animation completes
+                setTimeout(() => {
+                    container.classList.remove('zooming');
+                    reapplySearchIfActive();
+                    // Note: Don't call applyFlameFilters here - data is already filtered
+                }, 420);
+            });
+
+            // Handle window resize
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    if (flameChart && container.clientWidth > 0) {
+                        flameChart.width(container.clientWidth);
+                        d3.select('#flamegraph').datum(flameGraphData).call(flameChart);
+                        // Note: Don't call applyFlameFilters here - data is already filtered
+                    }
+                }, 200);
+            });
+            
+            // Note: Filters are already applied to flameGraphData before rendering
+            // No need to re-apply after render
         }
 
+
+
         // Search in flame graph
-        function searchFlameGraph(term) {
-            if (flameChart && term) {
-                flameChart.search(term);
+        function searchFlameGraph() {
+            const term = document.getElementById('searchInput').value.trim();
+            const badge = document.getElementById('searchResultBadge');
+            
+            if (!flameChart || !term) {
+                badge.classList.add('hidden');
+                clearSearch();
+                return;
+            }
+            
+            // Save current search term
+            currentSearchTerm = term;
+            
+            // Add searching class to container for CSS styling
+            const container = document.getElementById('flamegraph');
+            container.classList.add('searching');
+            
+            // Use d3-flamegraph's built-in search
+            flameChart.search(term);
+            
+            // Apply manual highlighting
+            const matchCount = applySearchHighlight(term);
+            
+            // Show result badge
+            badge.classList.remove('hidden', 'no-match');
+            if (matchCount > 0) {
+                badge.innerHTML = `✓ Found ${matchCount} matching frame${matchCount > 1 ? 's' : ''}`;
+                badge.style.background = '#27ae60';
+            } else {
+                badge.classList.add('no-match');
+                badge.innerHTML = `✗ No matches for "${escapeHtml(term)}"`;
+                badge.style.background = '#e74c3c';
+            }
+        }
+        
+        // Apply search highlight to current flame graph frames
+        function applySearchHighlight(term) {
+            if (!term) return 0;
+            
+            const termLower = term.toLowerCase();
+            let matchCount = 0;
+            
+            // Select all frame groups and check their names
+            d3.select('#flamegraph').selectAll('.d3-flame-graph g').each(function() {
+                const g = d3.select(this);
+                const titleEl = g.select('title');
+                const name = titleEl.empty() ? '' : titleEl.text();
+                
+                if (name && name.toLowerCase().includes(termLower)) {
+                    g.classed('search-match', true);
+                    matchCount++;
+                } else {
+                    g.classed('search-match', false);
+                }
+            });
+            
+            return matchCount;
+        }
+        
+        // Re-apply search highlight after zoom/pan operations
+        function reapplySearchIfActive() {
+            if (currentSearchTerm) {
+                const container = document.getElementById('flamegraph');
+                container.classList.add('searching');
+                
+                // Use requestAnimationFrame for smoother visual update
+                requestAnimationFrame(() => {
+                    const matchCount = applySearchHighlight(currentSearchTerm);
+                    
+                    // Update badge
+                    const badge = document.getElementById('searchResultBadge');
+                    badge.classList.remove('hidden', 'no-match');
+                    if (matchCount > 0) {
+                        badge.innerHTML = `✓ Found ${matchCount} matching frame${matchCount > 1 ? 's' : ''}`;
+                        badge.style.background = '#27ae60';
+                    } else {
+                        badge.classList.add('no-match');
+                        badge.innerHTML = `✗ No matches in current view`;
+                        badge.style.background = '#e74c3c';
+                    }
+                });
+            }
+        }
+        
+        // Handle flame graph click for smooth zoom
+        function handleFlameClick(d) {
+            // Add zooming class before zoom starts
+            const container = document.getElementById('flamegraph');
+            container.classList.add('zooming');
+        }
+        // Handle search input keyup
+        function handleSearchKeyup(event) {
+            if (event.key === 'Enter') {
+                searchFlameGraph();
             }
         }
 
         // Clear search
         function clearSearch() {
             document.getElementById('searchInput').value = '';
+            document.getElementById('searchResultBadge').classList.add('hidden');
+            
+            // Clear current search term
+            currentSearchTerm = '';
+            
+            // Remove searching class
+            const container = document.getElementById('flamegraph');
+            container.classList.remove('searching');
+            
+            // Remove search-match class from all frames
+            d3.select('#flamegraph').selectAll('.d3-flame-graph g.search-match')
+                .classed('search-match', false);
+            
             if (flameChart) {
                 flameChart.clear();
             }
@@ -527,8 +1607,1038 @@
         // Reset flame graph view
         function resetFlameGraph() {
             if (flameChart) {
+                const container = document.getElementById('flamegraph');
+                container.classList.add('zooming');
+                
                 flameChart.resetZoom();
+                
+                // Re-apply search highlight after reset animation
+                setTimeout(() => {
+                    container.classList.remove('zooming');
+                    reapplySearchIfActive();
+                }, 420);
             }
+        }
+
+        // Load call graph data
+        async function loadCallGraph(taskId) {
+            const container = document.getElementById('callgraph');
+            container.innerHTML = '<div class="loading">Loading call graph</div>';
+
+            try {
+                const response = await fetch(`/api/callgraph?task=${taskId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                originalCallGraphData = data; // Store original data
+                renderCallGraph(data);
+            } catch (err) {
+                console.error('Failed to load call graph:', err);
+                container.innerHTML = '<div class="loading">Failed to load call graph: ' + err.message + '</div>';
+            }
+        }
+
+        // Render call graph using D3 force-directed layout
+        function renderCallGraph(data) {
+            const container = document.getElementById('callgraph');
+            container.innerHTML = '';
+
+            if (!data || !data.nodes || data.nodes.length === 0) {
+                container.innerHTML = '<div class="loading">No call graph data available</div>';
+                return;
+            }
+
+            const width = container.clientWidth || 1200;
+            const height = 700;
+
+            // Create SVG
+            const svg = d3.select('#callgraph')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            // Create container group for zoom
+            const g = svg.append('g');
+
+            // Create zoom behavior
+            callGraphZoom = d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+
+            svg.call(callGraphZoom);
+
+            // Create node ID to index mapping
+            const nodeMap = new Map();
+            data.nodes.forEach((node, i) => {
+                nodeMap.set(node.id, i);
+            });
+
+            // Process edges - convert source/target to indices
+            const links = data.edges.map(edge => ({
+                source: nodeMap.get(edge.source),
+                target: nodeMap.get(edge.target),
+                weight: edge.weight || 1
+            })).filter(l => l.source !== undefined && l.target !== undefined);
+
+            // Create nodes array with additional properties
+            const nodes = data.nodes.map((node, i) => ({
+                ...node,
+                index: i,
+                x: width / 2 + (Math.random() - 0.5) * 200,
+                y: height / 2 + (Math.random() - 0.5) * 200
+            }));
+
+            // Create force simulation
+            callGraphSimulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(links).id(d => d.index).distance(100).strength(0.5))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(100));
+
+            // Calculate node width based on name length
+            function getNodeWidth(name) {
+                if (!name) return 150;
+                // Estimate width: ~7px per character, min 150, max 300
+                const charWidth = 7;
+                const padding = 20;
+                const width = Math.min(300, Math.max(150, name.length * charWidth + padding));
+                return width;
+            }
+            
+            // Get display name - show more of the function name
+            function getDisplayName(name, maxLen) {
+                if (!name) return '';
+                // For Java-style names, try to show class.method
+                const parts = name.split('.');
+                if (parts.length >= 2) {
+                    const className = parts[parts.length - 2] || '';
+                    const methodName = parts[parts.length - 1] || '';
+                    const combined = className + '.' + methodName;
+                    if (combined.length <= maxLen) return combined;
+                    // If still too long, just show method with ellipsis
+                    if (methodName.length <= maxLen) return methodName;
+                    return methodName.substring(0, maxLen - 2) + '..';
+                }
+                // Simple name
+                if (name.length <= maxLen) return name;
+                return name.substring(0, maxLen - 2) + '..';
+            }
+
+            // Create arrow marker - normal
+            const defs = svg.append('defs');
+            defs.append('marker')
+                .attr('id', 'arrowhead')
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 10)
+                .attr('refY', 0)
+                .attr('orient', 'auto')
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .append('path')
+                .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                .attr('fill', '#999');
+            
+            // Create arrow marker - highlighted (purple for match)
+            defs.append('marker')
+                .attr('id', 'arrowhead-highlight')
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 10)
+                .attr('refY', 0)
+                .attr('orient', 'auto')
+                .attr('markerWidth', 8)
+                .attr('markerHeight', 8)
+                .append('path')
+                .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                .attr('fill', '#e040fb');
+            
+            // Create arrow marker - chain (purple gradient)
+            defs.append('marker')
+                .attr('id', 'arrowhead-chain')
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 10)
+                .attr('refY', 0)
+                .attr('orient', 'auto')
+                .attr('markerWidth', 7)
+                .attr('markerHeight', 7)
+                .append('path')
+                .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                .attr('fill', '#7c4dff');
+            
+            // Create arrow marker - callee (orange)
+            defs.append('marker')
+                .attr('id', 'arrowhead-callee')
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 10)
+                .attr('refY', 0)
+                .attr('orient', 'auto')
+                .attr('markerWidth', 7)
+                .attr('markerHeight', 7)
+                .append('path')
+                .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                .attr('fill', '#ff9800');
+            
+            // Create arrow marker - bridge (purple, for filtered node bypass)
+            defs.append('marker')
+                .attr('id', 'arrowhead-bridge')
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 10)
+                .attr('refY', 0)
+                .attr('orient', 'auto')
+                .attr('markerWidth', 7)
+                .attr('markerHeight', 7)
+                .append('path')
+                .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                .attr('fill', '#9c27b0');
+
+            // Create edges using path for better arrow positioning
+            cgLinkContainer = g.append('g').attr('class', 'links-container');
+            const link = cgLinkContainer
+                .selectAll('path.callgraph-edge:not(.bridge-edge)')
+                .data(links)
+                .enter()
+                .append('path')
+                .attr('class', 'callgraph-edge')
+                .attr('stroke-width', d => Math.max(1, Math.min(5, d.weight / 5)))
+                .attr('marker-end', 'url(#arrowhead)')
+                .attr('fill', 'none');
+
+            // Create node groups
+            const node = g.append('g')
+                .selectAll('g')
+                .data(nodes)
+                .enter()
+                .append('g')
+                .attr('class', 'callgraph-node')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+
+            // Color scale based on selfPct
+            const colorScale = d3.scaleLinear()
+                .domain([0, 10, 50])
+                .range(['#f8d568', '#f5a623', '#e74c3c']);
+
+            // Node rectangles - dynamic width based on name
+            node.append('rect')
+                .attr('width', d => getNodeWidth(d.name))
+                .attr('height', 30)
+                .attr('x', d => -getNodeWidth(d.name) / 2)
+                .attr('y', -15)
+                .attr('rx', 4)
+                .attr('fill', d => colorScale(d.selfPct || 0));
+
+            // Node labels - show more characters
+            node.append('text')
+                .attr('text-anchor', 'middle')
+                .attr('dy', 4)
+                .text(d => getDisplayName(d.name, 35))
+                .attr('fill', '#333');
+
+            // Tooltip
+            const tooltip = document.getElementById('nodeTooltip');
+
+            node.on('mouseover', function(event, d) {
+                // Highlight node
+                d3.select(this).classed('highlighted', true);
+                
+                // Highlight connected edges
+                link.classed('highlighted', l => l.source.index === d.index || l.target.index === d.index);
+                
+                // Show tooltip
+                tooltip.style.display = 'block';
+                tooltip.innerHTML = `
+                    <b>${escapeHtml(d.name)}</b><br>
+                    Self: ${(d.selfPct || 0).toFixed(2)}%<br>
+                    Total: ${(d.totalPct || 0).toFixed(2)}%
+                `;
+                tooltip.style.left = (event.pageX + 10) + 'px';
+                tooltip.style.top = (event.pageY + 10) + 'px';
+            })
+            .on('mousemove', function(event) {
+                tooltip.style.left = (event.pageX + 10) + 'px';
+                tooltip.style.top = (event.pageY + 10) + 'px';
+            })
+            .on('mouseout', function() {
+                d3.select(this).classed('highlighted', false);
+                link.classed('highlighted', false);
+                tooltip.style.display = 'none';
+            });
+
+            // Helper function to calculate edge path that stops at node boundary
+            function calculateEdgePath(d) {
+                const sourceX = d.source.x;
+                const sourceY = d.source.y;
+                const targetX = d.target.x;
+                const targetY = d.target.y;
+                
+                // Calculate angle
+                const dx = targetX - sourceX;
+                const dy = targetY - sourceY;
+                const angle = Math.atan2(dy, dx);
+                
+                // Get node dimensions (half width and half height)
+                const sourceHalfWidth = getNodeWidth(d.source.name) / 2;
+                const targetHalfWidth = getNodeWidth(d.target.name) / 2;
+                const halfHeight = 15;
+                
+                // Calculate intersection with source node boundary
+                const sourceIntersect = getNodeBoundaryPoint(sourceX, sourceY, sourceHalfWidth, halfHeight, angle);
+                
+                // Calculate intersection with target node boundary (opposite direction)
+                const targetIntersect = getNodeBoundaryPoint(targetX, targetY, targetHalfWidth, halfHeight, angle + Math.PI);
+                
+                return `M ${sourceIntersect.x},${sourceIntersect.y} L ${targetIntersect.x},${targetIntersect.y}`;
+            }
+            
+            // Get intersection point of line with node boundary
+            function getNodeBoundaryPoint(cx, cy, halfWidth, halfHeight, angle) {
+                // Determine which edge the line intersects
+                const tanAngle = Math.tan(angle);
+                
+                // Check intersection with vertical edges
+                let x, y;
+                if (Math.abs(Math.cos(angle)) > 0.001) {
+                    // Try right or left edge
+                    const signX = Math.cos(angle) > 0 ? 1 : -1;
+                    x = cx + signX * halfWidth;
+                    y = cy + signX * halfWidth * tanAngle;
+                    
+                    // Check if y is within bounds
+                    if (Math.abs(y - cy) <= halfHeight) {
+                        return { x, y };
+                    }
+                }
+                
+                // Intersect with horizontal edges
+                const signY = Math.sin(angle) > 0 ? 1 : -1;
+                y = cy + signY * halfHeight;
+                x = cx + signY * halfHeight / tanAngle;
+                
+                return { x, y };
+            }
+
+            // Update positions on simulation tick
+            callGraphSimulation.on('tick', () => {
+                link.attr('d', d => calculateEdgePath(d));
+
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+
+            // Drag functions
+            function dragstarted(event, d) {
+                if (!event.active) callGraphSimulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) callGraphSimulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+
+            callGraphSvg = svg;
+            
+            // Store references for search functionality
+            callGraphNodes = nodes;
+            callGraphLinks = links;
+            callGraphNodeSelection = node;
+            callGraphLinkSelection = link;
+            
+            // Reset filter state when re-rendering
+            cgFilteredNodeIndices = new Set();
+            cgBridgeEdges = [];
+            cgBridgeEdgeSelection = null;
+            
+            // Re-apply filters if any are active
+            if (callGraphFilters.size > 0) {
+                setTimeout(() => {
+                    applyCallGraphFilters();
+                    // Re-apply search highlighting after filters to properly hide bridge edges
+                    if (cgSearchTerm) {
+                        applyCallGraphSearchHighlight();
+                    }
+                }, 50);
+            }
+        }
+        
+        // Search in call graph
+        function searchCallGraph() {
+            const term = document.getElementById('callgraphSearchInput').value.trim();
+            
+            if (!term || callGraphNodes.length === 0) {
+                clearCallGraphSearch();
+                return;
+            }
+            
+            cgSearchTerm = term;
+            const termLower = term.toLowerCase();
+            
+            // Find matching nodes (exclude filtered/hidden nodes)
+            const allMatches = callGraphNodes.filter(n => 
+                n.name && n.name.toLowerCase().includes(termLower) &&
+                !cgFilteredNodeIndices.has(n.index)
+            );
+            
+            // Limit matches to prevent performance issues
+            const wasLimited = allMatches.length > CG_MAX_MATCHES;
+            cgSearchMatches = allMatches.slice(0, CG_MAX_MATCHES);
+            cgSearchIndex = 0;
+            
+            // Build adjacency maps
+            buildAdjacencyMaps();
+            
+            // Analyze call chains
+            analyzeCallChains();
+            
+            // Apply visual highlighting
+            applyCallGraphSearchHighlight();
+            
+            // Update navigation UI and stats
+            updateCallGraphSearchUI();
+            updateCallGraphStats();
+            
+            // Show warning if too many matches
+            if (wasLimited) {
+                const warningHtml = `<div style="padding: 8px 12px; background: #fff3cd; color: #856404; border-radius: 6px; font-size: 12px; margin-bottom: 10px;">
+                    ⚠️ Found ${allMatches.length} matches, showing first ${CG_MAX_MATCHES}. Try a more specific search term.
+                </div>`;
+                const statsEl = document.getElementById('callgraphStats');
+                statsEl.insertAdjacentHTML('afterend', warningHtml);
+            }
+            
+            // Show stats bar
+            document.getElementById('callgraphStats').style.display = 'flex';
+            
+            // Show call chain sidebar
+            if (cgSearchMatches.length > 0) {
+                updateCallChainSidebar();
+                toggleCallChainSidebar(true);
+                focusOnCallGraphNode(cgSearchMatches[0]);
+            }
+        }
+        
+        // Build adjacency maps for callers and callees
+        function buildAdjacencyMaps() {
+            cgCallersMap = new Map();
+            cgCalleesMap = new Map();
+            
+            callGraphLinks.forEach(l => {
+                const sourceIdx = l.source.index;
+                const targetIdx = l.target.index;
+                
+                if (!cgCallersMap.has(targetIdx)) {
+                    cgCallersMap.set(targetIdx, []);
+                }
+                cgCallersMap.get(targetIdx).push(sourceIdx);
+                
+                if (!cgCalleesMap.has(sourceIdx)) {
+                    cgCalleesMap.set(sourceIdx, []);
+                }
+                cgCalleesMap.get(sourceIdx).push(targetIdx);
+            });
+        }
+        
+        // Analyze call chains from matched nodes (upstream only - to Entry Points)
+        // Skips filtered nodes but traces through them
+        function analyzeCallChains() {
+            cgChainSet = new Set();
+            cgRootSet = new Set();
+            cgChainEdges = new Set();
+            cgNodeDepths = new Map();
+            
+            const matchSet = new Set(cgSearchMatches.map(n => n.index));
+            
+            // Use BFS (iterative) to trace upstream - prevents stack overflow
+            // Global visited set to avoid reprocessing nodes across all matches
+            const globalVisited = new Set();
+            
+            // Process matches in batches to prevent too many chains
+            const matchesToProcess = cgSearchMatches.slice(0, CG_MAX_MATCHES);
+            
+            matchesToProcess.forEach(matchNode => {
+                // BFS queue: [nodeIndex, depth, previousNonFilteredIndex]
+                const queue = [[matchNode.index, 0, matchNode.index]];
+                const localVisited = new Set();
+                
+                while (queue.length > 0 && cgChainSet.size < CG_MAX_CHAIN_NODES) {
+                    const [nodeIndex, depth, prevNonFilteredIdx] = queue.shift();
+                    
+                    // Skip if already visited in this trace or depth exceeded
+                    if (localVisited.has(nodeIndex) || Math.abs(depth) > CG_MAX_CHAIN_DEPTH) continue;
+                    localVisited.add(nodeIndex);
+                    
+                    const isFiltered = cgFilteredNodeIndices.has(nodeIndex);
+                    
+                    if (!isFiltered) {
+                        // Add non-filtered node to chain set
+                        cgChainSet.add(nodeIndex);
+                        
+                        // Track depth (prefer shorter path)
+                        const existingDepth = cgNodeDepths.get(nodeIndex);
+                        if (existingDepth === undefined || Math.abs(depth) < Math.abs(existingDepth)) {
+                            cgNodeDepths.set(nodeIndex, depth);
+                        }
+                        
+                        // Add edge from this node to previous non-filtered node (if different)
+                        if (prevNonFilteredIdx !== nodeIndex) {
+                            cgChainEdges.add(`${nodeIndex}-${prevNonFilteredIdx}`);
+                        }
+                    }
+                    
+                    // Get callers
+                    const callers = cgCallersMap.get(nodeIndex) || [];
+                    
+                    // Filter out filtered callers for root detection
+                    const nonFilteredCallers = callers.filter(idx => !cgFilteredNodeIndices.has(idx));
+                    
+                    if (callers.length === 0 || (nonFilteredCallers.length === 0 && !isFiltered)) {
+                        // No callers or all callers are filtered = root node (if not filtered itself)
+                        if (!isFiltered) {
+                            cgRootSet.add(nodeIndex);
+                        }
+                    }
+                    
+                    // Add callers to queue
+                    callers.forEach(callerIdx => {
+                        if (!globalVisited.has(callerIdx) && !localVisited.has(callerIdx)) {
+                            // If current node is filtered, pass through the previous non-filtered index
+                            // Otherwise, update to current node
+                            const nextPrevNonFiltered = isFiltered ? prevNonFilteredIdx : nodeIndex;
+                            queue.push([callerIdx, depth - 1, nextPrevNonFiltered]);
+                        }
+                    });
+                }
+                
+                // Merge local visited to global
+                localVisited.forEach(idx => globalVisited.add(idx));
+            });
+            
+            // Show warning if limits were hit
+            if (cgSearchMatches.length > CG_MAX_MATCHES || cgChainSet.size >= CG_MAX_CHAIN_NODES) {
+                console.warn(`Call chain analysis limited: ${cgSearchMatches.length} matches, ${cgChainSet.size} chain nodes`);
+            }
+        }
+        
+        // Apply search highlight to call graph (upstream chain only)
+        function applyCallGraphSearchHighlight() {
+            if (!callGraphNodeSelection || !callGraphLinkSelection) return;
+            
+            const matchSet = new Set(cgSearchMatches.map(n => n.index));
+            const currentNode = cgSearchMatches[cgSearchIndex];
+            // Visible nodes: matches + chain (which includes roots)
+            const visibleNodes = new Set([...matchSet, ...cgChainSet]);
+            
+            // Apply node classes (preserve filter-hidden state)
+            callGraphNodeSelection
+                .classed('search-match', d => matchSet.has(d.index) && !cgFilteredNodeIndices.has(d.index))
+                .classed('current-focus', d => currentNode && d.index === currentNode.index && !cgFilteredNodeIndices.has(d.index))
+                .classed('search-chain', d => cgChainSet.has(d.index) && !matchSet.has(d.index) && !cgRootSet.has(d.index) && !cgFilteredNodeIndices.has(d.index))
+                .classed('search-root', d => cgRootSet.has(d.index) && !matchSet.has(d.index) && !cgFilteredNodeIndices.has(d.index))
+                .classed('search-callee', false) // Remove callee class
+                .classed('search-dimmed', d => cgSearchTerm && !visibleNodes.has(d.index) && !cgFilteredNodeIndices.has(d.index))
+                .classed('search-hidden', d => cgViewMode === 'focus' && cgSearchTerm && !visibleNodes.has(d.index) && !cgFilteredNodeIndices.has(d.index));
+            
+            // Apply edge classes (preserve filter-hidden state)
+            callGraphLinkSelection
+                .classed('search-chain', l => cgChainEdges.has(`${l.source.index}-${l.target.index}`) && 
+                    !cgFilteredNodeIndices.has(l.source.index) && !cgFilteredNodeIndices.has(l.target.index))
+                .classed('search-callee', false) // Remove callee class
+                .classed('search-connected', l => 
+                    (matchSet.has(l.source.index) || matchSet.has(l.target.index)) && 
+                    !cgChainEdges.has(`${l.source.index}-${l.target.index}`) &&
+                    !cgFilteredNodeIndices.has(l.source.index) && !cgFilteredNodeIndices.has(l.target.index)
+                )
+                .classed('search-dimmed', l => {
+                    if (!cgSearchTerm) return false;
+                    if (cgFilteredNodeIndices.has(l.source.index) || cgFilteredNodeIndices.has(l.target.index)) return false;
+                    const isChain = cgChainEdges.has(`${l.source.index}-${l.target.index}`);
+                    const isConnected = matchSet.has(l.source.index) || matchSet.has(l.target.index);
+                    return !isChain && !isConnected;
+                })
+                .classed('search-hidden', l => {
+                    if (cgViewMode !== 'focus' || !cgSearchTerm) return false;
+                    if (cgFilteredNodeIndices.has(l.source.index) || cgFilteredNodeIndices.has(l.target.index)) return false;
+                    return !visibleNodes.has(l.source.index) || !visibleNodes.has(l.target.index);
+                })
+                .attr('marker-end', l => {
+                    if (cgChainEdges.has(`${l.source.index}-${l.target.index}`)) {
+                        return 'url(#arrowhead-chain)';
+                    }
+                    if (matchSet.has(l.source.index) || matchSet.has(l.target.index)) {
+                        return 'url(#arrowhead-highlight)';
+                    }
+                    return 'url(#arrowhead)';
+                });
+            
+            // Apply search-hidden to bridge edges in focus mode
+            // In focus mode, hide all bridge edges since they represent filtered node bypasses
+            // which are not part of the search call chain
+            if (cgBridgeEdgeSelection) {
+                cgBridgeEdgeSelection.classed('search-hidden', d => {
+                    if (cgViewMode !== 'focus' || !cgSearchTerm) return false;
+                    // In focus mode, hide bridge edge unless BOTH endpoints are in visible nodes
+                    // AND the edge is part of the call chain
+                    const bothVisible = visibleNodes.has(d.source.index) && visibleNodes.has(d.target.index);
+                    if (!bothVisible) return true;
+                    // Also check if this bridge edge represents a call chain connection
+                    const isChainEdge = cgChainEdges.has(`${d.source.index}-${d.target.index}`);
+                    return !isChainEdge;
+                });
+            }
+        }
+        
+        // Update call graph stats display
+        function updateCallGraphStats() {
+            document.getElementById('cgStatMatches').textContent = cgSearchMatches.length;
+            document.getElementById('cgStatRoots').textContent = cgRootSet.size;
+            
+            // Calculate max depth
+            let maxDepth = 0;
+            cgNodeDepths.forEach((depth) => {
+                maxDepth = Math.max(maxDepth, Math.abs(depth));
+            });
+            document.getElementById('cgStatDepth').textContent = maxDepth;
+            
+            // Count visible nodes (matches + chain, chain includes roots)
+            const matchIndices = new Set(cgSearchMatches.map(n => n.index));
+            let visibleCount = cgChainSet.size;
+            // Add matches that are not in chain
+            cgSearchMatches.forEach(n => {
+                if (!cgChainSet.has(n.index)) visibleCount++;
+            });
+            document.getElementById('cgStatVisible').textContent = visibleCount;
+        }
+        
+        // Update call chain sidebar (upstream only - from match to entry points)
+        // Skips filtered nodes
+        function updateCallChainSidebar() {
+            const content = document.getElementById('callchainContent');
+            const currentMatch = cgSearchMatches[cgSearchIndex];
+            
+            if (!currentMatch) {
+                content.innerHTML = '<div style="padding: 15px; color: #888;">No matches found</div>';
+                return;
+            }
+            
+            // Build ordered call chain using BFS (iterative) to prevent stack overflow
+            // Skip filtered nodes
+            const chainNodes = [];
+            const visited = new Set();
+            const nodeDepthMap = new Map();
+            
+            // BFS from match to roots
+            const queue = [[currentMatch.index, 0]];
+            visited.add(currentMatch.index);
+            nodeDepthMap.set(currentMatch.index, 0);
+            
+            const MAX_SIDEBAR_NODES = 100;
+            const MAX_SIDEBAR_DEPTH = 30;
+            
+            while (queue.length > 0 && chainNodes.length < MAX_SIDEBAR_NODES) {
+                const [nodeIndex, depth] = queue.shift();
+                
+                if (Math.abs(depth) > MAX_SIDEBAR_DEPTH) continue;
+                
+                const node = callGraphNodes[nodeIndex];
+                if (!node) continue;
+                
+                // Skip filtered nodes from display (but still trace through them)
+                const isFiltered = cgFilteredNodeIndices.has(nodeIndex);
+                
+                if (!isFiltered) {
+                    const isMatch = cgSearchMatches.some(m => m.index === nodeIndex);
+                    const isRoot = cgRootSet.has(nodeIndex);
+                    
+                    chainNodes.push({
+                        node,
+                        depth,
+                        isMatch,
+                        isRoot,
+                        isChain: !isMatch && !isRoot
+                    });
+                }
+                
+                // Add callers to queue (even for filtered nodes, to trace through them)
+                const callers = cgCallersMap.get(nodeIndex) || [];
+                callers.forEach(callerIdx => {
+                    if (!visited.has(callerIdx)) {
+                        visited.add(callerIdx);
+                        nodeDepthMap.set(callerIdx, depth - 1);
+                        queue.push([callerIdx, depth - 1]);
+                    }
+                });
+            }
+            
+            // Sort by depth (most negative first = root, 0 = match)
+            chainNodes.sort((a, b) => a.depth - b.depth);
+            
+            // Generate HTML with collapsible sections for large chains
+            let html = '';
+            
+            // Roots section
+            const roots = chainNodes.filter(n => n.isRoot);
+            if (roots.length > 0) {
+                const showAll = roots.length <= 5;
+                html += `<div class="callchain-section">
+                    <div class="callchain-section-title">📍 Entry Points (${roots.length})</div>`;
+                const displayRoots = showAll ? roots : roots.slice(0, 3);
+                displayRoots.forEach(item => {
+                    html += `<div class="callchain-node root" onclick="focusOnCallGraphNode(callGraphNodes[${item.node.index}])" title="${escapeHtml(item.node.name)}">
+                        ${escapeHtml(getShortName(item.node.name))}
+                    </div>`;
+                });
+                if (!showAll) {
+                    html += `<div class="callchain-node" style="color: #888; font-style: italic; cursor: default;">... and ${roots.length - 3} more</div>`;
+                }
+                if (chainNodes.length > roots.length) {
+                    html += `<div class="callchain-arrow">↓</div>`;
+                }
+                html += `</div>`;
+            }
+            
+            // Chain section (intermediate nodes) - with collapsing for long chains
+            const chain = chainNodes.filter(n => n.isChain);
+            if (chain.length > 0) {
+                const showAll = chain.length <= 10;
+                html += `<div class="callchain-section">
+                    <div class="callchain-section-title">🔗 Call Chain (${chain.length})</div>`;
+                
+                if (showAll) {
+                    chain.forEach((item, idx) => {
+                        html += `<div class="callchain-node chain" onclick="focusOnCallGraphNode(callGraphNodes[${item.node.index}])" title="${escapeHtml(item.node.name)}">
+                            ${escapeHtml(getShortName(item.node.name))}
+                        </div>`;
+                        if (idx < chain.length - 1) {
+                            html += `<div class="callchain-arrow">↓</div>`;
+                        }
+                    });
+                } else {
+                    // Show first 3, ellipsis, last 3
+                    chain.slice(0, 3).forEach((item, idx) => {
+                        html += `<div class="callchain-node chain" onclick="focusOnCallGraphNode(callGraphNodes[${item.node.index}])" title="${escapeHtml(item.node.name)}">
+                            ${escapeHtml(getShortName(item.node.name))}
+                        </div>`;
+                        html += `<div class="callchain-arrow">↓</div>`;
+                    });
+                    html += `<div class="callchain-node" style="color: #888; font-style: italic; cursor: default; text-align: center;">⋮ ${chain.length - 6} more nodes ⋮</div>`;
+                    html += `<div class="callchain-arrow">↓</div>`;
+                    chain.slice(-3).forEach((item, idx) => {
+                        html += `<div class="callchain-node chain" onclick="focusOnCallGraphNode(callGraphNodes[${item.node.index}])" title="${escapeHtml(item.node.name)}">
+                            ${escapeHtml(getShortName(item.node.name))}
+                        </div>`;
+                        if (idx < 2) {
+                            html += `<div class="callchain-arrow">↓</div>`;
+                        }
+                    });
+                }
+                html += `<div class="callchain-arrow">↓</div></div>`;
+            }
+            
+            // Match section (target)
+            const matches = chainNodes.filter(n => n.isMatch);
+            if (matches.length > 0) {
+                html += `<div class="callchain-section">
+                    <div class="callchain-section-title">🎯 Target Match</div>`;
+                matches.forEach(item => {
+                    html += `<div class="callchain-node match" onclick="focusOnCallGraphNode(callGraphNodes[${item.node.index}])" title="${escapeHtml(item.node.name)}">
+                        ${escapeHtml(getShortName(item.node.name))}
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+            
+            // Warning if truncated
+            if (chainNodes.length >= MAX_SIDEBAR_NODES) {
+                html += `<div style="padding: 10px 15px; color: #e67e22; font-size: 11px; background: #fef5e7; border-radius: 4px; margin: 10px;">
+                    ⚠️ Chain truncated (showing ${MAX_SIDEBAR_NODES} of ${visited.size} nodes)
+                </div>`;
+            }
+            
+            content.innerHTML = html;
+        }
+        
+        // Get short name for display
+        function getShortName(name) {
+            if (!name) return '';
+            const parts = name.split('.');
+            if (parts.length >= 2) {
+                return parts.slice(-2).join('.');
+            }
+            return name.length > 40 ? name.substring(0, 38) + '..' : name;
+        }
+        
+        // Toggle call chain sidebar
+        function toggleCallChainSidebar(show) {
+            const sidebar = document.getElementById('callchainSidebar');
+            if (show) {
+                sidebar.classList.add('active');
+            } else {
+                sidebar.classList.remove('active');
+            }
+        }
+        
+        // Toggle view mode (for switch control)
+        function toggleViewMode() {
+            const newMode = cgViewMode === 'all' ? 'focus' : 'all';
+            setCallGraphViewMode(newMode);
+        }
+        
+        // Set call graph view mode
+        function setCallGraphViewMode(mode) {
+            cgViewMode = mode;
+            
+            // Update switch visual state
+            const switchTrack = document.getElementById('viewModeSwitch');
+            const leftLabel = document.querySelector('.view-mode-switch .switch-label.left');
+            const rightLabel = document.querySelector('.view-mode-switch .switch-label.right');
+            
+            if (switchTrack) {
+                switchTrack.classList.toggle('focus-mode', mode === 'focus');
+            }
+            if (leftLabel && rightLabel) {
+                leftLabel.classList.toggle('active', mode === 'all');
+                rightLabel.classList.toggle('active', mode === 'focus');
+            }
+            
+            // Re-apply system function filters first (this may recreate bridge edges)
+            applyCallGraphFilters();
+            
+            // Re-apply highlighting after filters (to properly hide bridge edges in focus mode)
+            if (cgSearchTerm) {
+                applyCallGraphSearchHighlight();
+                
+                // Fit to visible nodes in focus mode
+                if (mode === 'focus') {
+                    setTimeout(() => fitCallGraphToVisible(), 100);
+                }
+            }
+        }
+        
+        // Fit call graph to visible nodes only (upstream chain only)
+        function fitCallGraphToVisible() {
+            if (!callGraphSvg || !callGraphZoom || !cgSearchTerm) return;
+            
+            const container = document.getElementById('callgraph');
+            const width = container.clientWidth;
+            const height = 700;
+            
+            const matchSet = new Set(cgSearchMatches.map(n => n.index));
+            // Only matches and chain (no callees)
+            const visibleNodes = new Set([...matchSet, ...cgChainSet]);
+            
+            // Calculate bounds of visible nodes
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            callGraphNodes.forEach(node => {
+                if (visibleNodes.has(node.index)) {
+                    minX = Math.min(minX, node.x - 100);
+                    maxX = Math.max(maxX, node.x + 100);
+                    minY = Math.min(minY, node.y - 20);
+                    maxY = Math.max(maxY, node.y + 20);
+                }
+            });
+            
+            if (minX === Infinity) return;
+            
+            const boundsWidth = maxX - minX;
+            const boundsHeight = maxY - minY;
+            
+            const scale = Math.min(
+                width / (boundsWidth + 50),
+                height / (boundsHeight + 50),
+                2
+            );
+            
+            const tx = (width - boundsWidth * scale) / 2 - minX * scale;
+            const ty = (height - boundsHeight * scale) / 2 - minY * scale;
+            
+            callGraphSvg.transition()
+                .duration(500)
+                .ease(d3.easeCubicOut)
+                .call(callGraphZoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+        }
+        
+        // Update search navigation UI
+        function updateCallGraphSearchUI() {
+            const counter = document.getElementById('cgSearchCounter');
+            const prevBtn = document.getElementById('cgPrevBtn');
+            const nextBtn = document.getElementById('cgNextBtn');
+            
+            if (cgSearchMatches.length > 0) {
+                counter.textContent = `${cgSearchIndex + 1} / ${cgSearchMatches.length}`;
+                counter.style.color = '#27ae60';
+                prevBtn.disabled = false;
+                nextBtn.disabled = false;
+            } else if (cgSearchTerm) {
+                counter.textContent = 'No match';
+                counter.style.color = '#e74c3c';
+                prevBtn.disabled = true;
+                nextBtn.disabled = true;
+            } else {
+                counter.textContent = '';
+                prevBtn.disabled = true;
+                nextBtn.disabled = true;
+            }
+        }
+        
+        // Navigate between search matches
+        function navigateCallGraphMatch(direction) {
+            if (cgSearchMatches.length === 0) return;
+            
+            // Update index with wrap-around
+            cgSearchIndex = (cgSearchIndex + direction + cgSearchMatches.length) % cgSearchMatches.length;
+            
+            // Re-analyze for current match
+            analyzeCallChains();
+            
+            // Update highlighting
+            applyCallGraphSearchHighlight();
+            updateCallGraphSearchUI();
+            updateCallChainSidebar();
+            
+            // Focus on current match
+            focusOnCallGraphNode(cgSearchMatches[cgSearchIndex]);
+        }
+        
+        // Focus on a specific node (pan + zoom)
+        function focusOnCallGraphNode(targetNode) {
+            if (!callGraphSvg || !callGraphZoom || !targetNode) return;
+            
+            const container = document.getElementById('callgraph');
+            const width = container.clientWidth;
+            const height = 700;
+            
+            // Zoom to 1.8x and center on node
+            const scale = 1.8;
+            const tx = width / 2 - targetNode.x * scale;
+            const ty = height / 2 - targetNode.y * scale;
+            
+            callGraphSvg.transition()
+                .duration(400)
+                .ease(d3.easeCubicOut)
+                .call(callGraphZoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+        }
+        
+        // Handle search input keyup
+        function handleCallGraphSearchKeyup(event) {
+            if (event.key === 'Enter') {
+                searchCallGraph();
+            } else if (event.key === 'ArrowDown' || event.key === 'n') {
+                event.preventDefault();
+                navigateCallGraphMatch(1);
+            } else if (event.key === 'ArrowUp' || event.key === 'p') {
+                event.preventDefault();
+                navigateCallGraphMatch(-1);
+            } else if (event.key === 'Escape') {
+                clearCallGraphSearch();
+            }
+        }
+        
+        // Clear call graph search
+        function clearCallGraphSearch() {
+            document.getElementById('callgraphSearchInput').value = '';
+            cgSearchTerm = '';
+            cgSearchMatches = [];
+            cgSearchIndex = 0;
+            cgChainSet = new Set();
+            cgRootSet = new Set();
+            cgChainEdges = new Set();
+            cgNodeDepths = new Map();
+            cgViewMode = 'all';
+            
+            // Hide stats and sidebar
+            document.getElementById('callgraphStats').style.display = 'none';
+            toggleCallChainSidebar(false);
+            
+            // Remove any warning messages
+            const warnings = document.querySelectorAll('#callgraph-panel > .controls + div[style*="background: #fff3cd"]');
+            warnings.forEach(w => w.remove());
+            
+            // Reset view mode switch
+            const switchTrack = document.getElementById('viewModeSwitch');
+            const leftLabel = document.querySelector('.view-mode-switch .switch-label.left');
+            const rightLabel = document.querySelector('.view-mode-switch .switch-label.right');
+            if (switchTrack) switchTrack.classList.remove('focus-mode');
+            if (leftLabel) leftLabel.classList.add('active');
+            if (rightLabel) rightLabel.classList.remove('active');
+            
+            // Remove all search classes
+            if (callGraphNodeSelection) {
+                callGraphNodeSelection
+                    .classed('search-match', false)
+                    .classed('current-focus', false)
+                    .classed('search-related', false)
+                    .classed('search-chain', false)
+                    .classed('search-root', false)
+                    .classed('search-callee', false)
+                    .classed('search-dimmed', false)
+                    .classed('search-hidden', false);
+            }
+            if (callGraphLinkSelection) {
+                callGraphLinkSelection
+                    .classed('search-connected', false)
+                    .classed('search-chain', false)
+                    .classed('search-callee', false)
+                    .classed('search-dimmed', false)
+                    .classed('search-hidden', false)
+                    .attr('marker-end', 'url(#arrowhead)');
+            }
+            
+            updateCallGraphSearchUI();
+        }
+
+        // Fit call graph to view
+        function fitCallGraph() {
+            if (!callGraphSvg || !callGraphZoom) return;
+            
+            const container = document.getElementById('callgraph');
+            const bounds = callGraphSvg.select('g').node().getBBox();
+            const width = container.clientWidth;
+            const height = 700;
+            
+            const scale = Math.min(
+                width / (bounds.width + 100),
+                height / (bounds.height + 100),
+                1
+            );
+            
+            const tx = (width - bounds.width * scale) / 2 - bounds.x * scale;
+            const ty = (height - bounds.height * scale) / 2 - bounds.y * scale;
+            
+            callGraphSvg.transition()
+                .duration(500)
+                .call(callGraphZoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+        }
+
+        // Reset call graph layout
+        function resetCallGraph() {
+            if (callGraphSimulation) {
+                callGraphSimulation.alpha(1).restart();
+            }
+            if (callGraphSvg && callGraphZoom) {
+                callGraphSvg.transition()
+                    .duration(500)
+                    .call(callGraphZoom.transform, d3.zoomIdentity);
+            }
+        }
+
+        // Truncate text for display
+        function truncateText(text, maxLen) {
+            if (!text) return '';
+            // Get the last part of the function name
+            const parts = text.split('.');
+            const shortName = parts[parts.length - 1] || text;
+            if (shortName.length <= maxLen) return shortName;
+            return shortName.substring(0, maxLen - 2) + '..';
         }
 
         // Show panel
@@ -542,6 +2652,33 @@
             
             if (panelId === 'flamegraph') {
                 document.getElementById('flamegraph-panel').classList.add('active');
+                // Render or re-render flame graph with correct width after panel becomes visible
+                if (flameGraphData) {
+                    // Use requestAnimationFrame to ensure DOM is updated and width is available
+                    requestAnimationFrame(() => {
+                        const container = document.getElementById('flamegraph');
+                        const width = container.clientWidth;
+                        
+                        if (width > 0) {
+                            // Always clear and re-render to ensure clean state
+                            const container = document.getElementById('flamegraph');
+                            container.innerHTML = '';
+                            
+                            if (!flameChart) {
+                                // First time rendering
+                                renderFlameGraph();
+                            } else {
+                                // Update width and re-render
+                                flameChart.width(width);
+                                d3.select('#flamegraph').datum(flameGraphData).call(flameChart);
+                                // Re-apply search if active
+                                reapplySearchIfActive();
+                            }
+                        }
+                    });
+                }
+            } else if (panelId === 'callgraph') {
+                document.getElementById('callgraph-panel').classList.add('active');
             } else {
                 document.getElementById(panelId).classList.add('active');
             }
@@ -549,9 +2686,590 @@
 
         // Escape HTML
         function escapeHtml(text) {
+            if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+        
+        // Check if a function name matches system patterns
+        function isSystemFunction(name, filterTypes) {
+            if (!name || filterTypes.size === 0) return false;
+            
+            for (const filterType of filterTypes) {
+                const patterns = SYSTEM_PATTERNS[filterType];
+                if (patterns) {
+                    for (const pattern of patterns) {
+                        if (pattern.test(name)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+        
+        // Toggle flame graph filter
+        function toggleFlameFilter(filterType) {
+            const chip = document.querySelector(`#flameFilterSection .filter-chip[data-filter="${filterType}"]`);
+            
+            if (flameFilters.has(filterType)) {
+                flameFilters.delete(filterType);
+                chip.classList.remove('active');
+            } else {
+                flameFilters.add(filterType);
+                chip.classList.add('active');
+            }
+            
+            applyFlameFilters();
+        }
+        
+        // Apply flame graph filters - rebuild data and re-render
+        function applyFlameFilters() {
+            if (!originalFlameGraphData) return;
+            
+            const container = document.getElementById('flamegraph');
+            
+            if (flameFilters.size === 0) {
+                // No filters - restore original data
+                container.classList.remove('filter-system');
+                flameGraphData = deepCloneFlameData(originalFlameGraphData);
+            } else {
+                container.classList.add('filter-system');
+                // Filter flame graph: collapse filtered nodes by merging their children up
+                flameGraphData = collapseFilteredNodes(originalFlameGraphData, flameFilters);
+            }
+            
+            // Re-render the flame graph (check for valid data structure)
+            if (flameGraphData) {
+                container.innerHTML = '';
+                flameChart = null; // Reset chart to force re-creation
+                
+                // Validate and fix the data structure
+                validateFlameData(flameGraphData);
+                
+                // Check if there's any data to display
+                const hasChildren = flameGraphData.children && flameGraphData.children.length > 0;
+                const hasValue = flameGraphData.value > 0;
+                
+                if (!hasValue && !hasChildren) {
+                    container.innerHTML = '<div class="loading" style="color: #e74c3c;">⚠️ All functions were filtered out. Try removing some filters.</div>';
+                    return;
+                }
+                
+                renderFlameGraph();
+                // Re-apply search if active
+                if (currentSearchTerm) {
+                    setTimeout(() => searchFlameGraph(), 100);
+                }
+            }
+        }
+        
+        // Validate and fix flame graph data structure
+        function validateFlameData(node) {
+            if (!node) return 0;
+            
+            // Ensure value is a number
+            if (typeof node.value !== 'number' || isNaN(node.value)) {
+                node.value = 0;
+            }
+            
+            // Ensure children is an array
+            if (!Array.isArray(node.children)) {
+                node.children = [];
+            }
+            
+            // Recursively validate children and calculate their values
+            let childSum = 0;
+            for (const child of node.children) {
+                childSum += validateFlameData(child);
+            }
+            
+            // Parent value should be >= sum of children
+            if (node.children.length > 0) {
+                node.value = Math.max(node.value, childSum);
+            }
+            
+            return node.value;
+        }
+        
+        // Deep clone flame graph data
+        function deepCloneFlameData(node) {
+            if (!node) return null;
+            return {
+                name: node.name,
+                value: node.value,
+                children: node.children ? node.children.map(c => deepCloneFlameData(c)) : []
+            };
+        }
+        
+        // Collapse filtered nodes: remove filtered nodes and connect their parents to their children
+        function collapseFilteredNodes(node, filterTypes) {
+            if (!node) return null;
+            
+            // Deep clone first to avoid modifying original
+            const cloned = deepCloneFlameData(node);
+            
+            // Process the tree iteratively to avoid stack overflow
+            const result = {
+                name: cloned.name,
+                value: cloned.value,
+                children: []
+            };
+            
+            if (cloned.children && cloned.children.length > 0) {
+                result.children = processChildrenForCollapse(cloned.children, filterTypes);
+            }
+            
+            // Recalculate value from bottom up
+            recalculateValues(result);
+            
+            return result;
+        }
+        
+        // Recalculate values from bottom up
+        function recalculateValues(node) {
+            if (!node.children || node.children.length === 0) {
+                return node.value || 0;
+            }
+            
+            let childSum = 0;
+            for (const child of node.children) {
+                childSum += recalculateValues(child);
+            }
+            
+            // Parent value should be >= sum of children
+            node.value = Math.max(node.value || 0, childSum);
+            return node.value;
+        }
+        
+        // Process children, collapsing filtered nodes
+        function processChildrenForCollapse(children, filterTypes) {
+            const resultChildren = [];
+            
+            for (const child of children) {
+                const isFiltered = isSystemFunction(child.name, filterTypes);
+                
+                if (isFiltered) {
+                    // This node is filtered - skip it and promote its children
+                    if (child.children && child.children.length > 0) {
+                        // Recursively process grandchildren
+                        const promotedChildren = processChildrenForCollapse(child.children, filterTypes);
+                        resultChildren.push(...promotedChildren);
+                    }
+                    // If no children, this filtered node is simply removed
+                } else {
+                    // This node is not filtered - keep it but process its children
+                    const processedChild = {
+                        name: child.name,
+                        value: child.value || 0,
+                        children: []
+                    };
+                    
+                    if (child.children && child.children.length > 0) {
+                        processedChild.children = processChildrenForCollapse(child.children, filterTypes);
+                    }
+                    
+                    resultChildren.push(processedChild);
+                }
+            }
+            
+            // Merge children with same name
+            return mergeFlameChildren(resultChildren);
+        }
+        
+        // Merge children with the same name (deep merge)
+        function mergeFlameChildren(children) {
+            if (!children || children.length === 0) return [];
+            
+            const nameMap = new Map();
+            
+            for (const child of children) {
+                if (nameMap.has(child.name)) {
+                    // Merge with existing
+                    const existing = nameMap.get(child.name);
+                    existing.value = (existing.value || 0) + (child.value || 0);
+                    // Merge children arrays
+                    if (child.children && child.children.length > 0) {
+                        existing.children = existing.children || [];
+                        // Deep clone children before pushing
+                        for (const grandchild of child.children) {
+                            existing.children.push(deepCloneFlameData(grandchild));
+                        }
+                    }
+                } else {
+                    // Deep clone to avoid reference issues
+                    nameMap.set(child.name, {
+                        name: child.name,
+                        value: child.value || 0,
+                        children: child.children ? child.children.map(c => deepCloneFlameData(c)) : []
+                    });
+                }
+            }
+            
+            // Recursively merge grandchildren with same names
+            const result = [];
+            for (const [name, node] of nameMap) {
+                if (node.children.length > 0) {
+                    node.children = mergeFlameChildren(node.children);
+                }
+                result.push(node);
+            }
+            
+            return result;
+        }
+        
+        // Toggle call graph filter
+        function toggleCallGraphFilter(filterType) {
+            const chip = document.querySelector(`#callgraphFilterSection .filter-chip[data-filter="${filterType}"]`);
+            
+            if (callGraphFilters.has(filterType)) {
+                callGraphFilters.delete(filterType);
+                chip.classList.remove('active');
+            } else {
+                callGraphFilters.add(filterType);
+                chip.classList.add('active');
+            }
+            
+            applyCallGraphFilters();
+            
+            // Re-apply search highlighting after filters to properly hide bridge edges in focus mode
+            if (cgSearchTerm) {
+                applyCallGraphSearchHighlight();
+            }
+        }
+        
+        // Apply call graph filters - hide nodes and add bridge edges (no re-render)
+        function applyCallGraphFilters() {
+            if (!callGraphNodeSelection || !callGraphLinkSelection || callGraphNodes.length === 0) return;
+            
+            // Clear previous bridge edges
+            removeBridgeEdges();
+            
+            if (callGraphFilters.size === 0) {
+                // No filters - show all nodes and edges
+                cgFilteredNodeIndices = new Set();
+                callGraphNodeSelection.classed('filter-hidden', false);
+                callGraphLinkSelection.classed('filter-hidden', false);
+                return;
+            }
+            
+            // Identify nodes to filter (hide) by index
+            cgFilteredNodeIndices = new Set();
+            callGraphNodes.forEach((node, index) => {
+                if (isSystemFunction(node.name, callGraphFilters)) {
+                    cgFilteredNodeIndices.add(index);
+                }
+            });
+            
+            if (cgFilteredNodeIndices.size === 0) return;
+            
+            // Hide filtered nodes
+            callGraphNodeSelection.classed('filter-hidden', d => cgFilteredNodeIndices.has(d.index));
+            
+            // Hide edges connected to filtered nodes
+            callGraphLinkSelection.classed('filter-hidden', d => 
+                cgFilteredNodeIndices.has(d.source.index) || cgFilteredNodeIndices.has(d.target.index)
+            );
+            
+            // Calculate and add bridge edges
+            calculateAndAddBridgeEdges();
+        }
+        
+        // Calculate bridge edges that bypass filtered nodes
+        function calculateAndAddBridgeEdges() {
+            if (!cgLinkContainer || cgFilteredNodeIndices.size === 0) return;
+            
+            // Build adjacency maps using indices
+            const callersMapByIndex = new Map(); // targetIndex -> [sourceIndex]
+            const calleesMapByIndex = new Map(); // sourceIndex -> [targetIndex]
+            
+            callGraphLinks.forEach(link => {
+                const sourceIdx = link.source.index;
+                const targetIdx = link.target.index;
+                
+                if (!callersMapByIndex.has(targetIdx)) {
+                    callersMapByIndex.set(targetIdx, []);
+                }
+                callersMapByIndex.get(targetIdx).push(sourceIdx);
+                
+                if (!calleesMapByIndex.has(sourceIdx)) {
+                    calleesMapByIndex.set(sourceIdx, []);
+                }
+                calleesMapByIndex.get(sourceIdx).push(targetIdx);
+            });
+            
+            // Find bridge edges: for each non-filtered node, find reachable non-filtered callees through filtered nodes
+            const bridgeEdgesMap = new Map(); // "sourceIdx->targetIdx" -> true
+            const nonFilteredIndices = new Set();
+            callGraphNodes.forEach((node, index) => {
+                if (!cgFilteredNodeIndices.has(index)) {
+                    nonFilteredIndices.add(index);
+                }
+            });
+            
+            // For each non-filtered node
+            nonFilteredIndices.forEach(sourceIdx => {
+                const directCallees = calleesMapByIndex.get(sourceIdx) || [];
+                
+                directCallees.forEach(calleeIdx => {
+                    if (cgFilteredNodeIndices.has(calleeIdx)) {
+                        // Callee is filtered - trace through to find non-filtered targets
+                        const reachableTargets = findReachableIndices(calleeIdx, calleesMapByIndex, cgFilteredNodeIndices, nonFilteredIndices);
+                        reachableTargets.forEach(targetIdx => {
+                            if (targetIdx !== sourceIdx) { // Avoid self-loops
+                                bridgeEdgesMap.set(`${sourceIdx}->${targetIdx}`, true);
+                            }
+                        });
+                    }
+                });
+            });
+            
+            // Convert to array of bridge edge data
+            cgBridgeEdges = [];
+            bridgeEdgesMap.forEach((_, key) => {
+                const [sourceIdxStr, targetIdxStr] = key.split('->');
+                const sourceIdx = parseInt(sourceIdxStr);
+                const targetIdx = parseInt(targetIdxStr);
+                cgBridgeEdges.push({
+                    source: callGraphNodes[sourceIdx],
+                    target: callGraphNodes[targetIdx],
+                    isBridge: true
+                });
+            });
+            
+            // Add bridge edges to the graph
+            if (cgBridgeEdges.length > 0) {
+                addBridgeEdgesToGraph();
+            }
+        }
+        
+        // Find reachable non-filtered nodes through filtered nodes (BFS) - using indices
+        function findReachableIndices(startIdx, calleesMapByIndex, filteredIndices, validIndices) {
+            const reachable = [];
+            const visited = new Set();
+            const queue = [startIdx];
+            
+            while (queue.length > 0) {
+                const currentIdx = queue.shift();
+                if (visited.has(currentIdx)) continue;
+                visited.add(currentIdx);
+                
+                if (validIndices.has(currentIdx)) {
+                    // This is a valid (non-filtered) node
+                    reachable.push(currentIdx);
+                } else if (filteredIndices.has(currentIdx)) {
+                    // This is a filtered node - continue through its callees
+                    const callees = calleesMapByIndex.get(currentIdx) || [];
+                    callees.forEach(calleeIdx => {
+                        if (!visited.has(calleeIdx)) {
+                            queue.push(calleeIdx);
+                        }
+                    });
+                }
+            }
+            
+            return reachable;
+        }
+        
+        // Add bridge edges to the graph visualization
+        function addBridgeEdgesToGraph() {
+            if (!cgLinkContainer || cgBridgeEdges.length === 0) return;
+            
+            // Helper function to calculate edge path
+            function getNodeWidth(name) {
+                if (!name) return 150;
+                const charWidth = 7;
+                const padding = 20;
+                return Math.min(300, Math.max(150, name.length * charWidth + padding));
+            }
+            
+            function getNodeBoundaryPoint(cx, cy, halfWidth, halfHeight, angle) {
+                const tanAngle = Math.tan(angle);
+                let x, y;
+                if (Math.abs(Math.cos(angle)) > 0.001) {
+                    const signX = Math.cos(angle) > 0 ? 1 : -1;
+                    x = cx + signX * halfWidth;
+                    y = cy + signX * halfWidth * tanAngle;
+                    if (Math.abs(y - cy) <= halfHeight) {
+                        return { x, y };
+                    }
+                }
+                const signY = Math.sin(angle) > 0 ? 1 : -1;
+                y = cy + signY * halfHeight;
+                x = cx + signY * halfHeight / tanAngle;
+                return { x, y };
+            }
+            
+            function calculateBridgeEdgePath(d) {
+                const sourceX = d.source.x;
+                const sourceY = d.source.y;
+                const targetX = d.target.x;
+                const targetY = d.target.y;
+                
+                const dx = targetX - sourceX;
+                const dy = targetY - sourceY;
+                const angle = Math.atan2(dy, dx);
+                
+                const sourceHalfWidth = getNodeWidth(d.source.name) / 2;
+                const targetHalfWidth = getNodeWidth(d.target.name) / 2;
+                const halfHeight = 15;
+                
+                const sourceIntersect = getNodeBoundaryPoint(sourceX, sourceY, sourceHalfWidth, halfHeight, angle);
+                const targetIntersect = getNodeBoundaryPoint(targetX, targetY, targetHalfWidth, halfHeight, angle + Math.PI);
+                
+                return `M ${sourceIntersect.x},${sourceIntersect.y} L ${targetIntersect.x},${targetIntersect.y}`;
+            }
+            
+            // Add bridge edges
+            cgBridgeEdgeSelection = cgLinkContainer
+                .selectAll('path.bridge-edge')
+                .data(cgBridgeEdges)
+                .enter()
+                .append('path')
+                .attr('class', 'callgraph-edge bridge-edge')
+                .attr('stroke-width', 1.5)
+                .attr('marker-end', 'url(#arrowhead-bridge)')
+                .attr('fill', 'none')
+                .attr('d', d => calculateBridgeEdgePath(d));
+            
+            // Update bridge edge positions on simulation tick
+            if (callGraphSimulation) {
+                callGraphSimulation.on('tick.bridge', () => {
+                    if (cgBridgeEdgeSelection) {
+                        cgBridgeEdgeSelection.attr('d', d => calculateBridgeEdgePath(d));
+                    }
+                });
+            }
+        }
+        
+        // Remove bridge edges from the graph
+        function removeBridgeEdges() {
+            if (cgLinkContainer) {
+                cgLinkContainer.selectAll('path.bridge-edge').remove();
+            }
+            cgBridgeEdges = [];
+            cgBridgeEdgeSelection = null;
+            
+            // Remove bridge tick handler
+            if (callGraphSimulation) {
+                callGraphSimulation.on('tick.bridge', null);
+            }
+        }
+        
+        // Search function name in Flame Graph
+        function searchInFlameGraph(funcName) {
+            // Extract a shorter search term for better matching
+            const searchTerm = extractSearchTerm(funcName);
+            
+            // Switch to flame graph panel
+            showPanelById('flamegraph');
+            
+            // Wait for panel to be visible and rendered
+            setTimeout(() => {
+                // Set search input value
+                document.getElementById('searchInput').value = searchTerm;
+                // Trigger search
+                searchFlameGraph();
+            }, 100);
+        }
+        
+        // Search function name in Call Graph
+        function searchInCallGraph(funcName) {
+            // Extract a shorter search term for better matching
+            const searchTerm = extractSearchTerm(funcName);
+            
+            // Switch to call graph panel
+            showPanelById('callgraph');
+            
+            // Wait for panel to be visible
+            setTimeout(() => {
+                // Set search input value
+                document.getElementById('callgraphSearchInput').value = searchTerm;
+                // Trigger search
+                searchCallGraph();
+            }, 100);
+        }
+        
+        // Extract a meaningful search term from full function name
+        function extractSearchTerm(funcName) {
+            if (!funcName) return '';
+            
+            // For Java-style names like "com.example.Class.method", extract "Class.method" or just "method"
+            const parts = funcName.split('.');
+            if (parts.length >= 2) {
+                // Return last two parts (Class.method)
+                const lastTwo = parts.slice(-2).join('.');
+                // If still too long, just return the method name
+                if (lastTwo.length > 50) {
+                    return parts[parts.length - 1];
+                }
+                return lastTwo;
+            }
+            
+            // For C++ style names with ::, extract the last part
+            if (funcName.includes('::')) {
+                const cppParts = funcName.split('::');
+                return cppParts[cppParts.length - 1];
+            }
+            
+            return funcName;
+        }
+        
+        // Copy function name to clipboard
+        function copyFuncName(funcName) {
+            navigator.clipboard.writeText(funcName).then(() => {
+                // Show brief feedback
+                const originalTitle = event.target.title;
+                event.target.title = '✓ Copied!';
+                setTimeout(() => {
+                    event.target.title = originalTitle;
+                }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+        
+        // Show panel by ID (programmatic version)
+        function showPanelById(panelId) {
+            // Update tabs
+            document.querySelectorAll('.tab').forEach((tab, index) => {
+                tab.classList.remove('active');
+                // Match tab index to panel
+                const tabPanels = ['overview', 'flamegraph', 'callgraph', 'topfuncs', 'threads'];
+                if (tabPanels[index] === panelId) {
+                    tab.classList.add('active');
+                }
+            });
+
+            // Update panels
+            document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
+            
+            if (panelId === 'flamegraph') {
+                document.getElementById('flamegraph-panel').classList.add('active');
+                // Render or re-render flame graph with correct width after panel becomes visible
+                if (flameGraphData) {
+                    requestAnimationFrame(() => {
+                        const container = document.getElementById('flamegraph');
+                        const width = container.clientWidth;
+                        
+                        if (width > 0) {
+                            container.innerHTML = '';
+                            if (!flameChart) {
+                                renderFlameGraph();
+                            } else {
+                                flameChart.width(width);
+                                d3.select('#flamegraph').datum(flameGraphData).call(flameChart);
+                                reapplySearchIfActive();
+                            }
+                        }
+                    });
+                }
+            } else if (panelId === 'callgraph') {
+                document.getElementById('callgraph-panel').classList.add('active');
+            } else {
+                document.getElementById(panelId).classList.add('active');
+            }
         }
     </script>
 </body>

@@ -1,147 +1,154 @@
-.PHONY: all build test test-unit test-integration test-coverage test-race bench clean lint fmt help
+# Makefile for perf-analysis
 
-# Build variables
-BINARY_NAME=analyzer
-BUILD_DIR=bin
+# Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
-GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)"
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 
-# Go commands
-GO=go
-GOTEST=$(GO) test
-GOBUILD=$(GO) build
-GOCLEAN=$(GO) clean
-GOMOD=$(GO) mod
+# Go parameters
+GOCMD = go
+GOBUILD = $(GOCMD) build
+GOCLEAN = $(GOCMD) clean
+GOTEST = $(GOCMD) test
+GOGET = $(GOCMD) get
+GOMOD = $(GOCMD) mod
 
-# Default target
+# Binary names
+CLI_BINARY = perf-analysis
+ANALYZER_BINARY = perf-analyzer
+
+# Build directory
+BUILD_DIR = build
+
+# ldflags for version injection - CLI
+CLI_LDFLAGS = -ldflags "-X 'github.com/perf-analysis/cmd/cli/cmd.Version=$(VERSION)' \
+						-X 'github.com/perf-analysis/cmd/cli/cmd.GitCommit=$(GIT_COMMIT)' \
+						-X 'github.com/perf-analysis/cmd/cli/cmd.BuildTime=$(BUILD_TIME)'"
+
+# ldflags for version injection - Analyzer
+ANALYZER_LDFLAGS = -ldflags "-X 'main.Version=$(VERSION)' \
+							 -X 'main.GitCommit=$(GIT_COMMIT)' \
+							 -X 'main.BuildTime=$(BUILD_TIME)'"
+
+# Main packages
+CLI_PACKAGE = ./cmd/cli
+ANALYZER_PACKAGE = ./cmd/analyzer
+
+.PHONY: all build build-cli build-analyzer clean test deps help install dev release
+
+# Default target - build all binaries
 all: build
 
-## Build the application
-build:
-	@echo "Building $(BINARY_NAME)..."
-	@mkdir -p $(BUILD_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/analyzer
+# Build all binaries with version info
+build: build-cli build-analyzer
 
-## Build for multiple platforms
-build-all: build-linux build-darwin
+# Build CLI binary
+build-cli:
+	@echo "Building $(CLI_BINARY)..."
+	@echo "  Version:    $(VERSION)"
+	@echo "  Git Commit: $(GIT_COMMIT)"
+	@echo "  Build Time: $(BUILD_TIME)"
+	$(GOBUILD) $(CLI_LDFLAGS) -o ./$(CLI_BINARY) $(CLI_PACKAGE)
+	@echo "Build complete: ./$(CLI_BINARY)"
 
-build-linux:
-	@echo "Building for Linux..."
-	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/analyzer
+# Build Analyzer binary
+build-analyzer:
+	@echo "Building $(ANALYZER_BINARY)..."
+	@echo "  Version:    $(VERSION)"
+	@echo "  Git Commit: $(GIT_COMMIT)"
+	@echo "  Build Time: $(BUILD_TIME)"
+	$(GOBUILD) $(ANALYZER_LDFLAGS) -o ./$(ANALYZER_BINARY) $(ANALYZER_PACKAGE)
+	@echo "Build complete: ./$(ANALYZER_BINARY)"
 
-build-darwin:
-	@echo "Building for macOS..."
-	@mkdir -p $(BUILD_DIR)
-	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/analyzer
-	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/analyzer
+# Development build (faster, no version injection)
+dev:
+	@echo "Building $(CLI_BINARY) (dev mode)..."
+	$(GOBUILD) -o ./$(CLI_BINARY) $(CLI_PACKAGE)
+	@echo "Building $(ANALYZER_BINARY) (dev mode)..."
+	$(GOBUILD) -o ./$(ANALYZER_BINARY) $(ANALYZER_PACKAGE)
 
-## Run all tests
-test:
-	@echo "Running all tests..."
-	$(GOTEST) -v ./...
+# Install to GOPATH/bin
+install:
+	@echo "Installing $(CLI_BINARY)..."
+	$(GOBUILD) $(CLI_LDFLAGS) -o $(GOPATH)/bin/$(CLI_BINARY) $(CLI_PACKAGE)
+	@echo "Installing $(ANALYZER_BINARY)..."
+	$(GOBUILD) $(ANALYZER_LDFLAGS) -o $(GOPATH)/bin/$(ANALYZER_BINARY) $(ANALYZER_PACKAGE)
 
-## Run unit tests only (short mode)
-test-unit:
-	@echo "Running unit tests..."
-	$(GOTEST) -short -v ./...
-
-## Run integration tests
-test-integration:
-	@echo "Running integration tests..."
-	$(GOTEST) -v -run Integration ./...
-
-## Run tests with coverage report
-test-coverage:
-	@echo "Running tests with coverage..."
-	$(GOTEST) -coverprofile=coverage.out -covermode=atomic ./...
-	$(GO) tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated: coverage.html"
-	@$(GO) tool cover -func=coverage.out | grep total | awk '{print "Total coverage: " $$3}'
-
-## Run tests with race detector
-test-race:
-	@echo "Running tests with race detector..."
-	$(GOTEST) -race -v ./...
-
-## Run benchmarks
-bench:
-	@echo "Running benchmarks..."
-	$(GOTEST) -bench=. -benchmem ./...
-
-## Update golden files
-update-golden:
-	@echo "Updating golden files..."
-	UPDATE_GOLDEN=true $(GOTEST) ./... -run Golden
-
-## Clean build artifacts
+# Clean build artifacts
 clean:
 	@echo "Cleaning..."
 	$(GOCLEAN)
+	rm -f ./$(CLI_BINARY) ./$(ANALYZER_BINARY)
 	rm -rf $(BUILD_DIR)
-	rm -f coverage.out coverage.html
 
-## Download dependencies
+# Run tests
+test:
+	@echo "Running tests..."
+	$(GOTEST) -v ./...
+
+# Download dependencies
 deps:
 	@echo "Downloading dependencies..."
 	$(GOMOD) download
-
-## Tidy dependencies
-tidy:
-	@echo "Tidying dependencies..."
 	$(GOMOD) tidy
 
-## Verify dependencies
-verify:
-	@echo "Verifying dependencies..."
-	$(GOMOD) verify
+# Build for multiple platforms
+release: clean
+	@echo "Building releases..."
+	@mkdir -p $(BUILD_DIR)
+	
+	@echo "=== Building CLI ==="
+	@echo "Building $(CLI_BINARY) for Linux amd64..."
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-linux-amd64 $(CLI_PACKAGE)
+	
+	@echo "Building $(CLI_BINARY) for Linux arm64..."
+	GOOS=linux GOARCH=arm64 $(GOBUILD) $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-linux-arm64 $(CLI_PACKAGE)
+	
+	@echo "Building $(CLI_BINARY) for macOS amd64..."
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-darwin-amd64 $(CLI_PACKAGE)
+	
+	@echo "Building $(CLI_BINARY) for macOS arm64..."
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-darwin-arm64 $(CLI_PACKAGE)
+	
+	@echo "Building $(CLI_BINARY) for Windows amd64..."
+	GOOS=windows GOARCH=amd64 $(GOBUILD) $(CLI_LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY)-windows-amd64.exe $(CLI_PACKAGE)
+	
+	@echo ""
+	@echo "=== Building Analyzer ==="
+	@echo "Building $(ANALYZER_BINARY) for Linux amd64..."
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(ANALYZER_LDFLAGS) -o $(BUILD_DIR)/$(ANALYZER_BINARY)-linux-amd64 $(ANALYZER_PACKAGE)
+	
+	@echo "Building $(ANALYZER_BINARY) for Linux arm64..."
+	GOOS=linux GOARCH=arm64 $(GOBUILD) $(ANALYZER_LDFLAGS) -o $(BUILD_DIR)/$(ANALYZER_BINARY)-linux-arm64 $(ANALYZER_PACKAGE)
+	
+	@echo "Building $(ANALYZER_BINARY) for macOS amd64..."
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(ANALYZER_LDFLAGS) -o $(BUILD_DIR)/$(ANALYZER_BINARY)-darwin-amd64 $(ANALYZER_PACKAGE)
+	
+	@echo "Building $(ANALYZER_BINARY) for macOS arm64..."
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(ANALYZER_LDFLAGS) -o $(BUILD_DIR)/$(ANALYZER_BINARY)-darwin-arm64 $(ANALYZER_PACKAGE)
+	
+	@echo "Building $(ANALYZER_BINARY) for Windows amd64..."
+	GOOS=windows GOARCH=amd64 $(GOBUILD) $(ANALYZER_LDFLAGS) -o $(BUILD_DIR)/$(ANALYZER_BINARY)-windows-amd64.exe $(ANALYZER_PACKAGE)
+	
+	@echo ""
+	@echo "Release builds complete in $(BUILD_DIR)/"
+	@ls -la $(BUILD_DIR)/
 
-## Run linter
-lint:
-	@echo "Running linter..."
-	@if command -v golangci-lint > /dev/null; then \
-		golangci-lint run ./...; \
-	else \
-		echo "golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
-	fi
-
-## Format code
-fmt:
-	@echo "Formatting code..."
-	$(GO) fmt ./...
-
-## Run vet
-vet:
-	@echo "Running go vet..."
-	$(GO) vet ./...
-
-## CI target - runs on CI/CD
-ci: deps fmt vet lint test-race test-coverage
-	@echo "CI checks complete"
-	@$(GO) tool cover -func=coverage.out | grep total | awk '{print $$3}' | sed 's/%//' | \
-		xargs -I {} sh -c 'if [ {} -lt 70 ]; then echo "Coverage {} is below 70%"; exit 1; fi'
-
-## Generate mocks (requires mockery)
-generate-mocks:
-	@echo "Generating mocks..."
-	@if command -v mockery > /dev/null; then \
-		mockery --dir=internal/parser --name=Parser --output=internal/mock --outpkg=mock; \
-		mockery --dir=internal/analyzer --name=Analyzer --output=internal/mock --outpkg=mock; \
-	else \
-		echo "mockery not installed. Install with: go install github.com/vektra/mockery/v2@latest"; \
-	fi
-
-## Run the application
-run: build
-	@echo "Running $(BINARY_NAME)..."
-	./$(BUILD_DIR)/$(BINARY_NAME)
-
-## Show help
+# Show help
 help:
 	@echo "Available targets:"
+	@echo "  make build          - Build all binaries with version info (default)"
+	@echo "  make build-cli      - Build CLI only"
+	@echo "  make build-analyzer - Build Analyzer only"
+	@echo "  make dev            - Fast build without version info"
+	@echo "  make install        - Install to GOPATH/bin"
+	@echo "  make clean          - Remove build artifacts"
+	@echo "  make test           - Run tests"
+	@echo "  make deps           - Download dependencies"
+	@echo "  make release        - Build for multiple platforms"
+	@echo "  make help           - Show this help"
 	@echo ""
-	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
-	@echo ""
-	@echo "Usage: make [target]"
+	@echo "Version variables (can be overridden):"
+	@echo "  VERSION=$(VERSION)"
+	@echo "  GIT_COMMIT=$(GIT_COMMIT)"
+	@echo "  BUILD_TIME=$(BUILD_TIME)"
