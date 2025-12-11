@@ -808,6 +808,74 @@
             stroke-dasharray: 5, 3;
             transition: opacity 0.3s ease;
         }
+        /* Task metadata styles */
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .metadata-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 12px 15px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+            border-radius: 8px;
+            border-left: 3px solid #667eea;
+        }
+        .metadata-label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .metadata-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            word-break: break-all;
+        }
+        .metadata-value .type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .type-badge.java {
+            background: linear-gradient(135deg, #f89820 0%, #e76f00 100%);
+            color: white;
+        }
+        .type-badge.generic {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .type-badge.pprof {
+            background: linear-gradient(135deg, #00add8 0%, #0087a8 100%);
+            color: white;
+        }
+        .type-badge.memory {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+        }
+        .type-badge.tracing {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+            color: white;
+        }
+        .profiler-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            font-size: 12px;
+            color: #555;
+        }
     </style>
 </head>
 <body>
@@ -837,6 +905,37 @@
 
         <!-- Overview Panel -->
         <div id="overview" class="panel active">
+            <!-- Task Metadata Card -->
+            <div class="card" id="taskMetadataCard" style="margin-bottom: 20px; display: none;">
+                <h2>📋 Task Information</h2>
+                <div class="metadata-grid">
+                    <div class="metadata-item">
+                        <span class="metadata-label">Task Type</span>
+                        <span class="metadata-value" id="metaTaskType">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Profiler</span>
+                        <span class="metadata-value" id="metaProfiler">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Input File</span>
+                        <span class="metadata-value" id="metaInputFile">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Created At</span>
+                        <span class="metadata-value" id="metaCreatedAt">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Analysis Time</span>
+                        <span class="metadata-value" id="metaAnalysisTime">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Task UUID</span>
+                        <span class="metadata-value" id="metaTaskUUID">-</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-value" id="totalSamples">-</div>
@@ -1261,6 +1360,9 @@
             document.getElementById('threadsCount').textContent = (data.threads || []).length;
             document.getElementById('taskUUID').textContent = data.task_uuid || '-';
 
+            // Render metadata if available
+            renderTaskMetadata(data.metadata);
+
             // Top functions preview (top 5)
             const funcs = Object.entries(data.top_funcs || {})
                 .map(([name, val]) => ({ name, self: val.self || 0 }))
@@ -1311,6 +1413,110 @@
                     <span class="thread-samples">${t.samples} samples (${(t.percentage || 0).toFixed(2)}%)</span>
                 </li>
             `).join('');
+        }
+
+        // Render task metadata
+        function renderTaskMetadata(metadata) {
+            const card = document.getElementById('taskMetadataCard');
+            if (!metadata) {
+                card.style.display = 'none';
+                return;
+            }
+            
+            card.style.display = 'block';
+            
+            // Task type with badge
+            const taskTypeEl = document.getElementById('metaTaskType');
+            const typeName = metadata.task_type_name || 'unknown';
+            const typeClass = getTaskTypeClass(typeName);
+            const typeIcon = getTaskTypeIcon(typeName);
+            taskTypeEl.innerHTML = `<span class="type-badge ${typeClass}">${typeIcon} ${typeName.toUpperCase()}</span>`;
+            
+            // Profiler
+            const profilerEl = document.getElementById('metaProfiler');
+            const profilerName = metadata.profiler_name || 'unknown';
+            const profilerIcon = getProfilerIcon(profilerName);
+            profilerEl.innerHTML = `<span class="profiler-badge">${profilerIcon} ${profilerName}</span>`;
+            
+            // Input file
+            document.getElementById('metaInputFile').textContent = metadata.input_file || '-';
+            
+            // Created at
+            const createdAt = metadata.created_at ? formatDateTime(metadata.created_at) : '-';
+            document.getElementById('metaCreatedAt').textContent = createdAt;
+            
+            // Analysis time
+            const analysisTime = metadata.analysis_time_ms ? formatDuration(metadata.analysis_time_ms) : '-';
+            document.getElementById('metaAnalysisTime').textContent = analysisTime;
+            
+            // Task UUID
+            document.getElementById('metaTaskUUID').textContent = summaryData?.task_uuid || '-';
+        }
+        
+        // Get CSS class for task type badge
+        function getTaskTypeClass(typeName) {
+            const typeMap = {
+                'java': 'java',
+                'generic': 'generic',
+                'pprof_mem': 'pprof',
+                'memleak': 'memory',
+                'java_heap': 'memory',
+                'phys_mem': 'memory',
+                'jeprof': 'memory',
+                'tracing': 'tracing',
+                'timing': 'tracing'
+            };
+            return typeMap[typeName] || 'generic';
+        }
+        
+        // Get icon for task type
+        function getTaskTypeIcon(typeName) {
+            const iconMap = {
+                'java': '☕',
+                'generic': '🔧',
+                'pprof_mem': '🐹',
+                'memleak': '💾',
+                'java_heap': '📦',
+                'phys_mem': '🧠',
+                'jeprof': '📊',
+                'tracing': '🔍',
+                'timing': '⏱️',
+                'bolt': '⚡'
+            };
+            return iconMap[typeName] || '📊';
+        }
+        
+        // Get icon for profiler
+        function getProfilerIcon(profilerName) {
+            const iconMap = {
+                'perf': '🔥',
+                'async_alloc': '📈',
+                'pprof': '🐹'
+            };
+            return iconMap[profilerName] || '📊';
+        }
+        
+        // Format datetime string
+        function formatDateTime(isoString) {
+            try {
+                const date = new Date(isoString);
+                return date.toLocaleString();
+            } catch (e) {
+                return isoString;
+            }
+        }
+        
+        // Format duration in milliseconds
+        function formatDuration(ms) {
+            if (ms < 1000) {
+                return `${ms}ms`;
+            } else if (ms < 60000) {
+                return `${(ms / 1000).toFixed(2)}s`;
+            } else {
+                const minutes = Math.floor(ms / 60000);
+                const seconds = ((ms % 60000) / 1000).toFixed(1);
+                return `${minutes}m ${seconds}s`;
+            }
         }
 
         // Transform flame graph data to d3-flamegraph format

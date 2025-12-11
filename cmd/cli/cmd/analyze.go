@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -157,7 +158,9 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// Run analysis
 	log.Info("Starting analysis...")
 	ctx := context.Background()
+	startTime := time.Now()
 	result, err := ana.Analyze(ctx, req)
+	analysisTime := time.Since(startTime)
 	if err != nil {
 		return fmt.Errorf("analysis failed: %w", err)
 	}
@@ -168,8 +171,17 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// Print results
 	printResults(log, result)
 
-	// Save result summary
-	saveSummary(result, taskOutputDir)
+	// Save result summary with metadata
+	metadata := &AnalysisMetadata{
+		TaskType:       int(tt),
+		TaskTypeName:   tt.String(),
+		ProfilerType:   int(pt),
+		ProfilerName:   pt.String(),
+		InputFile:      filepath.Base(inputFile),
+		CreatedAt:      startTime.Format(time.RFC3339),
+		AnalysisTimeMs: analysisTime.Milliseconds(),
+	}
+	saveSummary(result, taskOutputDir, metadata)
 
 	log.Info("")
 	log.Info("=== Analysis Complete ===")
@@ -314,7 +326,7 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-func saveSummary(result *model.AnalysisResponse, outputDir string) {
+func saveSummary(result *model.AnalysisResponse, outputDir string, metadata *AnalysisMetadata) {
 	summary := map[string]interface{}{
 		"task_uuid":     result.TaskUUID,
 		"total_records": result.TotalRecords,
@@ -327,7 +339,31 @@ func saveSummary(result *model.AnalysisResponse, outputDir string) {
 		"suggestions_count": len(result.Suggestions),
 	}
 
+	// Add metadata if provided
+	if metadata != nil {
+		summary["metadata"] = map[string]interface{}{
+			"task_type":        metadata.TaskType,
+			"task_type_name":   metadata.TaskTypeName,
+			"profiler_type":    metadata.ProfilerType,
+			"profiler_name":    metadata.ProfilerName,
+			"input_file":       metadata.InputFile,
+			"created_at":       metadata.CreatedAt,
+			"analysis_time_ms": metadata.AnalysisTimeMs,
+		}
+	}
+
 	summaryFile := filepath.Join(outputDir, "summary.json")
 	data, _ := json.MarshalIndent(summary, "", "  ")
 	os.WriteFile(summaryFile, data, 0644)
+}
+
+// AnalysisMetadata holds metadata about the analysis task
+type AnalysisMetadata struct {
+	TaskType       int    `json:"task_type"`
+	TaskTypeName   string `json:"task_type_name"`
+	ProfilerType   int    `json:"profiler_type"`
+	ProfilerName   string `json:"profiler_name"`
+	InputFile      string `json:"input_file"`
+	CreatedAt      string `json:"created_at"`
+	AnalysisTimeMs int64  `json:"analysis_time_ms"`
 }
