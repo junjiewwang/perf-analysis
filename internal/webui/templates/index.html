@@ -2180,13 +2180,21 @@
                     return 'url(#arrowhead)';
                 });
             
-            // Apply search-hidden to bridge edges in focus mode
-            // In focus mode, hide all bridge edges since they represent filtered node bypasses
-            // which are not part of the search call chain
+            // Apply search styles to bridge edges
             if (cgBridgeEdgeSelection) {
+                // In All mode: dim bridge edges that are not part of the call chain
+                cgBridgeEdgeSelection.classed('search-dimmed', d => {
+                    if (!cgSearchTerm) return false;
+                    // Check if this bridge edge connects nodes in the call chain
+                    const isChainEdge = cgChainEdges.has(`${d.source.index}-${d.target.index}`);
+                    const isConnected = matchSet.has(d.source.index) || matchSet.has(d.target.index);
+                    return !isChainEdge && !isConnected;
+                });
+                
+                // In Focus mode: hide bridge edges that are not part of the visible call chain
                 cgBridgeEdgeSelection.classed('search-hidden', d => {
                     if (cgViewMode !== 'focus' || !cgSearchTerm) return false;
-                    // In focus mode, hide bridge edge unless BOTH endpoints are in visible nodes
+                    // Hide bridge edge unless BOTH endpoints are in visible nodes
                     // AND the edge is part of the call chain
                     const bothVisible = visibleNodes.has(d.source.index) && visibleNodes.has(d.target.index);
                     if (!bothVisible) return true;
