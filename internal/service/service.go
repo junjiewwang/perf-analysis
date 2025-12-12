@@ -7,6 +7,7 @@ import (
 
 	"github.com/perf-analysis/internal/repository"
 	"github.com/perf-analysis/internal/scheduler"
+	"github.com/perf-analysis/internal/scheduler/source"
 	"github.com/perf-analysis/internal/storage"
 	"github.com/perf-analysis/pkg/config"
 	"github.com/perf-analysis/pkg/utils"
@@ -19,6 +20,11 @@ type Service struct {
 	db        *repository.Repositories
 	storage   storage.Storage
 	scheduler *scheduler.Scheduler
+
+	// sources holds all task sources
+	sources []source.TaskSource
+	// aggregator aggregates multiple sources into a single channel
+	aggregator *source.Aggregator
 
 	running bool
 }
@@ -102,8 +108,10 @@ func (s *Service) initStorage() error {
 func (s *Service) initScheduler() error {
 	s.logger.Info("Initializing scheduler...")
 
-	// Create task fetcher
-	fetcher := scheduler.NewRepositoryTaskFetcher(s.db.Task, s.db.Suggestion)
+	// Initialize task sources from configuration
+	if err := s.initSources(); err != nil {
+		return fmt.Errorf("failed to initialize sources: %w", err)
+	}
 
 	// Create task processor
 	processorConfig := &scheduler.ProcessorConfig{
@@ -114,11 +122,79 @@ func (s *Service) initScheduler() error {
 	}
 	processor := scheduler.NewDefaultTaskProcessor(processorConfig)
 
-	// Create scheduler
+	// Create scheduler with aggregator
 	schedulerConfig := scheduler.FromConfig(&s.config.Scheduler)
-	s.scheduler = scheduler.New(schedulerConfig, fetcher, processor, s.logger)
+	s.scheduler = scheduler.New(schedulerConfig, s.aggregator, processor, s.db.Suggestion, s.logger)
 
 	s.logger.Info("Scheduler initialized")
+	return nil
+}
+
+// initSources initializes task sources based on configuration.
+func (s *Service) initSources() error {
+	s.logger.Info("Initializing task sources...")
+
+	// Convert config.SourceConfig to source.SourceConfig
+	var sourceConfigs []*source.SourceConfig
+	for _, cfg := range s.config.Sources {
+		if !cfg.Enabled {
+			s.logger.Info("Source %s (%s) is disabled, skipping", cfg.Name, cfg.Type)
+			continue
+		}
+
+		sourceConfigs = append(sourceConfigs, &source.SourceConfig{
+			Type:    source.SourceType(cfg.Type),
+			Name:    cfg.Name,
+			Enabled: cfg.Enabled,
+			Options: cfg.Options,
+		})
+	}
+
+	// If no sources configured, use default database source
+	if len(sourceConfigs) == 0 {
+		s.logger.Info("No sources configured, using default database source")
+		sourceConfigs = append(sourceConfigs, &source.SourceConfig{
+			Type:    source.SourceTypeDB,
+			Name:    "default-db",
+			Enabled: true,
+			Options: map[string]interface{}{
+				"poll_interval": s.config.Scheduler.PollInterval,
+				"batch_size":    s.config.Scheduler.TaskBatchSize,
+			},
+		})
+	}
+
+	// Create sources from configuration
+	sources, err := source.CreateSources(sourceConfigs)
+	if err != nil {
+		return err
+	}
+
+	// Inject dependencies for database sources
+	for _, src := range sources {
+		if dbSource, ok := src.(*source.DatabaseSource); ok {
+			dbSource.SetRepositories(s.db.Task, s.db.Suggestion)
+			dbSource.SetLogger(s.logger)
+		}
+		// Set logger for other source types
+		if kafkaSource, ok := src.(*source.KafkaSource); ok {
+			kafkaSource.SetLogger(s.logger)
+		}
+		if httpSource, ok := src.(*source.HTTPSource); ok {
+			httpSource.SetLogger(s.logger)
+		}
+	}
+
+	s.sources = sources
+
+	// Create aggregator
+	s.aggregator = source.NewAggregator(sources, s.config.Scheduler.TaskBatchSize*2, s.logger)
+
+	s.logger.Info("Initialized %d task sources", len(sources))
+	for _, src := range sources {
+		s.logger.Info("  - %s (%s)", src.Name(), src.Type())
+	}
+
 	return nil
 }
 
@@ -142,6 +218,12 @@ func (s *Service) Stop() error {
 
 	if s.scheduler != nil {
 		s.scheduler.Stop()
+	}
+
+	if s.aggregator != nil {
+		if err := s.aggregator.Stop(); err != nil {
+			s.logger.Error("Failed to stop aggregator: %v", err)
+		}
 	}
 
 	if s.db != nil {

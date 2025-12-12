@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/perf-analysis/internal/repository"
+	"github.com/perf-analysis/internal/scheduler/source"
 	"github.com/perf-analysis/pkg/config"
 	"github.com/perf-analysis/pkg/model"
 	"github.com/perf-analysis/pkg/utils"
@@ -23,21 +25,6 @@ type Task struct {
 	COSBucket     string
 	RequestParams model.RequestParams
 	Priority      int // Higher value = higher priority
-}
-
-// TaskFetcher defines the interface for fetching tasks from the database.
-type TaskFetcher interface {
-	// FetchPendingTasks returns pending tasks to be processed.
-	FetchPendingTasks(ctx context.Context, limit int) ([]*Task, error)
-
-	// LockTask attempts to lock a task for processing.
-	LockTask(ctx context.Context, taskID int64) (bool, error)
-
-	// UpdateTaskStatus updates the task status.
-	UpdateTaskStatus(ctx context.Context, taskID int64, status model.AnalysisStatus, info string) error
-
-	// FetchAnalysisRules returns the analysis rules from the database.
-	FetchAnalysisRules(ctx context.Context) ([]model.SuggestionRule, error)
 }
 
 // TaskProcessor defines the interface for processing tasks.
@@ -77,9 +64,12 @@ func FromConfig(cfg *config.SchedulerConfig) *SchedulerConfig {
 // Scheduler manages task scheduling and worker pool.
 type Scheduler struct {
 	config    *SchedulerConfig
-	fetcher   TaskFetcher
 	processor TaskProcessor
 	logger    utils.Logger
+
+	// Source-based task fetching (Strategy Pattern)
+	aggregator     *source.Aggregator
+	suggestionRepo repository.SuggestionRepository
 
 	workerPool chan struct{}          // Semaphore for worker count
 	taskQueue  chan *Task             // Task queue
@@ -91,8 +81,8 @@ type Scheduler struct {
 	stopCh  chan struct{}
 }
 
-// New creates a new Scheduler.
-func New(config *SchedulerConfig, fetcher TaskFetcher, processor TaskProcessor, logger utils.Logger) *Scheduler {
+// New creates a new Scheduler with source aggregator.
+func New(config *SchedulerConfig, aggregator *source.Aggregator, processor TaskProcessor, suggestionRepo repository.SuggestionRepository, logger utils.Logger) *Scheduler {
 	if config == nil {
 		config = DefaultSchedulerConfig()
 	}
@@ -101,13 +91,14 @@ func New(config *SchedulerConfig, fetcher TaskFetcher, processor TaskProcessor, 
 	}
 
 	return &Scheduler{
-		config:     config,
-		fetcher:    fetcher,
-		processor:  processor,
-		logger:     logger,
-		workerPool: make(chan struct{}, config.WorkerCount),
-		taskQueue:  make(chan *Task, config.TaskBatchSize*2),
-		stopCh:     make(chan struct{}),
+		config:         config,
+		aggregator:     aggregator,
+		suggestionRepo: suggestionRepo,
+		processor:      processor,
+		logger:         logger,
+		workerPool:     make(chan struct{}, config.WorkerCount),
+		taskQueue:      make(chan *Task, config.TaskBatchSize*2),
+		stopCh:         make(chan struct{}),
 	}
 }
 
@@ -122,8 +113,16 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		s.workerPool <- struct{}{}
 	}
 
-	// Start the task polling loop
-	go s.pollLoop(ctx)
+	// Refresh rules initially
+	s.refreshRules(ctx)
+
+	// Start the aggregator
+	if err := s.aggregator.Start(ctx); err != nil {
+		return err
+	}
+
+	// Start the source-based event loop
+	go s.sourceEventLoop(ctx)
 
 	// Start the task processing loop
 	go s.processLoop(ctx)
@@ -140,83 +139,6 @@ func (s *Scheduler) Stop() {
 	// Wait for all workers to complete
 	s.wg.Wait()
 	s.logger.Info("Scheduler stopped")
-}
-
-// pollLoop continuously polls for new tasks.
-func (s *Scheduler) pollLoop(ctx context.Context) {
-	ticker := time.NewTicker(s.config.PollInterval)
-	defer ticker.Stop()
-
-	// Initial poll
-	s.poll(ctx)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-s.stopCh:
-			return
-		case <-ticker.C:
-			s.poll(ctx)
-		}
-	}
-}
-
-// poll fetches and queues pending tasks.
-func (s *Scheduler) poll(ctx context.Context) {
-	// Check available capacity
-	activeWorkers := s.config.WorkerCount - len(s.workerPool)
-	if activeWorkers >= s.config.WorkerCount {
-		return // All workers busy
-	}
-
-	// Fetch pending tasks
-	tasks, err := s.fetcher.FetchPendingTasks(ctx, s.config.TaskBatchSize)
-	if err != nil {
-		s.logger.Error("Failed to fetch pending tasks: %v", err)
-		return
-	}
-
-	if len(tasks) == 0 {
-		return
-	}
-
-	// Refresh analysis rules
-	rules, err := s.fetcher.FetchAnalysisRules(ctx)
-	if err != nil {
-		s.logger.Warn("Failed to fetch analysis rules: %v", err)
-	} else {
-		s.mu.Lock()
-		s.rules = rules
-		s.mu.Unlock()
-	}
-
-	// Queue tasks with priority consideration
-	for _, task := range tasks {
-		// Check if we should accept this task
-		if !s.shouldAcceptTask(task) {
-			continue
-		}
-
-		// Try to lock the task
-		locked, err := s.fetcher.LockTask(ctx, task.ID)
-		if err != nil {
-			s.logger.Error("Failed to lock task %d: %v", task.ID, err)
-			continue
-		}
-		if !locked {
-			continue // Task already locked by another instance
-		}
-
-		// Queue the task
-		select {
-		case s.taskQueue <- task:
-			s.logger.Info("Queued task %d (UUID: %s)", task.ID, task.UUID)
-		default:
-			// Queue full, task will be picked up in next poll
-			s.logger.Warn("Task queue full, task %d will be retried", task.ID)
-		}
-	}
 }
 
 // shouldAcceptTask determines if a task should be accepted based on priority.
@@ -278,13 +200,92 @@ func (s *Scheduler) processTask(ctx context.Context, task *Task) {
 
 	if err != nil {
 		s.logger.Error("Task %d failed after %v: %v", task.ID, duration, err)
-		if updateErr := s.fetcher.UpdateTaskStatus(ctx, task.ID, model.AnalysisStatusFailed, err.Error()); updateErr != nil {
-			s.logger.Error("Failed to update task status: %v", updateErr)
-		}
 		return
 	}
 
 	s.logger.Info("Task %d completed successfully in %v", task.ID, duration)
+}
+
+// sourceEventLoop receives task events from the aggregator and queues them for processing.
+func (s *Scheduler) sourceEventLoop(ctx context.Context) {
+	// Periodically refresh rules
+	rulesTicker := time.NewTicker(30 * time.Second)
+	defer rulesTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.stopCh:
+			return
+		case <-rulesTicker.C:
+			s.refreshRules(ctx)
+		case event, ok := <-s.aggregator.Tasks():
+			if !ok {
+				s.logger.Info("Aggregator channel closed")
+				return
+			}
+
+			// Convert TaskEvent to Task
+			task := s.convertEventToTask(event)
+
+			// Check if we should accept this task
+			if !s.shouldAcceptTask(task) {
+				s.logger.Debug("Skipping task %d due to priority constraints", task.ID)
+				continue
+			}
+
+			// Queue the task
+			select {
+			case s.taskQueue <- task:
+				s.logger.Info("Queued task %d (UUID: %s) from source %s/%s",
+					task.ID, task.UUID, event.SourceType, event.SourceName)
+			default:
+				// Queue full, nack the event so it can be retried
+				s.logger.Warn("Task queue full, nacking task %d", task.ID)
+				if err := s.aggregator.Nack(ctx, event, "task queue full"); err != nil {
+					s.logger.Error("Failed to nack event: %v", err)
+				}
+			}
+		}
+	}
+}
+
+// refreshRules fetches and caches analysis rules.
+func (s *Scheduler) refreshRules(ctx context.Context) {
+	if s.suggestionRepo == nil {
+		return
+	}
+
+	rules, err := s.suggestionRepo.GetAnalysisRules(ctx)
+	if err != nil {
+		s.logger.Warn("Failed to refresh analysis rules: %v", err)
+		return
+	}
+
+	s.mu.Lock()
+	s.rules = rules
+	s.mu.Unlock()
+
+	s.logger.Debug("Refreshed %d analysis rules", len(rules))
+}
+
+// convertEventToTask converts a source.TaskEvent to a scheduler.Task.
+func (s *Scheduler) convertEventToTask(event *source.TaskEvent) *Task {
+	t := event.Task
+	task := &Task{
+		ID:            t.ID,
+		UUID:          t.TaskUUID,
+		Type:          t.Type,
+		ProfilerType:  t.ProfilerType,
+		ResultFile:    t.ResultFile,
+		UserName:      t.UserName,
+		MasterTaskTID: t.MasterTaskTID,
+		COSBucket:     t.COSBucket,
+		RequestParams: t.RequestParams,
+		Priority:      event.Priority,
+	}
+	return task
 }
 
 // Stats returns current scheduler statistics.

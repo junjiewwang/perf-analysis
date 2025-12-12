@@ -17,7 +17,16 @@ type Config struct {
 	Storage   StorageConfig   `mapstructure:"storage"`
 	APM       APMConfig       `mapstructure:"apm"`
 	Scheduler SchedulerConfig `mapstructure:"scheduler"`
+	Sources   []SourceConfig  `mapstructure:"sources"`
 	Log       LogConfig       `mapstructure:"log"`
+}
+
+// SourceConfig holds configuration for a task source.
+type SourceConfig struct {
+	Type    string                 `mapstructure:"type"`    // database, kafka, http
+	Name    string                 `mapstructure:"name"`    // unique name for this source
+	Enabled bool                   `mapstructure:"enabled"` // whether this source is enabled
+	Options map[string]interface{} `mapstructure:"options"` // source-specific options
 }
 
 // AnalysisConfig holds analysis-related configuration.

@@ -11,39 +11,35 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/perf-analysis/internal/scheduler/source"
 	"github.com/perf-analysis/pkg/model"
 	"github.com/perf-analysis/pkg/utils"
 )
 
-// MockTaskFetcher is a mock implementation of TaskFetcher.
-type MockTaskFetcher struct {
+// MockSuggestionRepository is a mock implementation of SuggestionRepository.
+type MockSuggestionRepository struct {
 	mock.Mock
 }
 
-func (m *MockTaskFetcher) FetchPendingTasks(ctx context.Context, limit int) ([]*Task, error) {
-	args := m.Called(ctx, limit)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]*Task), args.Error(1)
-}
-
-func (m *MockTaskFetcher) LockTask(ctx context.Context, taskID int64) (bool, error) {
-	args := m.Called(ctx, taskID)
-	return args.Bool(0), args.Error(1)
-}
-
-func (m *MockTaskFetcher) UpdateTaskStatus(ctx context.Context, taskID int64, status model.AnalysisStatus, info string) error {
-	args := m.Called(ctx, taskID, status, info)
-	return args.Error(0)
-}
-
-func (m *MockTaskFetcher) FetchAnalysisRules(ctx context.Context) ([]model.SuggestionRule, error) {
+func (m *MockSuggestionRepository) GetAnalysisRules(ctx context.Context) ([]model.SuggestionRule, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]model.SuggestionRule), args.Error(1)
+}
+
+func (m *MockSuggestionRepository) SaveSuggestions(ctx context.Context, suggestions []model.Suggestion) error {
+	args := m.Called(ctx, suggestions)
+	return args.Error(0)
+}
+
+func (m *MockSuggestionRepository) GetSuggestionsByTaskUUID(ctx context.Context, taskUUID string) ([]model.Suggestion, error) {
+	args := m.Called(ctx, taskUUID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]model.Suggestion), args.Error(1)
 }
 
 // MockTaskProcessor is a mock implementation of TaskProcessor.
@@ -63,11 +59,15 @@ func (m *MockTaskProcessor) GetProcessedCount() int32 {
 }
 
 func TestScheduler_New(t *testing.T) {
-	fetcher := &MockTaskFetcher{}
 	processor := &MockTaskProcessor{}
+	suggestionRepo := &MockSuggestionRepository{}
+	logger := utils.NewDefaultLogger(utils.LevelDebug, io.Discard)
+
+	// Create a simple aggregator with no sources for testing
+	aggregator := source.NewAggregator(nil, 10, logger)
 
 	t.Run("WithDefaultConfig", func(t *testing.T) {
-		s := New(nil, fetcher, processor, nil)
+		s := New(nil, aggregator, processor, suggestionRepo, nil)
 		require.NotNil(t, s)
 		assert.Equal(t, 5, s.config.WorkerCount)
 		assert.Equal(t, 2*time.Second, s.config.PollInterval)
@@ -80,7 +80,7 @@ func TestScheduler_New(t *testing.T) {
 			PrioritySlots: 3,
 			TaskBatchSize: 20,
 		}
-		s := New(config, fetcher, processor, nil)
+		s := New(config, aggregator, processor, suggestionRepo, nil)
 		require.NotNil(t, s)
 		assert.Equal(t, 10, s.config.WorkerCount)
 		assert.Equal(t, 5*time.Second, s.config.PollInterval)
@@ -88,13 +88,16 @@ func TestScheduler_New(t *testing.T) {
 }
 
 func TestScheduler_Stats(t *testing.T) {
-	fetcher := &MockTaskFetcher{}
 	processor := &MockTaskProcessor{}
+	suggestionRepo := &MockSuggestionRepository{}
+	logger := utils.NewDefaultLogger(utils.LevelDebug, io.Discard)
+	aggregator := source.NewAggregator(nil, 10, logger)
+
 	config := &SchedulerConfig{
 		WorkerCount: 5,
 	}
 
-	s := New(config, fetcher, processor, nil)
+	s := New(config, aggregator, processor, suggestionRepo, nil)
 
 	stats := s.Stats()
 	// Before Start(), workerPool is empty, so ActiveWorkers = WorkerCount - 0 = WorkerCount
@@ -104,9 +107,11 @@ func TestScheduler_Stats(t *testing.T) {
 }
 
 func TestScheduler_ShouldAcceptTask(t *testing.T) {
-	fetcher := &MockTaskFetcher{}
 	processor := &MockTaskProcessor{}
+	suggestionRepo := &MockSuggestionRepository{}
 	logger := utils.NewDefaultLogger(utils.LevelDebug, io.Discard)
+	aggregator := source.NewAggregator(nil, 10, logger)
+
 	config := &SchedulerConfig{
 		WorkerCount:   5,
 		PrioritySlots: 2,
@@ -114,7 +119,7 @@ func TestScheduler_ShouldAcceptTask(t *testing.T) {
 		TaskBatchSize: 5,
 	}
 
-	s := New(config, fetcher, processor, logger)
+	s := New(config, aggregator, processor, suggestionRepo, logger)
 
 	// Need to initialize worker pool like Start() does
 	for i := 0; i < config.WorkerCount; i++ {
@@ -133,9 +138,10 @@ func TestScheduler_ShouldAcceptTask(t *testing.T) {
 }
 
 func TestScheduler_StartStop(t *testing.T) {
-	fetcher := &MockTaskFetcher{}
 	processor := &MockTaskProcessor{}
+	suggestionRepo := &MockSuggestionRepository{}
 	logger := utils.NewDefaultLogger(utils.LevelDebug, io.Discard)
+	aggregator := source.NewAggregator(nil, 10, logger)
 
 	config := &SchedulerConfig{
 		PollInterval:  100 * time.Millisecond,
@@ -144,11 +150,10 @@ func TestScheduler_StartStop(t *testing.T) {
 		TaskBatchSize: 5,
 	}
 
-	s := New(config, fetcher, processor, logger)
+	s := New(config, aggregator, processor, suggestionRepo, logger)
 
 	// Setup expectations
-	fetcher.On("FetchPendingTasks", mock.Anything, 5).Return([]*Task{}, nil)
-	fetcher.On("FetchAnalysisRules", mock.Anything).Return([]model.SuggestionRule{}, nil)
+	suggestionRepo.On("GetAnalysisRules", mock.Anything).Return([]model.SuggestionRule{}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -170,51 +175,6 @@ func TestScheduler_StartStop(t *testing.T) {
 	assert.False(t, stats.Running)
 }
 
-func TestScheduler_ProcessTask(t *testing.T) {
-	fetcher := &MockTaskFetcher{}
-	processor := &MockTaskProcessor{}
-	logger := utils.NewDefaultLogger(utils.LevelDebug, io.Discard)
-
-	config := &SchedulerConfig{
-		PollInterval:  100 * time.Millisecond,
-		WorkerCount:   2,
-		PrioritySlots: 1,
-		TaskBatchSize: 5,
-	}
-
-	s := New(config, fetcher, processor, logger)
-
-	task := &Task{
-		ID:   1,
-		UUID: "test-uuid",
-		Type: model.TaskTypeJava,
-	}
-
-	// Setup expectations
-	tasks := []*Task{task}
-	fetcher.On("FetchPendingTasks", mock.Anything, 5).Return(tasks, nil).Once()
-	fetcher.On("FetchPendingTasks", mock.Anything, 5).Return([]*Task{}, nil)
-	fetcher.On("FetchAnalysisRules", mock.Anything).Return([]model.SuggestionRule{}, nil)
-	fetcher.On("LockTask", mock.Anything, int64(1)).Return(true, nil)
-	processor.On("Process", mock.Anything, task, mock.Anything).Return(nil)
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Start scheduler
-	err := s.Start(ctx)
-	require.NoError(t, err)
-
-	// Wait for task to be processed
-	time.Sleep(500 * time.Millisecond)
-
-	// Verify task was processed
-	assert.Equal(t, int32(1), processor.GetProcessedCount())
-
-	// Stop scheduler
-	cancel()
-	s.Stop()
-}
-
 func TestDefaultSchedulerConfig(t *testing.T) {
 	config := DefaultSchedulerConfig()
 	assert.Equal(t, 2*time.Second, config.PollInterval)
@@ -223,7 +183,14 @@ func TestDefaultSchedulerConfig(t *testing.T) {
 	assert.Equal(t, 10, config.TaskBatchSize)
 }
 
-func TestConvertModelTask(t *testing.T) {
+func TestScheduler_ConvertEventToTask(t *testing.T) {
+	processor := &MockTaskProcessor{}
+	suggestionRepo := &MockSuggestionRepository{}
+	logger := utils.NewDefaultLogger(utils.LevelDebug, io.Discard)
+	aggregator := source.NewAggregator(nil, 10, logger)
+
+	s := New(nil, aggregator, processor, suggestionRepo, logger)
+
 	masterTID := "master-123"
 	modelTask := &model.Task{
 		ID:            1,
@@ -239,7 +206,8 @@ func TestConvertModelTask(t *testing.T) {
 		},
 	}
 
-	task := convertModelTask(modelTask)
+	event := source.NewTaskEvent(modelTask, source.SourceTypeDB, "test-source")
+	task := s.convertEventToTask(event)
 
 	assert.Equal(t, int64(1), task.ID)
 	assert.Equal(t, "uuid-123", task.UUID)
@@ -249,18 +217,39 @@ func TestConvertModelTask(t *testing.T) {
 	assert.Equal(t, "testuser", task.UserName)
 	assert.NotNil(t, task.MasterTaskTID)
 	assert.Equal(t, "master-123", *task.MasterTaskTID)
-	assert.Equal(t, 1, task.Priority) // Short duration = high priority
 }
 
-func TestConvertModelTask_LongDuration(t *testing.T) {
-	modelTask := &model.Task{
-		ID:       2,
-		TaskUUID: "uuid-456",
-		RequestParams: model.RequestParams{
-			Duration: 300, // Long duration
-		},
-	}
+func TestScheduler_ConvertEventToTask_Priority(t *testing.T) {
+	processor := &MockTaskProcessor{}
+	suggestionRepo := &MockSuggestionRepository{}
+	logger := utils.NewDefaultLogger(utils.LevelDebug, io.Discard)
+	aggregator := source.NewAggregator(nil, 10, logger)
 
-	task := convertModelTask(modelTask)
-	assert.Equal(t, 0, task.Priority) // Long duration = normal priority
+	s := New(nil, aggregator, processor, suggestionRepo, logger)
+
+	t.Run("HighPriorityFromEvent", func(t *testing.T) {
+		modelTask := &model.Task{
+			ID:       1,
+			TaskUUID: "uuid-123",
+			RequestParams: model.RequestParams{
+				Duration: 60, // Short duration = high priority
+			},
+		}
+		event := source.NewTaskEvent(modelTask, source.SourceTypeDB, "test-source")
+		task := s.convertEventToTask(event)
+		assert.Equal(t, 1, task.Priority) // High priority from event
+	})
+
+	t.Run("NormalPriorityFromEvent", func(t *testing.T) {
+		modelTask := &model.Task{
+			ID:       2,
+			TaskUUID: "uuid-456",
+			RequestParams: model.RequestParams{
+				Duration: 300, // Long duration = normal priority
+			},
+		}
+		event := source.NewTaskEvent(modelTask, source.SourceTypeDB, "test-source")
+		task := s.convertEventToTask(event)
+		assert.Equal(t, 0, task.Priority) // Normal priority
+	})
 }

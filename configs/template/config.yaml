@@ -44,6 +44,40 @@ scheduler:
   priority_slots: 2  # reserved slots for high-priority tasks
   task_batch_size: 10
 
+# Task sources configuration (Strategy Pattern)
+# Each source is a strategy that can be enabled/disabled independently
+sources:
+  # Database source - polls database for pending tasks
+  - type: database
+    name: primary-db
+    enabled: true
+    options:
+      poll_interval: 2s    # how often to poll for new tasks
+      batch_size: 10       # max tasks to fetch per poll
+
+  # Kafka source - consumes tasks from Kafka topic (optional)
+  # - type: kafka
+  #   name: kafka-tasks
+  #   enabled: false
+  #   options:
+  #     brokers:
+  #       - localhost:9092
+  #     topic: perf-tasks
+  #     consumer_group: perf-analyzer
+  #     auto_commit: false
+  #     max_poll_records: 100
+
+  # HTTP source - receives tasks via HTTP webhook (optional)
+  # - type: http
+  #   name: http-webhook
+  #   enabled: false
+  #   options:
+  #     listen_addr: ":8081"
+  #     path: /tasks
+  #     read_timeout: 30s
+  #     write_timeout: 30s
+  #     max_body_size: 1048576  # 1MB
+
 # Logging configuration
 log:
   level: info  # debug, info, warn, error
