@@ -1,0 +1,722 @@
+/**
+ * Heap Analysis CSS - Styles specific to heap dump analysis
+ */
+
+/* Heap Type Badge */
+.type-badge.heap {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+    color: white;
+}
+
+/* Heap Tab */
+.tab.heap-tab {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+}
+
+.tab.heap-tab.active {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+}
+
+/* Heap Stats Grid */
+.heap-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.heap-stat-card {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+    border-radius: 10px;
+    padding: 15px;
+    text-align: center;
+    border-left: 4px solid #9b59b6;
+}
+
+.heap-stat-card .stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #9b59b6;
+}
+
+.heap-stat-card .stat-label {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+
+/* Heap Treemap */
+#heapTreemap {
+    width: 100%;
+    height: 500px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+/* Heap Class Table */
+.heap-class-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.heap-class-table th,
+.heap-class-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.heap-class-table th {
+    background: #f9f9f9;
+    font-weight: 600;
+    font-size: 13px;
+    color: #666;
+    position: sticky;
+    top: 0;
+}
+
+.heap-class-table tr:hover {
+    background: #f5f7fa;
+}
+
+.heap-class-table .class-name {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    word-break: break-all;
+    max-width: 500px;
+}
+
+.heap-class-table .size-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.heap-class-table .size-bar-bg {
+    width: 120px;
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.heap-class-table .size-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #9b59b6 0%, #8e44ad 100%);
+    border-radius: 4px;
+}
+
+.heap-class-table .size-text {
+    font-size: 13px;
+    color: #333;
+    min-width: 80px;
+}
+
+.heap-class-table .instance-count {
+    font-size: 13px;
+    color: #666;
+}
+
+.heap-class-table .retainer-cell {
+    padding: 0 12px 12px 12px;
+}
+
+.heap-class-row-expanded {
+    background: #faf5ff !important;
+}
+
+/* Heap View Toggle */
+.heap-view-toggle {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.heap-view-btn {
+    padding: 8px 16px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.heap-view-btn:hover {
+    background: #f5f5f5;
+}
+
+.heap-view-btn.active {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+    color: white;
+    border-color: transparent;
+}
+
+/* Heap Search Box */
+.heap-search-box {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.heap-search-box input {
+    flex: 1;
+    max-width: 400px;
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+/* Heap Package Group */
+.heap-package-group {
+    margin-bottom: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.heap-package-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.heap-package-header:hover {
+    background: linear-gradient(135deg, #e8ecf1 0%, #dde3eb 100%);
+}
+
+.heap-package-stats {
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+    font-weight: normal;
+    color: #666;
+}
+
+.heap-package-content {
+    display: none;
+    padding: 0;
+}
+
+.heap-package-content.expanded {
+    display: block;
+}
+
+/* Retainer Analysis Styles */
+.retainer-section {
+    margin-top: 10px;
+    padding: 12px;
+    background: linear-gradient(135deg, #f8f4fc 0%, #f0e8f5 100%);
+    border-radius: 8px;
+    border-left: 3px solid #9b59b6;
+}
+
+.retainer-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #7b1fa2;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.retainer-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.retainer-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    margin: 4px 0;
+    background: white;
+    border-radius: 6px;
+    font-size: 12px;
+    border: 1px solid #e8e0f0;
+}
+
+.retainer-item:hover {
+    background: #faf5ff;
+    border-color: #d4c4e3;
+}
+
+.retainer-class {
+    font-family: 'Monaco', 'Menlo', monospace;
+    color: #333;
+    word-break: break-all;
+    flex: 1;
+}
+
+.retainer-field {
+    color: #9b59b6;
+    font-weight: 500;
+}
+
+.retainer-stats {
+    display: flex;
+    gap: 15px;
+    font-size: 11px;
+    color: #666;
+    white-space: nowrap;
+}
+
+.retainer-stats span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.retainer-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+    color: white;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.expand-retainers-btn {
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid #9b59b6;
+    color: #9b59b6;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s;
+}
+
+.expand-retainers-btn:hover {
+    background: #9b59b6;
+    color: white;
+}
+
+/* Reference Graph Visualization */
+#heapRefGraph {
+    width: 100%;
+    height: 600px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.ref-graph-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.ref-graph-controls select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    min-width: 200px;
+}
+
+.ref-graph-legend {
+    display: flex;
+    gap: 20px;
+    margin-top: 15px;
+    font-size: 13px;
+    color: #666;
+}
+
+.ref-graph-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ref-graph-legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid #333;
+}
+
+/* Reference Graph Nodes */
+.ref-graph-node {
+    cursor: pointer;
+}
+
+.ref-graph-node circle {
+    stroke: #333;
+    stroke-width: 2px;
+    transition: all 0.2s;
+}
+
+.ref-graph-node:hover circle {
+    stroke-width: 3px;
+    filter: brightness(1.1);
+}
+
+.ref-graph-node.gc-root circle {
+    stroke: #00c853;
+    stroke-width: 3px;
+}
+
+.ref-graph-node.target circle {
+    stroke: #e040fb;
+    stroke-width: 3px;
+}
+
+.ref-graph-node text {
+    font-size: 10px;
+    fill: #333;
+    pointer-events: none;
+}
+
+/* Reference Graph Edges */
+.ref-graph-edge {
+    stroke: #999;
+    stroke-opacity: 0.6;
+    fill: none;
+}
+
+.ref-graph-edge.highlighted {
+    stroke: #e040fb;
+    stroke-opacity: 1;
+    stroke-width: 2px;
+}
+
+.ref-graph-edge-label {
+    font-size: 9px;
+    fill: #666;
+}
+
+/* GC Root Path Container */
+.gc-path-container {
+    margin-top: 20px;
+    padding: 15px;
+    background: linear-gradient(135deg, #f8f4fc 0%, #f0e8f5 100%);
+    border-radius: 8px;
+    border-left: 4px solid #9b59b6;
+}
+
+.gc-path-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #7b1fa2;
+    margin-bottom: 10px;
+}
+
+.gc-path-item {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    background: white;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.gc-path-node {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+.gc-path-node.root {
+    background: linear-gradient(135deg, #00c853 0%, #00a844 100%);
+    color: white;
+    border: none;
+}
+
+.gc-path-node.target {
+    background: linear-gradient(135deg, #e040fb 0%, #9c27b0 100%);
+    color: white;
+    border: none;
+}
+
+.gc-path-arrow {
+    color: #999;
+    font-size: 14px;
+}
+
+.gc-path-field {
+    color: #9b59b6;
+    font-weight: 500;
+}
+
+.depth-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: #7c4dff;
+    color: white;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+/* Root Cause Analysis Styles */
+.root-cause-section {
+    margin-bottom: 20px;
+}
+
+.root-cause-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #9b59b6;
+}
+
+.business-retainers-filter {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.business-retainers-filter input {
+    flex: 1;
+    max-width: 400px;
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+/* Leak Suspects */
+.leak-suspect-card {
+    background: linear-gradient(135deg, #fff5f0 0%, #ffe8e0 100%);
+    border: 1px solid #ff6b35;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 12px;
+}
+
+.leak-suspect-card.high-risk {
+    border-left: 4px solid #e53935;
+}
+
+.leak-suspect-card.medium-risk {
+    border-left: 4px solid #ff9800;
+}
+
+.leak-suspect-card.low-risk {
+    border-left: 4px solid #ffc107;
+}
+
+.leak-suspect-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+}
+
+.leak-suspect-class {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    word-break: break-all;
+}
+
+.leak-suspect-risk {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.leak-suspect-risk.high {
+    background: #e53935;
+    color: white;
+}
+
+.leak-suspect-risk.medium {
+    background: #ff9800;
+    color: white;
+}
+
+.leak-suspect-risk.low {
+    background: #ffc107;
+    color: #333;
+}
+
+.leak-suspect-stats {
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.leak-suspect-reason {
+    font-size: 13px;
+    color: #666;
+    background: white;
+    padding: 10px;
+    border-radius: 6px;
+    margin-top: 10px;
+}
+
+/* Business Retainer Cards */
+.business-retainer-group {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    overflow: hidden;
+}
+
+.business-retainer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.business-retainer-header:hover {
+    background: linear-gradient(135deg, #e8ecf1 0%, #dde3eb 100%);
+}
+
+.business-retainer-target {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+.business-retainer-summary {
+    display: flex;
+    gap: 15px;
+    font-size: 12px;
+    color: #666;
+}
+
+.business-retainer-content {
+    display: none;
+    padding: 15px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.business-retainer-content.expanded {
+    display: block;
+}
+
+.business-retainer-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px;
+    background: linear-gradient(135deg, #fff5f0 0%, #ffe8e0 100%);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    border-left: 3px solid #ff6b35;
+}
+
+.business-retainer-item.gc-root {
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    border-left-color: #00c853;
+}
+
+.business-retainer-class {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 13px;
+    color: #333;
+    word-break: break-all;
+    flex: 1;
+}
+
+.business-retainer-path {
+    font-size: 11px;
+    color: #ff6b35;
+    margin-top: 5px;
+}
+
+.business-retainer-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 12px;
+    color: #666;
+    text-align: right;
+    min-width: 150px;
+}
+
+.gc-root-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    background: #00c853;
+    color: white;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+/* Suggestions */
+.suggestion-card {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    border: 1px solid #2196f3;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 10px;
+}
+
+.suggestion-card .suggestion-icon {
+    font-size: 18px;
+    margin-right: 10px;
+}
+
+.suggestion-card .suggestion-text {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+}
+
+.suggestion-card .suggestion-func {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 12px;
+    color: #1565c0;
+    margin-top: 8px;
+}
+
+/* No Data State */
+.no-data-message {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+    font-size: 14px;
+}
+
+.no-data-message .icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+}

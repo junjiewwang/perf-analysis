@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perf Analysis - Visualization</title>
+    <!-- External Libraries -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.css">
+    <!-- Application Styles -->
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/flamegraph.css">
+    <link rel="stylesheet" href="/static/css/callgraph.css">
+    <link rel="stylesheet" href="/static/css/heap.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div>
+                <h1>🔥 Perf Analysis Viewer</h1>
+                <div class="subtitle">Interactive performance profiling visualization</div>
+            </div>
+            <div class="task-selector">
+                <label>Task:</label>
+                <select id="taskSelect" onchange="loadTask(this.value)">
+                    <option value="">Loading...</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="tabs" id="tabsContainer">
+            <button class="tab active" id="tab-overview" onclick="showPanel('overview')">📊 Overview</button>
+            <button class="tab cpu-tab" id="tab-flamegraph" onclick="showPanel('flamegraph')">🔥 Flame Graph</button>
+            <button class="tab cpu-tab" id="tab-callgraph" onclick="showPanel('callgraph')">📈 Call Graph</button>
+            <button class="tab cpu-tab" id="tab-topfuncs" onclick="showPanel('topfuncs')">📋 Top Functions</button>
+            <button class="tab cpu-tab" id="tab-threads" onclick="showPanel('threads')">🧵 Threads</button>
+            <button class="tab heap-tab hidden" id="tab-heaptreemap" onclick="showPanel('heaptreemap')">🗺️ Memory Map</button>
+            <button class="tab heap-tab hidden" id="tab-heaphistogram" onclick="showPanel('heaphistogram')">📊 Class Histogram</button>
+            <button class="tab heap-tab hidden" id="tab-heaprootcause" onclick="showPanel('heaprootcause')">🎯 Root Cause</button>
+            <button class="tab heap-tab hidden" id="tab-heaprefgraph" onclick="showPanel('heaprefgraph')">🔗 Reference Graph</button>
+        </div>
+
+        <!-- Overview Panel -->
+        <div id="overview" class="panel active">
+            <div class="card" id="taskMetadataCard" style="margin-bottom: 20px; display: none;">
+                <h2>📋 Task Information</h2>
+                <div class="metadata-grid">
+                    <div class="metadata-item">
+                        <span class="metadata-label">Task Type</span>
+                        <span class="metadata-value" id="metaTaskType">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Profiler</span>
+                        <span class="metadata-value" id="metaProfiler">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Input File</span>
+                        <span class="metadata-value" id="metaInputFile">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Created At</span>
+                        <span class="metadata-value" id="metaCreatedAt">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Analysis Time</span>
+                        <span class="metadata-value" id="metaAnalysisTime">-</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Task UUID</span>
+                        <span class="metadata-value" id="metaTaskUUID">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalSamples">-</div>
+                    <div class="stat-label">Total Samples</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="topFuncsCount">-</div>
+                    <div class="stat-label">Functions Analyzed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="threadsCount">-</div>
+                    <div class="stat-label">Active Threads</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="taskUUID">-</div>
+                    <div class="stat-label">Task UUID</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Top 5 Hot Functions</h2>
+                <div class="tips" style="margin-bottom: 10px;">
+                    <span>💡 Click action buttons to search in Flame Graph or Call Graph</span>
+                </div>
+                <table class="top-funcs-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px">#</th>
+                            <th>Function</th>
+                            <th style="width: 200px">Self %</th>
+                            <th style="width: 100px">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topFuncsPreview"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Flame Graph Panel -->
+        <div id="flamegraph-panel" class="panel">
+            <div class="tips">
+                <span>💡 Click to zoom in, double-click to zoom out</span>
+                <span>🔍 Use search to highlight functions</span>
+            </div>
+            <div class="controls">
+                <input type="text" id="searchInput" placeholder="Search function name (e.g. HashMap, alibaba, netty)..." onkeyup="handleSearchKeyup(event)">
+                <button onclick="searchFlameGraph()">🔍 Search</button>
+                <button class="secondary" onclick="clearSearch()">Clear</button>
+                <button class="secondary" onclick="resetFlameGraph()">Reset View</button>
+                <span id="searchResultBadge" class="search-result-badge hidden"></span>
+            </div>
+            <div class="filter-section" id="flameFilterSection">
+                <span class="filter-label">🔧 Filter:</span>
+                <div class="filter-chips">
+                    <div class="filter-chip" data-filter="jvm" onclick="toggleFlameFilter('jvm')" title="JDK/JVM internal functions">
+                        <span class="chip-icon">☕</span> JVM
+                    </div>
+                    <div class="filter-chip" data-filter="gc" onclick="toggleFlameFilter('gc')" title="Garbage Collection functions">
+                        <span class="chip-icon">🗑️</span> GC
+                    </div>
+                    <div class="filter-chip" data-filter="native" onclick="toggleFlameFilter('native')" title="Native/C++ runtime functions">
+                        <span class="chip-icon">⚙️</span> Native
+                    </div>
+                    <div class="filter-chip" data-filter="kernel" onclick="toggleFlameFilter('kernel')" title="Linux kernel functions">
+                        <span class="chip-icon">🐧</span> Kernel
+                    </div>
+                    <div class="filter-chip" data-filter="reflect" onclick="toggleFlameFilter('reflect')" title="Reflection and proxy functions">
+                        <span class="chip-icon">🔄</span> Reflect
+                    </div>
+                </div>
+            </div>
+            <div id="flame-details">
+                <div class="detail-item">
+                    <span class="detail-label">📊 Total Samples:</span>
+                    <span class="detail-value" id="flame-total-samples">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">📈 Unique Functions:</span>
+                    <span class="detail-value" id="flame-unique-funcs">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">🔥 Max Depth:</span>
+                    <span class="detail-value" id="flame-max-depth">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">💡 Tip:</span>
+                    <span style="color: #666;">Click frame to zoom, right-click to zoom out</span>
+                </div>
+            </div>
+            <div id="flamegraph">
+                <div class="loading">Loading flame graph</div>
+            </div>
+        </div>
+
+        <!-- Call Graph Panel -->
+        <div id="callgraph-panel" class="panel">
+            <div class="tips">
+                <span>💡 Drag nodes to reposition</span>
+                <span>🔍 Scroll to zoom</span>
+                <span>🖱️ Hover on nodes for details</span>
+                <span>⌨️ Arrow keys to navigate matches</span>
+            </div>
+            <div class="controls">
+                <input type="text" id="callgraphSearchInput" placeholder="Search function name..." onkeyup="handleCallGraphSearchKeyup(event)">
+                <button onclick="searchCallGraph()">🔍 Search</button>
+                <button class="secondary" onclick="clearCallGraphSearch()">Clear</button>
+                <div class="search-nav">
+                    <button class="nav-btn" id="cgPrevBtn" onclick="navigateCallGraphMatch(-1)" disabled>← Prev</button>
+                    <span class="search-counter" id="cgSearchCounter"></span>
+                    <button class="nav-btn" id="cgNextBtn" onclick="navigateCallGraphMatch(1)" disabled>Next →</button>
+                </div>
+                <div class="view-mode-switch">
+                    <span class="switch-label left active">All</span>
+                    <div class="switch-track" id="viewModeSwitch" onclick="toggleViewMode()" title="Toggle between All nodes and Focus mode">
+                        <div class="switch-thumb"></div>
+                    </div>
+                    <span class="switch-label right">Focus</span>
+                </div>
+                <button class="secondary" onclick="fitCallGraph()">Fit to View</button>
+                <button class="secondary" onclick="resetCallGraph()">Reset Layout</button>
+            </div>
+            <div class="filter-section" id="callgraphFilterSection">
+                <span class="filter-label">🔧 Filter:</span>
+                <div class="filter-chips">
+                    <div class="filter-chip" data-filter="jvm" onclick="toggleCallGraphFilter('jvm')" title="JDK/JVM internal functions">
+                        <span class="chip-icon">☕</span> JVM
+                    </div>
+                    <div class="filter-chip" data-filter="gc" onclick="toggleCallGraphFilter('gc')" title="Garbage Collection functions">
+                        <span class="chip-icon">🗑️</span> GC
+                    </div>
+                    <div class="filter-chip" data-filter="native" onclick="toggleCallGraphFilter('native')" title="Native/C++ runtime functions">
+                        <span class="chip-icon">⚙️</span> Native
+                    </div>
+                    <div class="filter-chip" data-filter="kernel" onclick="toggleCallGraphFilter('kernel')" title="Linux kernel functions">
+                        <span class="chip-icon">🐧</span> Kernel
+                    </div>
+                    <div class="filter-chip" data-filter="reflect" onclick="toggleCallGraphFilter('reflect')" title="Reflection and proxy functions">
+                        <span class="chip-icon">🔄</span> Reflect
+                    </div>
+                </div>
+            </div>
+            <div class="callgraph-stats" id="callgraphStats" style="display: none;">
+                <div class="stat">
+                    <span class="stat-label">🎯 Matches:</span>
+                    <span class="stat-value" id="cgStatMatches">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">📍 Entry Points:</span>
+                    <span class="stat-value" id="cgStatRoots">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">🔗 Chain Depth:</span>
+                    <span class="stat-value" id="cgStatDepth">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">📊 Visible Nodes:</span>
+                    <span class="stat-value" id="cgStatVisible">0</span>
+                </div>
+            </div>
+            <div class="callgraph-container">
+                <div id="callgraph">
+                    <div class="loading">Loading call graph</div>
+                </div>
+                <div class="callchain-sidebar" id="callchainSidebar">
+                    <div class="callchain-header">
+                        <span>📋 Call Chain</span>
+                        <button class="callchain-close" onclick="toggleCallChainSidebar(false)">×</button>
+                    </div>
+                    <div class="callchain-content" id="callchainContent"></div>
+                </div>
+            </div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00c853;"></div>
+                    <span>Entry Point (Root)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #7c4dff;"></div>
+                    <span>Call Chain</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #e040fb;"></div>
+                    <span>Target (Match)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #f8d568;"></div>
+                    <span>Other Nodes</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #9c27b0; border: 1px dashed #9c27b0;"></div>
+                    <span>Bridge Edge (filtered bypass)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Functions Panel -->
+        <div id="topfuncs" class="panel">
+            <div class="card" style="box-shadow: none; padding: 0;">
+                <h2>All Functions (sorted by self %)</h2>
+                <div class="tips" style="margin-bottom: 10px;">
+                    <span>💡 Click action buttons to search in Flame Graph or Call Graph</span>
+                </div>
+                <table class="top-funcs-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px">#</th>
+                            <th>Function</th>
+                            <th style="width: 200px">Self %</th>
+                            <th style="width: 100px">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topFuncsAll"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Threads Panel -->
+        <div id="threads" class="panel">
+            <div class="card" style="box-shadow: none; padding: 0;">
+                <h2>Thread Statistics</h2>
+                <ul class="thread-list" id="threadList"></ul>
+            </div>
+        </div>
+
+        <!-- Heap TreeMap Panel -->
+        <div id="heaptreemap-panel" class="panel">
+            <div class="card">
+                <h2>🗺️ Heap Memory Distribution</h2>
+                <div class="tips" style="margin-bottom: 15px;">
+                    <span>💡 Click on a block to zoom in, right-click to zoom out</span>
+                    <span>📊 Block size represents memory usage</span>
+                </div>
+                <div class="heap-stats-grid" id="heapStatsGrid">
+                    <div class="heap-stat-card">
+                        <div class="stat-value" id="heapTotalSize">-</div>
+                        <div class="stat-label">Total Heap Size</div>
+                    </div>
+                    <div class="heap-stat-card">
+                        <div class="stat-value" id="heapTotalClasses">-</div>
+                        <div class="stat-label">Total Classes</div>
+                    </div>
+                    <div class="heap-stat-card">
+                        <div class="stat-value" id="heapTotalInstances">-</div>
+                        <div class="stat-label">Total Instances</div>
+                    </div>
+                    <div class="heap-stat-card">
+                        <div class="stat-value" id="heapFormat">-</div>
+                        <div class="stat-label">Heap Format</div>
+                    </div>
+                </div>
+                <div id="heapTreemap"></div>
+            </div>
+        </div>
+
+        <!-- Heap Histogram Panel -->
+        <div id="heaphistogram-panel" class="panel">
+            <div class="card">
+                <h2>📊 Class Histogram</h2>
+                <div class="heap-search-box">
+                    <input type="text" id="heapClassSearch" placeholder="Search class name (e.g. HashMap, byte[], String)..." onkeyup="filterHeapClasses()">
+                    <button onclick="filterHeapClasses()">🔍 Search</button>
+                    <button class="secondary" onclick="clearHeapSearch()">Clear</button>
+                </div>
+                <div class="heap-view-toggle">
+                    <button class="heap-view-btn active" id="heapViewFlat" onclick="setHeapView('flat')">📋 Flat View</button>
+                    <button class="heap-view-btn" id="heapViewPackage" onclick="setHeapView('package')">📦 Package View</button>
+                </div>
+                <div id="heapHistogramContainer">
+                    <div id="heapFlatView">
+                        <table class="heap-class-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px">#</th>
+                                    <th>Class Name</th>
+                                    <th style="width: 250px">Size</th>
+                                    <th style="width: 120px">Instances</th>
+                                    <th style="width: 100px">Percentage</th>
+                                </tr>
+                            </thead>
+                            <tbody id="heapClassTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="heapPackageView" style="display: none;">
+                        <div id="heapPackageGroups"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Heap Root Cause Analysis Panel -->
+        <div id="heaprootcause-panel" class="panel">
+            <div class="card">
+                <h2>🎯 Root Cause Analysis</h2>
+                <div class="tips" style="margin-bottom: 15px;">
+                    <span>💡 Identify business-level classes that retain the most memory</span>
+                    <span>🔍 Focus on application code, not JDK/framework internals</span>
+                </div>
+                
+                <!-- Leak Suspects Section -->
+                <div class="root-cause-section">
+                    <h3>⚠️ Memory Leak Suspects</h3>
+                    <div class="leak-suspects-container" id="leakSuspectsContainer">
+                        <div class="loading">Loading analysis...</div>
+                    </div>
+                </div>
+
+                <!-- Business Retainers Summary -->
+                <div class="root-cause-section" style="margin-top: 20px;">
+                    <h3>📊 Business Retainers by Target Class</h3>
+                    <div class="business-retainers-filter">
+                        <input type="text" id="rootCauseSearch" placeholder="Search class name..." onkeyup="HeapAnalysis.filterRootCause()">
+                        <button onclick="HeapAnalysis.filterRootCause()">🔍 Search</button>
+                    </div>
+                    <div id="businessRetainersContainer">
+                        <div class="loading">Loading retainer data...</div>
+                    </div>
+                </div>
+
+                <!-- Suggestions Section -->
+                <div class="root-cause-section" style="margin-top: 20px;">
+                    <h3>💡 Optimization Suggestions</h3>
+                    <div id="heapSuggestionsContainer">
+                        <div class="loading">Loading suggestions...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Heap Reference Graph Panel -->
+        <div id="heaprefgraph-panel" class="panel">
+            <div class="card">
+                <h2>🔗 Object Reference Graph</h2>
+                <div class="tips" style="margin-bottom: 15px;">
+                    <span>💡 Visualize object references from GC Roots to target classes</span>
+                    <span>🔍 Select a class to see its reference paths</span>
+                    <span>🖱️ Drag to pan, scroll to zoom</span>
+                </div>
+                <div class="ref-graph-controls">
+                    <label>Select Class:</label>
+                    <select id="refGraphClassSelect" onchange="loadRefGraphForClass(this.value)">
+                        <option value="">-- Select a class --</option>
+                    </select>
+                    <button onclick="fitRefGraph()">Fit to View</button>
+                    <button class="secondary" onclick="resetRefGraph()">Reset</button>
+                </div>
+                <div id="heapRefGraph">
+                    <div class="loading">Select a class to view its reference graph</div>
+                </div>
+                <div class="ref-graph-legend">
+                    <div class="ref-graph-legend-item">
+                        <div class="ref-graph-legend-color" style="background: #00c853;"></div>
+                        <span>GC Root</span>
+                    </div>
+                    <div class="ref-graph-legend-item">
+                        <div class="ref-graph-legend-color" style="background: #7c4dff;"></div>
+                        <span>Intermediate Object</span>
+                    </div>
+                    <div class="ref-graph-legend-item">
+                        <div class="ref-graph-legend-color" style="background: #e040fb;"></div>
+                        <span>Target Class Instance</span>
+                    </div>
+                </div>
+                <div id="gcPathsContainer" class="gc-path-container" style="display: none;">
+                    <div class="gc-path-title">📍 Sample GC Root Paths</div>
+                    <div id="gcPathsList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Node Tooltip -->
+    <div id="nodeTooltip" class="node-tooltip" style="display: none;"></div>
+
+    <!-- Application Scripts -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/flamegraph.js"></script>
+    <script src="/static/js/callgraph.js"></script>
+    <script src="/static/js/heap.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -22,6 +22,8 @@ func (f *Factory) CreateAnalyzer(taskType model.TaskType, profilerType model.Pro
 	switch taskType {
 	case model.TaskTypeJava:
 		return f.createJavaAnalyzer(profilerType)
+	case model.TaskTypeJavaHeap:
+		return NewJavaHeapAnalyzer(f.config), nil
 	case model.TaskTypeGeneric:
 		return f.createGenericAnalyzer(profilerType)
 	default:
@@ -65,6 +67,10 @@ func (f *Factory) CreateManager() *Manager {
 
 	// Register Java memory analyzer (shares TaskTypeJava but different profiler type)
 	// Note: Manager routes by TaskType, so we need special handling for profiler type
+
+	// Register Java heap analyzer
+	javaHeapAnalyzer := NewJavaHeapAnalyzer(f.config)
+	manager.Register(javaHeapAnalyzer)
 
 	return manager
 }

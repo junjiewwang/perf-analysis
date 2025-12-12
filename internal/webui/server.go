@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +21,9 @@ import (
 
 //go:embed templates/*
 var templatesFS embed.FS
+
+//go:embed static/*
+var staticFS embed.FS
 
 // Server represents the web UI server
 type Server struct {
@@ -42,11 +46,21 @@ func NewServer(dataDir string, port int, logger utils.Logger) *Server {
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 
+	// Static file server (CSS, JS)
+	// Use fs.Sub to strip the "static" prefix from the embedded filesystem
+	staticSubFS, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		return fmt.Errorf("failed to create static sub-filesystem: %w", err)
+	}
+	staticHandler := http.FileServer(http.FS(staticSubFS))
+	mux.Handle("/static/", http.StripPrefix("/static/", staticHandler))
+
 	// API routes
 	mux.HandleFunc("/api/summary", s.handleSummary)
 	mux.HandleFunc("/api/flamegraph", s.handleFlameGraph)
 	mux.HandleFunc("/api/callgraph", s.handleCallGraph)
 	mux.HandleFunc("/api/tasks", s.handleListTasks)
+	mux.HandleFunc("/api/retainers", s.handleRetainers)
 
 	// Page routes
 	mux.HandleFunc("/", s.handleIndex)
@@ -72,11 +86,16 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 // handleIndex serves the main HTML page
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := template.ParseFS(templatesFS, "templates/index.html")
+	// Use modular template if available, fallback to original
+	tmpl, err := template.ParseFS(templatesFS, "templates/index_modular.html")
 	if err != nil {
-		http.Error(w, "Template error", http.StatusInternalServerError)
-		s.logger.Error("Failed to parse template: %v", err)
-		return
+		// Fallback to original index.html
+		tmpl, err = template.ParseFS(templatesFS, "templates/index.html")
+		if err != nil {
+			http.Error(w, "Template error", http.StatusInternalServerError)
+			s.logger.Error("Failed to parse template: %v", err)
+			return
+		}
 	}
 
 	data := map[string]interface{}{
@@ -287,4 +306,34 @@ func (s *Server) getDefaultTask() string {
 	}
 
 	return latest
+}
+
+// handleRetainers returns detailed retainer analysis data for heap analysis
+func (s *Server) handleRetainers(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	taskDir := filepath.Join(s.dataDir, taskID)
+	if taskID == "" {
+		taskDir = s.dataDir
+	}
+
+	// Look for retainer_analysis.json
+	retainerFile := filepath.Join(taskDir, "retainer_analysis.json")
+	data, err := os.ReadFile(retainerFile)
+	if err != nil {
+		// Fall back to heap_analysis.json if retainer file doesn't exist
+		heapFile := filepath.Join(taskDir, "heap_analysis.json")
+		data, err = os.ReadFile(heapFile)
+		if err != nil {
+			http.Error(w, "Retainer data not found", http.StatusNotFound)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Write(data)
 }

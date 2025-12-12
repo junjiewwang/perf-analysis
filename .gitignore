@@ -3,3 +3,4 @@ output
 configs/build/
 **/logs
 data
+*.hprof

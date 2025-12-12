@@ -105,14 +105,13 @@ type AnalysisRequest struct {
 
 // AnalysisResponse represents the response from an analysis.
 type AnalysisResponse struct {
-	TaskUUID          string           `json:"task_uuid"`
-	TopFuncs          string           `json:"top_funcs"`
-	TotalRecords      int              `json:"total_records"`
-	FlameGraphFile    string           `json:"flamegraph_file"`
-	CallGraphFile     string           `json:"callgraph_file"`
-	ActiveThreadsJSON string           `json:"active_threads_json"`
-	Suggestions       []SuggestionItem `json:"suggestions"`
-	Error             string           `json:"error,omitempty"`
+	TaskUUID     string           `json:"task_uuid"`
+	TaskType     TaskType         `json:"task_type"`
+	TotalRecords int              `json:"total_records"`
+	OutputFiles  []OutputFile     `json:"output_files"`
+	Data         AnalysisData     `json:"data"`
+	Suggestions  []SuggestionItem `json:"suggestions"`
+	Error        string           `json:"error,omitempty"`
 }
 
 // SuggestionItem represents a single suggestion from analysis.

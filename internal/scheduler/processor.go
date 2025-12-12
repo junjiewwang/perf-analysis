@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -171,40 +172,36 @@ func (p *DefaultTaskProcessor) executeAnalysis(ctx context.Context, a analyzer.A
 	}
 
 	return &AnalysisResult{
-		Response:       resp,
-		FlameGraphFile: resp.FlameGraphFile,
-		CallGraphFile:  resp.CallGraphFile,
-		TopFuncs:       resp.TopFuncs,
-		TotalRecords:   resp.TotalRecords,
-		Suggestions:    resp.Suggestions,
+		Response:     resp,
+		TotalRecords: resp.TotalRecords,
+		Suggestions:  resp.Suggestions,
 	}, nil
 }
 
 // saveResults uploads generated files and saves results to database.
 func (p *DefaultTaskProcessor) saveResults(ctx context.Context, task *Task, result *AnalysisResult, analysisCtx *AnalysisContext) error {
-	// Upload generated files
-	filesToUpload := map[string]string{
-		"flamegraph.json.gz": result.FlameGraphFile,
-		"callgraph.json":     result.CallGraphFile,
-	}
-
+	// Upload generated files from OutputFiles
 	uploadedFiles := make(map[string]string)
-	for name, localPath := range filesToUpload {
-		if localPath == "" {
+	for _, file := range result.Response.OutputFiles {
+		if file.LocalPath == "" {
 			continue
 		}
 
 		// Check if file exists
-		if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		if _, err := os.Stat(file.LocalPath); os.IsNotExist(err) {
 			continue
 		}
 
-		cosKey := fmt.Sprintf("%s/%s", task.UUID, name)
-		if err := p.storage.UploadFile(ctx, cosKey, localPath); err != nil {
-			p.logger.Error("Failed to upload %s: %v", name, err)
+		cosKey := file.COSKey
+		if cosKey == "" {
+			cosKey = fmt.Sprintf("%s/%s", task.UUID, filepath.Base(file.LocalPath))
+		}
+
+		if err := p.storage.UploadFile(ctx, cosKey, file.LocalPath); err != nil {
+			p.logger.Error("Failed to upload %s: %v", file.Name, err)
 			continue
 		}
-		uploadedFiles[name] = cosKey
+		uploadedFiles[file.Name] = cosKey
 	}
 
 	// Build result data
@@ -218,13 +215,53 @@ func (p *DefaultTaskProcessor) saveResults(ctx context.Context, task *Task, resu
 		})
 	}
 
+	// Extract top funcs and thread info from Data
+	topFuncs := ""
+	activeThreadsJSON := ""
+	flameGraphFile := ""
+	callGraphFile := ""
+
+	if result.Response.Data != nil {
+		switch data := result.Response.Data.(type) {
+		case *model.CPUProfilingData:
+			topFuncsJSON, _ := json.Marshal(data.TopFuncs)
+			topFuncs = string(topFuncsJSON)
+			threadsJSON, _ := json.Marshal(data.ThreadStats)
+			activeThreadsJSON = string(threadsJSON)
+			flameGraphFile = uploadedFiles["Flame Graph"]
+			callGraphFile = uploadedFiles["Call Graph"]
+		case *model.AllocationData:
+			topFuncsJSON, _ := json.Marshal(data.TopAllocators)
+			topFuncs = string(topFuncsJSON)
+			threadsJSON, _ := json.Marshal(data.ThreadStats)
+			activeThreadsJSON = string(threadsJSON)
+			flameGraphFile = uploadedFiles["Allocation Flame Graph"]
+			callGraphFile = uploadedFiles["Allocation Call Graph"]
+		case *model.HeapAnalysisData:
+			// For heap analysis, use summary as JSON
+			summaryJSON, _ := json.Marshal(data.Summary())
+			activeThreadsJSON = string(summaryJSON)
+			topClassesJSON, _ := json.Marshal(data.TopClasses)
+			topFuncs = string(topClassesJSON)
+			flameGraphFile = uploadedFiles["Heap Report"]
+			callGraphFile = uploadedFiles["Class Histogram"]
+		case *model.TracingData:
+			topFuncsJSON, _ := json.Marshal(data.TopFuncs)
+			topFuncs = string(topFuncsJSON)
+			threadsJSON, _ := json.Marshal(data.ThreadStats)
+			activeThreadsJSON = string(threadsJSON)
+			flameGraphFile = uploadedFiles["Flame Graph"]
+			callGraphFile = uploadedFiles["Call Graph"]
+		}
+	}
+
 	namespaceResult := model.NamespaceResult{
-		TopFuncs:               result.TopFuncs,
+		TopFuncs:               topFuncs,
 		TotalRecords:           int64(result.TotalRecords),
-		FlameGraphFile:         uploadedFiles["flamegraph.json.gz"],
-		ExtendedFlameGraphFile: uploadedFiles["flamegraph.json.gz"],
-		CallGraphFile:          uploadedFiles["callgraph.json"],
-		ActiveThreadsJSON:      result.Response.ActiveThreadsJSON,
+		FlameGraphFile:         flameGraphFile,
+		ExtendedFlameGraphFile: flameGraphFile,
+		CallGraphFile:          callGraphFile,
+		ActiveThreadsJSON:      activeThreadsJSON,
 		Suggestions:            suggestions,
 	}
 
@@ -337,10 +374,7 @@ type AnalysisContext struct {
 
 // AnalysisResult holds the result of an analysis.
 type AnalysisResult struct {
-	Response       *model.AnalysisResponse
-	FlameGraphFile string
-	CallGraphFile  string
-	TopFuncs       string
-	TotalRecords   int
-	Suggestions    []model.SuggestionItem
+	Response     *model.AnalysisResponse
+	TotalRecords int
+	Suggestions  []model.SuggestionItem
 }

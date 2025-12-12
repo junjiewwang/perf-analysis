@@ -12,8 +12,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/perf-analysis/internal/analyzer"
+	"github.com/perf-analysis/internal/formatter"
 	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
 )
 
 var (
@@ -235,109 +235,16 @@ func generateUUID() string {
 	return fmt.Sprintf("local-%d", os.Getpid())
 }
 
-func printResults(log utils.Logger, result *model.AnalysisResponse) {
-	log.Info("=== Analysis Results ===")
-	log.Info("Task UUID:      %s", result.TaskUUID)
-	log.Info("Total Samples:  %d", result.TotalRecords)
-	log.Info("")
-
-	// Print top functions
-	log.Info("=== Top Functions ===")
-	var topFuncs map[string]interface{}
-	if err := json.Unmarshal([]byte(result.TopFuncs), &topFuncs); err == nil {
-		type funcEntry struct {
-			Name    string
-			Percent float64
-		}
-		entries := make([]funcEntry, 0, len(topFuncs))
-		for name, val := range topFuncs {
-			if m, ok := val.(map[string]interface{}); ok {
-				if self, ok := m["self"].(float64); ok {
-					entries = append(entries, funcEntry{Name: name, Percent: self})
-				}
-			}
-		}
-		// Sort by percentage (descending)
-		for i := 0; i < len(entries); i++ {
-			for j := i + 1; j < len(entries); j++ {
-				if entries[j].Percent > entries[i].Percent {
-					entries[i], entries[j] = entries[j], entries[i]
-				}
-			}
-		}
-		// Print top 10
-		count := 10
-		if len(entries) < count {
-			count = len(entries)
-		}
-		for i := 0; i < count; i++ {
-			log.Info("  %2d. %6.2f%%  %s", i+1, entries[i].Percent, truncateString(entries[i].Name, 80))
-		}
-	}
-	log.Info("")
-
-	// Print thread statistics
-	log.Info("=== Thread Statistics ===")
-	var threads []map[string]interface{}
-	if err := json.Unmarshal([]byte(result.ActiveThreadsJSON), &threads); err == nil {
-		count := 5
-		if len(threads) < count {
-			count = len(threads)
-		}
-		for i := 0; i < count; i++ {
-			t := threads[i]
-			log.Info("  Thread: %v, Samples: %v (%.2f%%)",
-				t["thread_name"], t["samples"], t["percentage"])
-		}
-	}
-	log.Info("")
-
-	// Print output files
-	log.Info("=== Output Files ===")
-	log.Info("  Flame Graph: %s", result.FlameGraphFile)
-	log.Info("  Call Graph:  %s", result.CallGraphFile)
-
-	// Print file sizes
-	if info, err := os.Stat(result.FlameGraphFile); err == nil {
-		log.Info("  Flame Graph Size: %d bytes", info.Size())
-	}
-	if info, err := os.Stat(result.CallGraphFile); err == nil {
-		log.Info("  Call Graph Size: %d bytes", info.Size())
-	}
-
-	// Print suggestions
-	if len(result.Suggestions) > 0 {
-		log.Info("")
-		log.Info("=== Suggestions ===")
-		for i, sug := range result.Suggestions {
-			if i >= 5 {
-				log.Info("  ... and %d more suggestions", len(result.Suggestions)-5)
-				break
-			}
-			log.Info("  - %s", truncateString(sug.Suggestion, 100))
-		}
-	}
-}
-
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
+func printResults(log interface{ Info(format string, args ...interface{}) }, result *model.AnalysisResponse) {
+	// Use the formatter registry to format results based on data type
+	registry := formatter.NewRegistry()
+	registry.Format(result, GetLogger())
 }
 
 func saveSummary(result *model.AnalysisResponse, outputDir string, metadata *AnalysisMetadata) {
-	summary := map[string]interface{}{
-		"task_uuid":     result.TaskUUID,
-		"total_records": result.TotalRecords,
-		"top_funcs":     json.RawMessage(result.TopFuncs),
-		"threads":       json.RawMessage(result.ActiveThreadsJSON),
-		"files": map[string]string{
-			"flamegraph": result.FlameGraphFile,
-			"callgraph":  result.CallGraphFile,
-		},
-		"suggestions_count": len(result.Suggestions),
-	}
+	// Use the formatter registry to generate summary
+	registry := formatter.NewRegistry()
+	summary := registry.FormatSummary(result)
 
 	// Add metadata if provided
 	if metadata != nil {
@@ -355,6 +262,15 @@ func saveSummary(result *model.AnalysisResponse, outputDir string, metadata *Ana
 	summaryFile := filepath.Join(outputDir, "summary.json")
 	data, _ := json.MarshalIndent(summary, "", "  ")
 	os.WriteFile(summaryFile, data, 0644)
+
+	// For heap analysis, write detailed retainer data to separate file
+	if result.Data != nil && result.Data.Type() == model.DataTypeHeapDump {
+		heapFormatter := &formatter.HeapFormatter{}
+		if err := heapFormatter.WriteDetailedRetainers(result, outputDir); err != nil {
+			// Log but don't fail - detailed file is optional
+			GetLogger().Warn("Failed to write detailed retainer file: %v", err)
+		}
+	}
 }
 
 // AnalysisMetadata holds metadata about the analysis task

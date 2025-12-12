@@ -61,9 +61,13 @@ main-thread;java.lang.Thread.run;com.example.App.init 30`
 
 	assert.Equal(t, "test-java-cpu-uuid", result.TaskUUID)
 	assert.Equal(t, 180, result.TotalRecords)
-	assert.Contains(t, result.TopFuncs, "com.example.App.main")
-	assert.Contains(t, result.FlameGraphFile, "collapsed_data.json.gz")
-	assert.Contains(t, result.CallGraphFile, "collapsed_data.json")
+
+	// Verify Data is CPUProfilingData
+	cpuData, ok := result.Data.(*model.CPUProfilingData)
+	require.True(t, ok, "Data should be CPUProfilingData")
+	assert.NotEmpty(t, cpuData.TopFuncs)
+	assert.Contains(t, cpuData.FlameGraphFile, "collapsed_data.json.gz")
+	assert.Contains(t, cpuData.CallGraphFile, "collapsed_data.json")
 }
 
 func TestJavaCPUAnalyzer_Analyze_EmptyData(t *testing.T) {

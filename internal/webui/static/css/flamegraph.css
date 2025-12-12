@@ -1,0 +1,81 @@
+/**
+ * Flame Graph CSS - Styles specific to flame graph visualization
+ */
+
+#flamegraph {
+    width: 100%;
+    min-height: 500px;
+    overflow: auto;
+}
+
+/* D3 Flame Graph Base Styles */
+.d3-flame-graph rect {
+    stroke: #fff;
+    stroke-width: 0.5px;
+}
+
+.d3-flame-graph-tip {
+    background: rgba(0, 0, 0, 0.85) !important;
+    color: white !important;
+    padding: 10px 15px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    max-width: 600px !important;
+    word-break: break-all;
+}
+
+/* GPU-accelerated properties */
+#flamegraph .d3-flame-graph rect {
+    will-change: fill-opacity;
+}
+
+/* Only apply transitions when not zooming */
+#flamegraph:not(.zooming) .d3-flame-graph rect {
+    transition: fill-opacity 0.15s ease-out, stroke 0.15s ease-out;
+}
+
+/* Matching frames get highlighted with bright magenta color */
+#flamegraph .d3-flame-graph g.search-match > rect,
+#flamegraph .d3-flame-graph g[highlight] > rect {
+    fill: #e040fb !important;
+    stroke: #7b1fa2 !important;
+    stroke-width: 2px !important;
+}
+
+/* Non-matching frames get dimmed when searching */
+#flamegraph.searching .d3-flame-graph g:not(.search-match):not([highlight]) > rect {
+    fill-opacity: 0.2 !important;
+}
+
+#flamegraph.searching .d3-flame-graph g:not(.search-match):not([highlight]) > text {
+    fill-opacity: 0.3 !important;
+}
+
+/* Flame Details Panel */
+#flame-details {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 15px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+#flame-details .detail-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#flame-details .detail-label {
+    color: #666;
+}
+
+#flame-details .detail-value {
+    font-weight: 600;
+    color: #333;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}

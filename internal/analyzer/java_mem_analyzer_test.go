@@ -87,8 +87,12 @@ main-thread;java.lang.String.valueOf;com.example.App.stringify 3000`
 
 	assert.Equal(t, "test-java-mem-uuid", result.TaskUUID)
 	assert.Equal(t, 18000, result.TotalRecords)
-	assert.Contains(t, result.FlameGraphFile, "alloc_data.json.gz")
-	assert.Contains(t, result.CallGraphFile, "alloc_data.json")
+
+	// Verify Data is AllocationData
+	allocData, ok := result.Data.(*model.AllocationData)
+	require.True(t, ok, "Data should be AllocationData")
+	assert.Contains(t, allocData.FlameGraphFile, "alloc_data.json.gz")
+	assert.Contains(t, allocData.CallGraphFile, "alloc_data.json")
 }
 
 func TestJavaMemAnalyzer_Analyze_EmptyData(t *testing.T) {

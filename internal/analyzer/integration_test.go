@@ -2,7 +2,6 @@ package analyzer_test
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -65,31 +64,23 @@ func TestJavaCPUAnalyzer_FullPipeline(t *testing.T) {
 
 	// Verify response fields
 	t.Run("VerifyResponseFields", func(t *testing.T) {
+		// Verify Data is CPUProfilingData
+		cpuData, ok := result.Data.(*model.CPUProfilingData)
+		require.True(t, ok, "Data should be CPUProfilingData")
+
 		// Verify top funcs
-		assert.NotEmpty(t, result.TopFuncs)
-		t.Logf("Top funcs: %s", result.TopFuncs)
+		assert.NotEmpty(t, cpuData.TopFuncs)
+		t.Logf("Number of top funcs: %d", len(cpuData.TopFuncs))
 
-		// Parse top funcs JSON
-		var topFuncs map[string]interface{}
-		err := json.Unmarshal([]byte(result.TopFuncs), &topFuncs)
-		require.NoError(t, err)
-		assert.NotEmpty(t, topFuncs)
-		t.Logf("Number of top funcs: %d", len(topFuncs))
-
-		// Verify active threads
-		assert.NotEmpty(t, result.ActiveThreadsJSON)
-		t.Logf("Active threads: %s", result.ActiveThreadsJSON)
-
-		var activeThreads []interface{}
-		err = json.Unmarshal([]byte(result.ActiveThreadsJSON), &activeThreads)
-		require.NoError(t, err)
-		t.Logf("Number of active threads: %d", len(activeThreads))
+		// Verify thread stats
+		assert.NotEmpty(t, cpuData.ThreadStats)
+		t.Logf("Number of threads: %d", len(cpuData.ThreadStats))
 
 		// Verify file paths
-		assert.NotEmpty(t, result.FlameGraphFile)
-		assert.NotEmpty(t, result.CallGraphFile)
-		t.Logf("Flame graph file: %s", result.FlameGraphFile)
-		t.Logf("Call graph file: %s", result.CallGraphFile)
+		assert.NotEmpty(t, cpuData.FlameGraphFile)
+		assert.NotEmpty(t, cpuData.CallGraphFile)
+		t.Logf("Flame graph file: %s", cpuData.FlameGraphFile)
+		t.Logf("Call graph file: %s", cpuData.CallGraphFile)
 	})
 
 	// Verify output files exist
