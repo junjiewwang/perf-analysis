@@ -72,12 +72,12 @@ func (s *Service) initDatabase() error {
 		MaxConns: s.config.Database.MaxConns,
 	}
 
-	db, err := repository.NewDB(dbConfig)
+	gormDB, err := repository.NewGormDB(dbConfig)
 	if err != nil {
 		return err
 	}
 
-	s.db = repository.NewRepositories(db, s.config.Database.Type, s.config.Analysis.Version)
+	s.db = repository.NewRepositories(gormDB, s.config.Database.Type, s.config.Analysis.Version)
 	s.logger.Info("Database connection established")
 
 	return nil
@@ -87,16 +87,7 @@ func (s *Service) initDatabase() error {
 func (s *Service) initStorage() error {
 	s.logger.Info("Initializing storage (%s)...", s.config.Storage.Type)
 
-	storageConfig := &storage.Config{
-		Type:      storage.StorageType(s.config.Storage.Type),
-		Bucket:    s.config.Storage.Bucket,
-		Region:    s.config.Storage.Region,
-		SecretID:  s.config.Storage.SecretID,
-		SecretKey: s.config.Storage.SecretKey,
-		LocalPath: s.config.Storage.LocalPath,
-	}
-
-	store, err := storage.NewStorage(storageConfig)
+	store, err := storage.NewStorage(&s.config.Storage)
 	if err != nil {
 		return err
 	}

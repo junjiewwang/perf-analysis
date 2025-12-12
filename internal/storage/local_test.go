@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/perf-analysis/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -222,8 +223,8 @@ func TestLocalStorage_GetURL(t *testing.T) {
 func TestNewStorage(t *testing.T) {
 	t.Run("CreateLocalStorage", func(t *testing.T) {
 		tempDir := t.TempDir()
-		cfg := &Config{
-			Type:      StorageTypeLocal,
+		cfg := &config.StorageConfig{
+			Type:      "local",
 			LocalPath: tempDir,
 		}
 
@@ -238,8 +239,8 @@ func TestNewStorage(t *testing.T) {
 
 	t.Run("CreateDefaultStorage", func(t *testing.T) {
 		tempDir := t.TempDir()
-		cfg := &Config{
-			Type:      "unknown",
+		cfg := &config.StorageConfig{
+			Type:      "",
 			LocalPath: tempDir,
 		}
 

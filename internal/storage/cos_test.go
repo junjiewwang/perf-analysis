@@ -3,6 +3,7 @@ package storage
 import (
 	"testing"
 
+	"github.com/perf-analysis/pkg/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -76,8 +77,8 @@ func TestCOSStorage_GetURL(t *testing.T) {
 }
 
 func TestNewStorage_COS(t *testing.T) {
-	cfg := &Config{
-		Type:      StorageTypeCOS,
+	cfg := &config.StorageConfig{
+		Type:      "cos",
 		Bucket:    "test-bucket",
 		Region:    "ap-guangzhou",
 		SecretID:  "test-id",
@@ -91,4 +92,86 @@ func TestNewStorage_COS(t *testing.T) {
 	// Verify it's a COSStorage
 	_, ok := storage.(*COSStorage)
 	assert.True(t, ok)
+}
+
+func TestValidateConfig(t *testing.T) {
+	t.Run("NilConfig", func(t *testing.T) {
+		err := ValidateConfig(nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "storage config is nil")
+	})
+
+	t.Run("InvalidStorageType", func(t *testing.T) {
+		cfg := &config.StorageConfig{
+			Type: "s3",
+		}
+		err := ValidateConfig(cfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported storage type")
+	})
+
+	t.Run("COSMissingBucket", func(t *testing.T) {
+		cfg := &config.StorageConfig{
+			Type:      "cos",
+			Region:    "ap-guangzhou",
+			SecretID:  "test-id",
+			SecretKey: "test-key",
+		}
+		err := ValidateConfig(cfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "COS bucket is required")
+	})
+
+	t.Run("COSMissingRegion", func(t *testing.T) {
+		cfg := &config.StorageConfig{
+			Type:      "cos",
+			Bucket:    "test-bucket",
+			SecretID:  "test-id",
+			SecretKey: "test-key",
+		}
+		err := ValidateConfig(cfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "COS region is required")
+	})
+
+	t.Run("COSMissingCredentials", func(t *testing.T) {
+		cfg := &config.StorageConfig{
+			Type:   "cos",
+			Bucket: "test-bucket",
+			Region: "ap-guangzhou",
+		}
+		err := ValidateConfig(cfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "COS credentials are required")
+	})
+
+	t.Run("LocalMissingPath", func(t *testing.T) {
+		cfg := &config.StorageConfig{
+			Type: "local",
+		}
+		err := ValidateConfig(cfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "local storage path is required")
+	})
+
+	t.Run("ValidCOSConfig", func(t *testing.T) {
+		cfg := &config.StorageConfig{
+			Type:      "cos",
+			Bucket:    "test-bucket",
+			Region:    "ap-guangzhou",
+			SecretID:  "test-id",
+			SecretKey: "test-key",
+		}
+		err := ValidateConfig(cfg)
+		assert.NoError(t, err)
+	})
+
+	t.Run("ValidLocalConfig", func(t *testing.T) {
+		cfg := &config.StorageConfig{
+			Type:      "local",
+			LocalPath: "/tmp/storage",
+		}
+		err := ValidateConfig(cfg)
+		assert.NoError(t, err)
+	})
 }

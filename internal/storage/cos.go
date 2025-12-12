@@ -18,6 +18,8 @@ type COSConfig struct {
 	Region    string
 	SecretID  string
 	SecretKey string
+	Domain    string // e.g., "myqcloud.com"
+	Scheme    string // e.g., "https" or "http"
 }
 
 // COSStorage implements Storage interface for Tencent Cloud COS.
@@ -25,6 +27,8 @@ type COSStorage struct {
 	client *cos.Client
 	bucket string
 	region string
+	domain string
+	scheme string
 }
 
 // NewCOSStorage creates a new COSStorage instance.
@@ -36,12 +40,22 @@ func NewCOSStorage(cfg *COSConfig) (*COSStorage, error) {
 		return nil, fmt.Errorf("credentials are required for COS storage")
 	}
 
-	bucketURL, err := url.Parse(fmt.Sprintf("https://%s.cos.%s.myqcloud.com", cfg.Bucket, cfg.Region))
+	// Set defaults for domain and scheme
+	domain := cfg.Domain
+	if domain == "" {
+		domain = "myqcloud.com"
+	}
+	scheme := cfg.Scheme
+	if scheme == "" {
+		scheme = "https"
+	}
+
+	bucketURL, err := url.Parse(fmt.Sprintf("%s://%s.cos.%s.%s", scheme, cfg.Bucket, cfg.Region, domain))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse bucket URL: %w", err)
 	}
 
-	serviceURL, err := url.Parse(fmt.Sprintf("https://cos.%s.myqcloud.com", cfg.Region))
+	serviceURL, err := url.Parse(fmt.Sprintf("%s://cos.%s.%s", scheme, cfg.Region, domain))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse service URL: %w", err)
 	}
@@ -60,6 +74,8 @@ func NewCOSStorage(cfg *COSConfig) (*COSStorage, error) {
 		client: client,
 		bucket: cfg.Bucket,
 		region: cfg.Region,
+		domain: domain,
+		scheme: scheme,
 	}, nil
 }
 
@@ -124,5 +140,5 @@ func (s *COSStorage) Exists(ctx context.Context, key string) (bool, error) {
 
 // GetURL returns the public URL for the specified key.
 func (s *COSStorage) GetURL(key string) string {
-	return fmt.Sprintf("https://%s.cos.%s.myqcloud.com/%s", s.bucket, s.region, key)
+	return fmt.Sprintf("%s://%s.cos.%s.%s/%s", s.scheme, s.bucket, s.region, s.domain, key)
 }

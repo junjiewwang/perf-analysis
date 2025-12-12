@@ -1,1 +1,5 @@
 output
+.vscode
+configs/build/
+**/logs
+data

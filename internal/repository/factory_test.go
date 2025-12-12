@@ -5,17 +5,21 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/DATA-DOG/go-sqlmock"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-func TestNewRepositories(t *testing.T) {
-	db, mock, err := sqlmock.New()
+func newTestGormDB(t *testing.T) *gorm.DB {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	require.NoError(t, err)
-	defer db.Close()
+	return db
+}
 
-	// Expect ping for health check
-	mock.ExpectPing()
+func TestNewRepositories(t *testing.T) {
+	db := newTestGormDB(t)
 
 	t.Run("PostgreSQL", func(t *testing.T) {
 		repos := NewRepositories(db, "postgres", "1.0.0")
@@ -44,30 +48,32 @@ func TestNewRepositories(t *testing.T) {
 	t.Run("Default", func(t *testing.T) {
 		repos := NewRepositories(db, "unknown", "1.0.0")
 		require.NotNil(t, repos)
-		// Should default to PostgreSQL
 		assert.NotNil(t, repos.Task)
 	})
 }
 
 func TestRepositories_Close(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-
+	db := newTestGormDB(t)
 	repos := NewRepositories(db, "postgres", "1.0.0")
 
-	mock.ExpectClose()
-
-	err = repos.Close()
+	err := repos.Close()
 	assert.NoError(t, err)
 }
 
 func TestRepositories_DB(t *testing.T) {
-	db, _, err := sqlmock.New()
-	require.NoError(t, err)
-	defer db.Close()
-
+	db := newTestGormDB(t)
 	repos := NewRepositories(db, "postgres", "1.0.0")
-	assert.Equal(t, db, repos.DB())
+
+	sqlDB := repos.DB()
+	assert.NotNil(t, sqlDB)
+}
+
+func TestRepositories_GormDB(t *testing.T) {
+	db := newTestGormDB(t)
+	repos := NewRepositories(db, "postgres", "1.0.0")
+
+	gormDB := repos.GormDB()
+	assert.Equal(t, db, gormDB)
 }
 
 func TestDBConfig_Validation(t *testing.T) {

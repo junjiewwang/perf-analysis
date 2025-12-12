@@ -3,7 +3,10 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
+
+	"github.com/perf-analysis/pkg/config"
 )
 
 // Storage defines the interface for object storage operations.
@@ -38,20 +41,13 @@ const (
 	StorageTypeCOS   StorageType = "cos"
 )
 
-// Config holds storage configuration.
-type Config struct {
-	Type      StorageType `mapstructure:"type"`
-	Bucket    string      `mapstructure:"bucket"`
-	Region    string      `mapstructure:"region"`
-	SecretID  string      `mapstructure:"secret_id"`
-	SecretKey string      `mapstructure:"secret_key"`
-	LocalPath string      `mapstructure:"local_path"`
-	BaseURL   string      `mapstructure:"base_url"`
-}
-
 // NewStorage creates a new Storage instance based on the configuration.
-func NewStorage(cfg *Config) (Storage, error) {
-	switch cfg.Type {
+func NewStorage(cfg *config.StorageConfig) (Storage, error) {
+	if err := ValidateConfig(cfg); err != nil {
+		return nil, err
+	}
+
+	switch StorageType(cfg.Type) {
 	case StorageTypeLocal:
 		return NewLocalStorage(cfg.LocalPath)
 	case StorageTypeCOS:
@@ -60,8 +56,48 @@ func NewStorage(cfg *Config) (Storage, error) {
 			Region:    cfg.Region,
 			SecretID:  cfg.SecretID,
 			SecretKey: cfg.SecretKey,
+			Domain:    cfg.Domain,
+			Scheme:    cfg.Scheme,
 		})
 	default:
 		return NewLocalStorage(cfg.LocalPath)
 	}
+}
+
+// ValidateConfig validates the storage configuration.
+func ValidateConfig(cfg *config.StorageConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("storage config is nil")
+	}
+
+	storageType := StorageType(cfg.Type)
+
+	// Empty type defaults to local
+	if storageType == "" {
+		storageType = StorageTypeLocal
+	}
+
+	if storageType != StorageTypeCOS && storageType != StorageTypeLocal {
+		return fmt.Errorf("unsupported storage type: %s", cfg.Type)
+	}
+
+	if storageType == StorageTypeCOS {
+		if cfg.Bucket == "" {
+			return fmt.Errorf("COS bucket is required")
+		}
+		if cfg.Region == "" {
+			return fmt.Errorf("COS region is required")
+		}
+		if cfg.SecretID == "" || cfg.SecretKey == "" {
+			return fmt.Errorf("COS credentials are required")
+		}
+	}
+
+	if storageType == StorageTypeLocal {
+		if cfg.LocalPath == "" {
+			return fmt.Errorf("local storage path is required")
+		}
+	}
+
+	return nil
 }

@@ -9,28 +9,27 @@ analysis:
 # Database configuration
 database:
   type: postgres  # postgres or mysql
-  host: localhost
-  port: 5432
-  database: perf_analysis
-  user: postgres
-  password: your_password_here
+  host: [[ .Service.postgres_apm.host ]]
+  port: [[ .Service.postgres_apm.port ]]
+  database: [[ index .Service.postgres_apm.databases 0 ]]
+  user: [[ .Service.postgres_apm.user ]]
+  password: [[ .Service.postgres_apm.pass ]]
   max_conns: 10
-  # OpenTelemetry tracing is controlled by OTEL_ENABLED environment variable
 
 # Object storage configuration
 storage:
-  type: local  # cos or local
-  # For local storage
-  local_path: ./storage
+  # type: local  # cos or local
+  # # For local storage
+  # local_path: ./storage
   
   # For COS storage (uncomment and fill in)
-  # type: cos
-  # bucket: your-bucket-name
-  # region: ap-guangzhou
-  # secret_id: your-secret-id
-  # secret_key: your-secret-key
-  # domain: myqcloud.com
-  # scheme: https
+  type: cos
+  bucket: [[ .Service.perf_bucket.bucket_name ]]-[[.Service.csp_secret.secret_appid]]
+  region: {{ .Values.tad.location.regionName }}
+  secret_id: [[.Service.csp_secret.secret_id]]
+  secret_key: [[.Service.csp_secret.secret_key]]
+  domain: [[ .Service.perf_bucket.host ]]
+  scheme: [[ if .Service.perf_bucket.https ]]https[[ else ]]http[[ end ]]
 
 # APM callback configuration
 apm:

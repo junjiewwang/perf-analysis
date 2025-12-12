@@ -90,42 +90,7 @@ storage:
 	assert.Contains(t, err.Error(), "unsupported database type")
 }
 
-func TestLoad_InvalidStorageType(t *testing.T) {
-	dir := t.TempDir()
-	configFile := filepath.Join(dir, "config.yaml")
-	content := `
-database:
-  type: postgres
-  host: localhost
-storage:
-  type: s3
-`
-	err := os.WriteFile(configFile, []byte(content), 0644)
-	require.NoError(t, err)
-
-	_, err = Load(configFile)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported storage type")
-}
-
-func TestLoad_COSWithoutCredentials(t *testing.T) {
-	dir := t.TempDir()
-	configFile := filepath.Join(dir, "config.yaml")
-	content := `
-database:
-  type: postgres
-  host: localhost
-storage:
-  type: cos
-  bucket: test-bucket
-`
-	err := os.WriteFile(configFile, []byte(content), 0644)
-	require.NoError(t, err)
-
-	_, err = Load(configFile)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "COS credentials are required")
-}
+// Note: Storage validation tests moved to internal/storage package
 
 func TestLoad_COSWithCredentials(t *testing.T) {
 	dir := t.TempDir()

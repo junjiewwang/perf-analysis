@@ -45,6 +45,8 @@ type StorageConfig struct {
 	Region    string `mapstructure:"region"`
 	SecretID  string `mapstructure:"secret_id"`
 	SecretKey string `mapstructure:"secret_key"`
+	Domain    string `mapstructure:"domain"`     // e.g., "myqcloud.com"
+	Scheme    string `mapstructure:"scheme"`     // e.g., "https" or "http"
 	LocalPath string `mapstructure:"local_path"` // for local storage
 }
 
@@ -176,18 +178,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("unsupported database type: %s", c.Database.Type)
 	}
 
-	// Validate storage config
-	if c.Storage.Type != "cos" && c.Storage.Type != "local" {
-		return fmt.Errorf("unsupported storage type: %s", c.Storage.Type)
-	}
-	if c.Storage.Type == "cos" {
-		if c.Storage.Bucket == "" {
-			return fmt.Errorf("COS bucket is required")
-		}
-		if c.Storage.SecretID == "" || c.Storage.SecretKey == "" {
-			return fmt.Errorf("COS credentials are required")
-		}
-	}
+	// Storage config validation is delegated to storage package
 
 	// Validate scheduler config
 	if c.Scheduler.WorkerCount < 1 {

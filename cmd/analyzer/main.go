@@ -13,6 +13,7 @@ import (
 
 	"github.com/perf-analysis/internal/service"
 	"github.com/perf-analysis/pkg/config"
+	"github.com/perf-analysis/pkg/telemetry"
 	"github.com/perf-analysis/pkg/utils"
 )
 
@@ -87,7 +88,7 @@ func init() {
 }
 
 func runService(cmd *cobra.Command, args []string) error {
-	// Initialize logger
+	// Initialize bootstrap logger (stdout only, before config is loaded)
 	logLevel := utils.LevelInfo
 	if verbose {
 		logLevel = utils.LevelDebug
@@ -98,11 +99,38 @@ func runService(cmd *cobra.Command, args []string) error {
 	logger.Info("Starting perf-analyzer service...")
 	logger.Info("Version: %s, Commit: %s, Built: %s", Version, GitCommit, BuildTime)
 
+	// Create context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Initialize OpenTelemetry (sets global TracerProvider)
+	shutdown, err := telemetry.Init(ctx)
+	if err != nil {
+		logger.Warn("Failed to initialize telemetry: %v", err)
+	}
+	defer func() {
+		if err := shutdown(ctx); err != nil {
+			logger.Warn("Failed to shutdown telemetry: %v", err)
+		}
+	}()
+
+	if telemetry.Enabled() {
+		cfg := telemetry.GetConfig()
+		logger.Info("OpenTelemetry tracing enabled, endpoint: %s", cfg.Endpoint)
+	}
+
 	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
+
+	// Re-initialize logger with config settings
+	logger, err = initLoggerFromConfig(cfg, verbose)
+	if err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+	utils.SetGlobalLogger(logger)
 
 	logger.Info("Configuration loaded successfully")
 	logger.Info("Analysis version: %s", cfg.Analysis.Version)
@@ -114,10 +142,6 @@ func runService(cmd *cobra.Command, args []string) error {
 	if err := cfg.EnsureDataDir(); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
-
-	// Create context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -156,6 +180,30 @@ func runService(cmd *cobra.Command, args []string) error {
 
 	logger.Info("Service stopped")
 	return nil
+}
+
+// initLoggerFromConfig creates a logger based on configuration settings.
+func initLoggerFromConfig(cfg *config.Config, verbose bool) (*utils.DefaultLogger, error) {
+	// Determine log level (verbose flag overrides config)
+	logLevel := utils.ParseLogLevel(cfg.Log.Level)
+	if verbose {
+		logLevel = utils.LevelDebug
+	}
+
+	// If output_path is configured, write to file
+	if cfg.Log.OutputPath != "" && cfg.Log.OutputPath != "stdout" {
+		// Create log directory
+		if err := os.MkdirAll(cfg.Log.OutputPath, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create log directory %s: %w", cfg.Log.OutputPath, err)
+		}
+
+		// Create log file with date suffix
+		logFile := filepath.Join(cfg.Log.OutputPath, "perf-analyzer.log")
+		return utils.NewFileLogger(logLevel, logFile)
+	}
+
+	// Default to stdout
+	return utils.NewDefaultLogger(logLevel, os.Stdout), nil
 }
 
 func main() {
