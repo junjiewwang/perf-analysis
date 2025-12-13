@@ -273,6 +273,7 @@ const HeapDiagnosis = (function() {
 
     /**
      * 检测基本类型问题 (String, byte[])
+     * 重点：向上追溯到业务层，而非停留在底层类型
      */
     function detectPrimitiveIssues(classes, totalHeapSize) {
         const issues = [];
@@ -282,65 +283,331 @@ const HeapDiagnosis = (function() {
             const size = cls.total_size || cls.size || 0;
             const percentage = cls.percentage || 0;
             const instanceCount = cls.instance_count || 0;
+            const retainers = cls.retainers || [];
             
             if (className === 'byte[]' && percentage > 20) {
+                // 分析 byte[] 的真正来源
+                const sourceAnalysis = analyzeByteArraySource(retainers, classes);
+                
                 issues.push({
                     severity: percentage > 40 ? 'critical' : 'warning',
                     type: 'byte_array_issue',
-                    title: `byte[] 占用 ${percentage.toFixed(1)}% 堆内存`,
-                    description: `大量 byte[] 数组，通常来自 I/O 缓冲区、图片、序列化数据等`,
+                    title: sourceAnalysis.title,
+                    description: sourceAnalysis.description,
                     className: className,
                     metrics: { size, percentage, instanceCount },
-                    retainers: cls.retainers || [],
-                    rootCause: {
-                        type: 'buffer_accumulation',
-                        detail: '可能是 I/O 缓冲区未释放、图片缓存过大、或序列化数据累积'
-                    },
-                    actions: [
-                        {
-                            type: 'check_io_buffers',
-                            label: '检查 I/O 缓冲区',
-                            detail: '确认 InputStream/OutputStream 是否正确关闭'
-                        },
-                        {
-                            type: 'check_image_cache',
-                            label: '检查图片缓存',
-                            detail: '如果有图片处理，检查缓存策略'
-                        }
-                    ]
+                    retainers: retainers,
+                    rootCause: sourceAnalysis.rootCause,
+                    businessContext: sourceAnalysis.businessContext,
+                    actions: sourceAnalysis.actions
                 });
             }
             
             if ((className === 'java.lang.String' || className === 'String') && instanceCount > 500000) {
+                // 分析 String 的真正来源
+                const sourceAnalysis = analyzeStringSource(retainers, classes);
+                
                 issues.push({
                     severity: 'warning',
                     type: 'string_issue',
-                    title: `String 对象过多: ${Utils.formatNumber(instanceCount)} 个`,
-                    description: `大量 String 对象，可能存在字符串拼接或重复创建问题`,
+                    title: sourceAnalysis.title,
+                    description: sourceAnalysis.description,
                     className: className,
                     metrics: { size, percentage, instanceCount },
-                    retainers: cls.retainers || [],
-                    rootCause: {
-                        type: 'string_accumulation',
-                        detail: '可能是日志拼接、字符串处理不当、或缓存了大量字符串'
-                    },
-                    actions: [
-                        {
-                            type: 'use_stringbuilder',
-                            label: '使用 StringBuilder',
-                            detail: '在循环中使用 StringBuilder 替代字符串拼接'
-                        },
-                        {
-                            type: 'intern_strings',
-                            label: '考虑 String.intern()',
-                            detail: '对于重复的字符串，考虑使用 intern() 复用'
-                        }
-                    ]
+                    retainers: retainers,
+                    rootCause: sourceAnalysis.rootCause,
+                    businessContext: sourceAnalysis.businessContext,
+                    actions: sourceAnalysis.actions
                 });
             }
         }
         
         return issues;
+    }
+
+    /**
+     * 分析 byte[] 的真正来源
+     * 向上追溯到业务层，识别具体场景
+     */
+    function analyzeByteArraySource(retainers, allClasses) {
+        const result = {
+            title: 'byte[] 内存占用过高',
+            description: '需要进一步分析来源',
+            rootCause: { type: 'unknown', detail: '无法确定来源' },
+            businessContext: null,
+            actions: []
+        };
+
+        if (!retainers || retainers.length === 0) {
+            result.description = '无法获取持有者信息，建议查看 Merged Paths 进行深入分析';
+            result.actions = [{ type: 'view_retainers', label: '查看引用路径', detail: '分析 byte[] 的持有链' }];
+            return result;
+        }
+
+        // 分析持有者模式
+        const retainerPatterns = analyzeRetainerPatterns(retainers);
+        
+        // 场景 1: Netty 内存池 (PoolChunk, PoolArena)
+        if (retainerPatterns.hasNettyPool) {
+            result.title = 'Netty 内存池占用大量内存';
+            result.description = '这是 Netty 的正常内存池机制，byte[] 被 PoolChunk 管理用于网络 I/O';
+            result.rootCause = {
+                type: 'netty_pool',
+                detail: 'Netty 使用内存池优化网络 I/O 性能，这通常是正常的'
+            };
+            result.businessContext = {
+                framework: 'Netty',
+                usage: '网络通信缓冲区',
+                suggestion: '检查是否有连接泄漏或请求积压'
+            };
+            result.actions = [
+                { type: 'check_connections', label: '检查连接数', detail: '确认是否有连接泄漏' },
+                { type: 'check_request_queue', label: '检查请求队列', detail: '是否有请求积压导致缓冲区累积' },
+                { type: 'tune_pool', label: '调整内存池', detail: '可通过 -Dio.netty.allocator.* 调整' }
+            ];
+            
+            // 尝试找到使用 Netty 的业务类
+            const businessUser = findBusinessUserOfFramework(allClasses, ['netty', 'channel', 'handler']);
+            if (businessUser) {
+                result.businessContext.businessClass = businessUser;
+                result.description += `。业务入口可能是: ${getShortClassName(businessUser)}`;
+            }
+            return result;
+        }
+
+        // 场景 2: 图片/媒体处理
+        if (retainerPatterns.hasImageProcessing) {
+            result.title = '图片/媒体数据占用大量内存';
+            result.description = 'byte[] 被图片处理相关类持有，可能是图片缓存或处理中的数据';
+            result.rootCause = {
+                type: 'image_processing',
+                detail: `被 ${getShortClassName(retainerPatterns.imageClass)} 持有`
+            };
+            result.actions = [
+                { type: 'check_image_cache', label: '检查图片缓存', detail: '确认缓存策略是否合理' },
+                { type: 'check_image_size', label: '检查图片大小', detail: '是否有超大图片未压缩' }
+            ];
+            return result;
+        }
+
+        // 场景 3: 序列化/反序列化
+        if (retainerPatterns.hasSerialization) {
+            result.title = '序列化数据占用大量内存';
+            result.description = 'byte[] 来自序列化操作，可能是消息队列、RPC 调用或缓存序列化';
+            result.rootCause = {
+                type: 'serialization',
+                detail: `被 ${getShortClassName(retainerPatterns.serializationClass)} 持有`
+            };
+            result.actions = [
+                { type: 'check_message_size', label: '检查消息大小', detail: '是否有超大消息' },
+                { type: 'check_batch_size', label: '检查批量大小', detail: '批量处理是否过大' }
+            ];
+            return result;
+        }
+
+        // 场景 4: 文件/IO 操作
+        if (retainerPatterns.hasFileIO) {
+            result.title = '文件/IO 缓冲区占用大量内存';
+            result.description = 'byte[] 来自文件读写操作，可能是大文件处理或流未关闭';
+            result.rootCause = {
+                type: 'file_io',
+                detail: `被 ${getShortClassName(retainerPatterns.ioClass)} 持有`
+            };
+            result.actions = [
+                { type: 'check_stream_close', label: '检查流关闭', detail: '确认 InputStream/OutputStream 是否正确关闭' },
+                { type: 'check_file_size', label: '检查文件大小', detail: '是否一次性读取大文件' }
+            ];
+            return result;
+        }
+
+        // 场景 5: 缓存
+        if (retainerPatterns.hasCache) {
+            result.title = '缓存数据占用大量内存';
+            result.description = `byte[] 被缓存持有: ${getShortClassName(retainerPatterns.cacheClass)}`;
+            result.rootCause = {
+                type: 'cache',
+                detail: `缓存 ${getShortClassName(retainerPatterns.cacheClass)} 持有大量数据`
+            };
+            result.actions = [
+                { type: 'check_cache_size', label: '检查缓存大小', detail: '确认缓存是否设置了大小限制' },
+                { type: 'check_cache_ttl', label: '检查过期策略', detail: '确认缓存是否有过期清理机制' }
+            ];
+            return result;
+        }
+
+        // 默认：显示直接持有者，但提示需要进一步分析
+        const topRetainer = retainers[0];
+        result.title = `byte[] 被 ${getShortClassName(topRetainer.retainer_class)} 持有`;
+        result.description = '这是一个底层持有者，需要继续向上追溯找到业务代码';
+        result.rootCause = {
+            type: 'needs_investigation',
+            detail: `直接持有者: ${getShortClassName(topRetainer.retainer_class)}.${topRetainer.field_name || '?'}`
+        };
+        result.actions = [
+            { type: 'view_retainers', label: '查看完整引用链', detail: '在 Merged Paths 中追溯到业务代码' },
+            { type: 'search', label: '搜索持有者类', detail: '查看持有者的详细信息' }
+        ];
+
+        return result;
+    }
+
+    /**
+     * 分析 String 的真正来源
+     */
+    function analyzeStringSource(retainers, allClasses) {
+        const result = {
+            title: 'String 对象过多',
+            description: '需要进一步分析来源',
+            rootCause: { type: 'unknown', detail: '无法确定来源' },
+            businessContext: null,
+            actions: []
+        };
+
+        if (!retainers || retainers.length === 0) {
+            result.description = '无法获取持有者信息，可能是日志、配置或业务数据';
+            result.actions = [
+                { type: 'view_retainers', label: '查看引用路径', detail: '分析 String 的持有链' },
+                { type: 'use_stringbuilder', label: '使用 StringBuilder', detail: '优化字符串拼接' }
+            ];
+            return result;
+        }
+
+        const retainerPatterns = analyzeRetainerPatterns(retainers);
+
+        // 场景 1: 日志相关
+        if (retainerPatterns.hasLogging) {
+            result.title = '日志字符串占用大量内存';
+            result.description = 'String 被日志框架持有，可能是日志缓冲区过大或异步日志积压';
+            result.rootCause = {
+                type: 'logging',
+                detail: `被 ${getShortClassName(retainerPatterns.loggingClass)} 持有`
+            };
+            result.actions = [
+                { type: 'check_log_level', label: '检查日志级别', detail: '生产环境避免 DEBUG 级别' },
+                { type: 'check_async_log', label: '检查异步日志', detail: '确认异步日志队列大小' }
+            ];
+            return result;
+        }
+
+        // 场景 2: 缓存
+        if (retainerPatterns.hasCache) {
+            result.title = '缓存字符串占用大量内存';
+            result.description = `String 被缓存持有: ${getShortClassName(retainerPatterns.cacheClass)}`;
+            result.rootCause = {
+                type: 'cache',
+                detail: `缓存 ${getShortClassName(retainerPatterns.cacheClass)} 持有大量字符串`
+            };
+            result.actions = [
+                { type: 'check_cache_size', label: '检查缓存大小', detail: '确认缓存是否设置了大小限制' },
+                { type: 'intern_strings', label: '考虑 String.intern()', detail: '对于重复字符串使用 intern()' }
+            ];
+            return result;
+        }
+
+        // 默认
+        result.description = '大量 String 对象，可能来自业务数据处理或字符串拼接';
+        result.actions = [
+            { type: 'view_retainers', label: '查看引用路径', detail: '分析 String 的持有链' },
+            { type: 'use_stringbuilder', label: '使用 StringBuilder', detail: '优化字符串拼接' }
+        ];
+
+        return result;
+    }
+
+    /**
+     * 分析持有者模式，识别常见框架和场景
+     */
+    function analyzeRetainerPatterns(retainers) {
+        const patterns = {
+            hasNettyPool: false,
+            hasImageProcessing: false,
+            hasSerialization: false,
+            hasFileIO: false,
+            hasCache: false,
+            hasLogging: false,
+            nettyClass: null,
+            imageClass: null,
+            serializationClass: null,
+            ioClass: null,
+            cacheClass: null,
+            loggingClass: null
+        };
+
+        for (const retainer of retainers) {
+            const cls = (retainer.retainer_class || '').toLowerCase();
+            const field = (retainer.field_name || '').toLowerCase();
+
+            // Netty 内存池
+            if (cls.includes('poolchunk') || cls.includes('poolarena') || 
+                cls.includes('pooled') || cls.includes('io.netty')) {
+                patterns.hasNettyPool = true;
+                patterns.nettyClass = retainer.retainer_class;
+            }
+
+            // 图片处理
+            if (cls.includes('image') || cls.includes('bitmap') || 
+                cls.includes('picture') || cls.includes('thumbnail')) {
+                patterns.hasImageProcessing = true;
+                patterns.imageClass = retainer.retainer_class;
+            }
+
+            // 序列化
+            if (cls.includes('serial') || cls.includes('protobuf') || 
+                cls.includes('kryo') || cls.includes('hessian') ||
+                cls.includes('jackson') || cls.includes('gson')) {
+                patterns.hasSerialization = true;
+                patterns.serializationClass = retainer.retainer_class;
+            }
+
+            // 文件 IO
+            if (cls.includes('stream') || cls.includes('buffer') ||
+                cls.includes('file') || cls.includes('channel')) {
+                patterns.hasFileIO = true;
+                patterns.ioClass = retainer.retainer_class;
+            }
+
+            // 缓存
+            if (cls.includes('cache') || field.includes('cache') ||
+                cls.includes('caffeine') || cls.includes('guava') ||
+                cls.includes('ehcache') || cls.includes('redis')) {
+                patterns.hasCache = true;
+                patterns.cacheClass = retainer.retainer_class;
+            }
+
+            // 日志
+            if (cls.includes('log') || cls.includes('appender') ||
+                cls.includes('slf4j') || cls.includes('logback') ||
+                cls.includes('log4j')) {
+                patterns.hasLogging = true;
+                patterns.loggingClass = retainer.retainer_class;
+            }
+        }
+
+        return patterns;
+    }
+
+    /**
+     * 尝试找到使用某个框架的业务类
+     */
+    function findBusinessUserOfFramework(allClasses, frameworkKeywords) {
+        for (const cls of allClasses) {
+            const className = cls.class_name || cls.name || '';
+            
+            // 跳过 JDK 和框架类
+            if (isJDKClass(className) || isFrameworkClass(className)) {
+                continue;
+            }
+
+            // 检查 retainers 中是否有框架类
+            const retainers = cls.retainers || [];
+            for (const retainer of retainers) {
+                const retainerClass = (retainer.retainer_class || '').toLowerCase();
+                if (frameworkKeywords.some(kw => retainerClass.includes(kw))) {
+                    return className;
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -668,6 +935,42 @@ const HeapDiagnosis = (function() {
             info: '信息'
         }[issue.severity];
 
+        // 业务上下文信息（如果有）
+        const businessContextHtml = issue.businessContext ? `
+            <div class="issue-business-context">
+                <div class="context-header">
+                    <span class="context-icon">💡</span>
+                    <span class="context-title">分析结论</span>
+                </div>
+                <div class="context-body">
+                    ${issue.businessContext.framework ? `
+                        <div class="context-item">
+                            <span class="context-label">框架:</span>
+                            <span class="context-value">${Utils.escapeHtml(issue.businessContext.framework)}</span>
+                        </div>
+                    ` : ''}
+                    ${issue.businessContext.usage ? `
+                        <div class="context-item">
+                            <span class="context-label">用途:</span>
+                            <span class="context-value">${Utils.escapeHtml(issue.businessContext.usage)}</span>
+                        </div>
+                    ` : ''}
+                    ${issue.businessContext.businessClass ? `
+                        <div class="context-item">
+                            <span class="context-label">业务入口:</span>
+                            <span class="context-value business-class">${Utils.escapeHtml(getShortClassName(issue.businessContext.businessClass))}</span>
+                        </div>
+                    ` : ''}
+                    ${issue.businessContext.suggestion ? `
+                        <div class="context-suggestion">
+                            <span class="suggestion-icon">👉</span>
+                            ${Utils.escapeHtml(issue.businessContext.suggestion)}
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        ` : '';
+
         const rootCauseHtml = issue.rootCause ? `
             <div class="issue-root-cause">
                 <span class="cause-label">根因:</span>
@@ -675,7 +978,8 @@ const HeapDiagnosis = (function() {
             </div>
         ` : '';
 
-        const retainersHtml = issue.retainers && issue.retainers.length > 0 ? `
+        // 只在没有业务上下文时显示原始持有者
+        const retainersHtml = !issue.businessContext && issue.retainers && issue.retainers.length > 0 ? `
             <div class="issue-retainers">
                 <span class="retainers-label">持有者:</span>
                 ${issue.retainers.slice(0, 2).map(r => `
@@ -700,6 +1004,7 @@ const HeapDiagnosis = (function() {
                     <span class="metric">💾 ${Utils.formatBytes(issue.metrics.size || 0)}</span>
                     <span class="metric">📦 ${Utils.formatNumber(issue.metrics.instanceCount || 0)} 实例</span>
                 </div>
+                ${businessContextHtml}
                 ${rootCauseHtml}
                 ${retainersHtml}
                 <div class="issue-actions">
@@ -762,7 +1067,20 @@ const HeapDiagnosis = (function() {
             'check_image_cache': '🖼️',
             'use_stringbuilder': '📝',
             'intern_strings': '🔤',
-            'check_creation_point': '📍'
+            'check_creation_point': '📍',
+            // 新增的 action 类型
+            'check_connections': '🔌',
+            'check_request_queue': '📋',
+            'tune_pool': '⚙️',
+            'check_stream_close': '🚰',
+            'check_file_size': '📄',
+            'check_message_size': '📨',
+            'check_batch_size': '📦',
+            'check_cache_size': '💾',
+            'check_cache_ttl': '⏰',
+            'check_log_level': '📝',
+            'check_async_log': '⚡',
+            'check_image_size': '🖼️'
         };
         return icons[type] || '▶️';
     }
