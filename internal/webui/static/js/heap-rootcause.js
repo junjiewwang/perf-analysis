@@ -669,7 +669,10 @@ const HeapRootCause = (function() {
         container.innerHTML = '<div class="loading">加载详细 Retainer 数据中...</div>';
 
         try {
-            const taskId = new URLSearchParams(window.location.search).get('task') || '';
+            // 优先从 App 获取当前任务 ID，回退到 URL 参数
+            const taskId = (typeof App !== 'undefined' && App.getCurrentTask()) 
+                || new URLSearchParams(window.location.search).get('task') 
+                || '';
             const response = await fetch(`/api/retainers?task=${taskId}`);
             
             if (!response.ok) {

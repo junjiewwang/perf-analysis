@@ -260,16 +260,23 @@ const FlameGraph = (function() {
 
         render() {
             const container = document.getElementById('flamegraph');
-            const panel = document.getElementById('flamegraph-panel');
 
             container.innerHTML = '';
 
-            if (!panel.classList.contains('active')) return;
+            // 检查容器是否可见（兼容 Alpine.js x-show 和传统 .active 类）
+            const panel = container.closest('[x-show]') || document.getElementById('flamegraph-panel');
+            const isVisible = panel && (
+                window.getComputedStyle(panel).display !== 'none' ||
+                panel.classList.contains('active')
+            );
+            if (!isVisible) return;
             if (!flameGraphData) return;
 
             let width = container.clientWidth;
             if (width <= 0) {
-                width = document.querySelector('.container').clientWidth - 40 || 1200;
+                // 如果容器宽度为 0，尝试从父级或 main 元素获取
+                const main = document.querySelector('main');
+                width = (main ? main.clientWidth : 0) - 40 || 1200;
             }
 
             // Calculate and display stats

@@ -22,6 +22,10 @@
             }
         }
     </script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- htmx -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <!-- External Libraries -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.min.js"></script>
@@ -33,8 +37,8 @@
     <link rel="stylesheet" href="/static/css/callgraph.css">
     <link rel="stylesheet" href="/static/css/heap.css">
 </head>
-<body class="bg-gray-100 text-gray-800">
-    <!-- Header: Tailwind 替换 -->
+<body class="bg-gray-100 text-gray-800" x-data="appState()" x-init="init()">
+    <!-- Header -->
     <header class="bg-gradient-to-r from-primary to-secondary text-white px-8 py-5 shadow-lg">
         <div class="flex items-center justify-between">
             <div>
@@ -43,33 +47,85 @@
             </div>
             <div class="flex items-center gap-3">
                 <label class="text-sm">Task:</label>
-                <select id="taskSelect" onchange="loadTask(this.value)" 
+                <select x-model="currentTask" @change="loadTask($event.target.value)"
                     class="px-3 py-2 rounded-md border border-white/30 bg-white/10 text-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/50">
-                    <option value="" class="text-gray-800 bg-white">Loading...</option>
+                    <template x-if="tasks.length === 0">
+                        <option value="" class="text-gray-800 bg-white" x-text="loading ? 'Loading...' : 'No tasks found'"></option>
+                    </template>
+                    <template x-for="(task, idx) in tasks" :key="task.id">
+                        <option :value="task.id" class="text-gray-800 bg-white" x-text="task.id + (idx === 0 ? ' (latest)' : '')"></option>
+                    </template>
                 </select>
+                <span x-show="loading" class="animate-spin text-lg">⏳</span>
             </div>
         </div>
     </header>
 
-    <!-- Container: Tailwind 替换 -->
+    <!-- Container -->
     <main class="max-w-[1800px] mx-auto p-5">
-        <!-- Tabs: Tailwind 替换 -->
-        <nav class="flex flex-wrap gap-2.5 mb-5" id="tabsContainer">
-            <button class="tab active px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-overview" onclick="showPanel('overview')">📊 Overview</button>
-            <button class="tab cpu-tab px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-flamegraph" onclick="showPanel('flamegraph')">🔥 Flame Graph</button>
-            <button class="tab cpu-tab px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-callgraph" onclick="showPanel('callgraph')">📈 Call Graph</button>
-            <button class="tab cpu-tab px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-topfuncs" onclick="showPanel('topfuncs')">📋 Top Functions</button>
-            <button class="tab cpu-tab px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-threads" onclick="showPanel('threads')">🧵 Threads</button>
-            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heapdiagnosis" onclick="showPanel('heapdiagnosis')">🩺 问题诊断</button>
-            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heaptreemap" onclick="showPanel('heaptreemap')">🗺️ Biggest Objects</button>
-            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heapgcroots" onclick="showPanel('heapgcroots')">🌳 GC Roots</button>
-            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heapmergedpaths" onclick="showPanel('heapmergedpaths')">🔀 Merged Paths</button>
-            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heaphistogram" onclick="showPanel('heaphistogram')">📊 Class Histogram</button>
-            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heaprootcause" onclick="showPanel('heaprootcause')">🎯 详细分析</button>
+        <!-- Tabs: Alpine.js 管理 -->
+        <nav class="flex flex-wrap gap-2.5 mb-5">
+            <!-- CPU Tabs -->
+            <button @click="showPanel('overview')" 
+                :class="{'tab-active': activePanel === 'overview'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                📊 Overview
+            </button>
+            <button @click="showPanel('flamegraph')" x-show="analysisType === 'cpu'"
+                :class="{'tab-active': activePanel === 'flamegraph'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                🔥 Flame Graph
+            </button>
+            <button @click="showPanel('callgraph')" x-show="analysisType === 'cpu'"
+                :class="{'tab-active': activePanel === 'callgraph'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                📈 Call Graph
+            </button>
+            <button @click="showPanel('topfuncs')" x-show="analysisType === 'cpu'"
+                :class="{'tab-active': activePanel === 'topfuncs'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                📋 Top Functions
+            </button>
+            <button @click="showPanel('threads')" x-show="analysisType === 'cpu'"
+                :class="{'tab-active': activePanel === 'threads'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                🧵 Threads
+            </button>
+            <!-- Heap Tabs -->
+            <button @click="showPanel('heapdiagnosis')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heapdiagnosis'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                🩺 问题诊断
+            </button>
+            <button @click="showPanel('heaptreemap')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heaptreemap'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                🗺️ Biggest Objects
+            </button>
+            <button @click="showPanel('heapgcroots')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heapgcroots'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                🌳 GC Roots
+            </button>
+            <button @click="showPanel('heapmergedpaths')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heapmergedpaths'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                🔀 Merged Paths
+            </button>
+            <button @click="showPanel('heaphistogram')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heaphistogram'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                📊 Class Histogram
+            </button>
+            <button @click="showPanel('heaprootcause')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heaprootcause'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                🎯 详细分析
+            </button>
         </nav>
 
-        <!-- Overview Panel: Tailwind 替换 -->
-        <div id="overview" class="panel active bg-white rounded-xl shadow-md p-5">
+        <!-- Overview Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'overview'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <!-- Task Metadata Card -->
             <div class="bg-white rounded-xl shadow-md p-5 mb-5 hidden" id="taskMetadataCard">
                 <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">📋 Task Information</h2>
@@ -125,13 +181,13 @@
             <div class="bg-white rounded-xl shadow-md p-5">
                 <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">Top 5 Hot Functions</h2>
                 <p class="text-xs text-gray-400 mb-2.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
-                <table class="top-funcs-table w-full">
+                <table class="top-funcs-table w-full" style="table-layout: auto;">
                     <thead>
                         <tr>
-                            <th class="w-[50px]">#</th>
+                            <th style="width: 50px;">#</th>
                             <th>Function</th>
-                            <th class="w-[200px]">Self %</th>
-                            <th class="w-[100px]">Actions</th>
+                            <th style="width: 180px;">Self %</th>
+                            <th style="width: 100px; white-space: nowrap;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="topFuncsPreview"></tbody>
@@ -139,8 +195,8 @@
             </div>
         </div>
 
-        <!-- Flame Graph Panel: Tailwind 替换 -->
-        <div id="flamegraph-panel" class="panel bg-white rounded-xl shadow-md p-5">
+        <!-- Flame Graph Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'flamegraph'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <p class="text-xs text-gray-400 mb-2.5 space-x-4">
                 <span>💡 Click to zoom in, double-click to zoom out</span>
                 <span>🔍 Use search to highlight functions</span>
@@ -200,8 +256,8 @@
             </div>
         </div>
 
-        <!-- Call Graph Panel -->
-        <div id="callgraph-panel" class="panel">
+        <!-- Call Graph Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'callgraph'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <div class="tips">
                 <span>💡 Drag nodes to reposition</span>
                 <span>🔍 Scroll to zoom</span>
@@ -301,31 +357,31 @@
             </div>
         </div>
 
-        <!-- Top Functions Panel: Tailwind 替换 -->
-        <div id="topfuncs" class="panel bg-white rounded-xl shadow-md p-5">
+        <!-- Top Functions Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'topfuncs'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">All Functions (sorted by self %)</h2>
             <p class="text-xs text-gray-400 mb-2.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
-            <table class="top-funcs-table w-full">
+            <table class="top-funcs-table w-full" style="table-layout: auto;">
                 <thead>
                     <tr>
-                        <th class="w-[50px]">#</th>
+                        <th style="width: 50px;">#</th>
                         <th>Function</th>
-                        <th class="w-[200px]">Self %</th>
-                        <th class="w-[100px]">Actions</th>
+                        <th style="width: 180px;">Self %</th>
+                        <th style="width: 100px; white-space: nowrap;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="topFuncsAll"></tbody>
             </table>
         </div>
 
-        <!-- Threads Panel: Tailwind 替换 -->
-        <div id="threads" class="panel bg-white rounded-xl shadow-md p-5">
+        <!-- Threads Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'threads'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">Thread Statistics</h2>
             <ul class="thread-list divide-y divide-gray-100" id="threadList"></ul>
         </div>
 
-        <!-- Heap Diagnosis Overview Panel: Tailwind 替换 -->
-        <div id="heapdiagnosis-panel" class="panel bg-white rounded-xl shadow-md p-5">
+        <!-- Heap Diagnosis Overview Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'heapdiagnosis'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🩺 问题诊断概览</h2>
             <p class="text-xs text-gray-400 mb-4 space-x-4">
                 <span>💡 快速定位内存问题，直接告诉你问题在哪</span>
@@ -336,8 +392,8 @@
             </div>
         </div>
 
-        <!-- Heap Biggest Objects Panel: Tailwind 替换 -->
-        <div id="heaptreemap-panel" class="panel bg-white rounded-xl shadow-md p-5">
+        <!-- Heap Biggest Objects Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'heaptreemap'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🗺️ Biggest Objects</h2>
             <p class="text-xs text-gray-400 mb-4 space-x-4">
                 <span>💡 Click on a block to zoom in, right-click to zoom out</span>
@@ -364,8 +420,8 @@
             <div id="heapTreemap"></div>
         </div>
 
-        <!-- Heap GC Roots Panel: Tailwind 替换 -->
-        <div id="heapgcroots-panel" class="panel bg-white rounded-xl shadow-md p-5">
+        <!-- Heap GC Roots Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'heapgcroots'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🌳 GC Roots</h2>
             <p class="text-xs text-gray-400 mb-4 space-x-4">
                 <span>💡 GC Roots are objects that are always reachable and prevent garbage collection</span>
@@ -411,8 +467,8 @@
             </div>
         </div>
 
-        <!-- Heap Merged Paths Panel: Tailwind 替换 -->
-        <div id="heapmergedpaths-panel" class="panel bg-white rounded-xl shadow-md p-5">
+        <!-- Heap Merged Paths Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'heapmergedpaths'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🔀 Merged Paths (Retainers)</h2>
             <p class="text-xs text-gray-400 mb-4 space-x-4">
                 <span>💡 展示内存占用大类被哪些类持有（Retained by）</span>
@@ -424,8 +480,8 @@
             </div>
         </div>
 
-        <!-- Heap Histogram Panel: Tailwind 替换 -->
-        <div id="heaphistogram-panel" class="panel bg-white rounded-xl shadow-md p-5">
+        <!-- Heap Histogram Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'heaphistogram'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">📊 Class Histogram</h2>
             <div class="flex flex-wrap items-center gap-2.5 mb-4">
                 <input type="text" id="heapClassSearch" placeholder="Search class name (e.g. HashMap, byte[], String)..." onkeyup="filterHeapClasses()"
@@ -458,8 +514,8 @@
             </div>
         </div>
 
-        <!-- Heap Root Cause Analysis Panel: Tailwind 替换 -->
-        <div id="heaprootcause-panel" class="panel bg-white rounded-xl shadow-md p-5">
+        <!-- Heap Root Cause Analysis Panel: Alpine.js 控制显示 -->
+        <div x-show="activePanel === 'heaprootcause'" x-cloak class="bg-white rounded-xl shadow-md p-5">
             <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🎯 Root Cause Analysis</h2>
             <p class="text-xs text-gray-400 mb-4 space-x-4">
                 <span>💡 快速定位内存问题根因</span>
@@ -524,6 +580,275 @@
 
     <!-- Node Tooltip -->
     <div id="nodeTooltip" class="node-tooltip fixed bg-black/85 text-white px-4 py-2.5 rounded-lg text-sm max-w-[400px] break-all pointer-events-none z-[1000] hidden"></div>
+
+    <!-- Alpine.js x-cloak style -->
+    <style>
+        [x-cloak] { display: none !important; }
+        .tab-btn.tab-active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            color: white !important;
+        }
+    </style>
+
+    <!-- Alpine.js App State -->
+    <script>
+        function appState() {
+            return {
+                // State
+                tasks: [],
+                currentTask: '',
+                loading: false,
+                activePanel: 'overview',
+                analysisType: 'cpu', // 'cpu' or 'heap'
+                summaryData: null,
+
+                // Initialize
+                async init() {
+                    // Initialize modules
+                    FlameGraph.init();
+                    CallGraph.init();
+                    HeapAnalysis.init();
+
+                    // Load tasks
+                    await this.loadTasks();
+                },
+
+                // Load task list
+                async loadTasks() {
+                    this.loading = true;
+                    try {
+                        this.tasks = await API.getTasks() || [];
+                        if (this.tasks.length > 0) {
+                            this.currentTask = this.tasks[0].id;
+                            await this.loadTask(this.currentTask);
+                        }
+                    } catch (err) {
+                        console.error('Failed to load tasks:', err);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                // Load specific task
+                async loadTask(taskId) {
+                    this.currentTask = taskId;
+                    this.loading = true;
+                    try {
+                        await this.loadSummary(taskId);
+                        if (this.analysisType === 'heap') {
+                            HeapAnalysis.renderAnalysis(this.summaryData);
+                        } else {
+                            await Promise.all([
+                                FlameGraph.load(taskId),
+                                CallGraph.load(taskId)
+                            ]);
+                        }
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                // Load summary data
+                async loadSummary(taskId) {
+                    try {
+                        this.summaryData = await API.getSummary(taskId);
+                        this.detectAnalysisType();
+                        this.renderSummary();
+                    } catch (err) {
+                        console.error('Failed to load summary:', err);
+                    }
+                },
+
+                // Detect analysis type from data
+                detectAnalysisType() {
+                    const data = this.summaryData;
+                    if (!data) return;
+                    
+                    const taskType = data.task_type || '';
+                    const metadata = data.metadata || {};
+                    const taskTypeName = metadata.task_type_name || taskType;
+
+                    if (taskTypeName === 'java_heap' || taskType === 'java_heap' ||
+                        (data.data && data.data.total_heap_size !== undefined)) {
+                        this.analysisType = 'heap';
+                    } else {
+                        this.analysisType = 'cpu';
+                    }
+                },
+
+                // Render summary data
+                renderSummary() {
+                    const data = this.summaryData;
+                    if (!data) return;
+
+                    if (this.analysisType === 'heap') {
+                        HeapAnalysis.renderOverview(data);
+                        this.renderTaskMetadata(data.metadata);
+                        return;
+                    }
+
+                    // Stats for CPU/Allocation analysis
+                    document.getElementById('totalSamples').textContent = data.total_records || 0;
+                    document.getElementById('topFuncsCount').textContent = (data.top_items || []).length || Object.keys(data.top_funcs || {}).length;
+                    document.getElementById('threadsCount').textContent = (data.threads || []).length;
+                    document.getElementById('taskUUID').textContent = data.task_uuid || '-';
+
+                    this.renderTaskMetadata(data.metadata);
+                    this.renderTopFunctions(data);
+                    this.renderThreads(data);
+                },
+
+                // Render task metadata
+                renderTaskMetadata(metadata) {
+                    const card = document.getElementById('taskMetadataCard');
+                    if (!metadata) {
+                        card.style.display = 'none';
+                        return;
+                    }
+
+                    card.style.display = 'block';
+
+                    const typeName = metadata.task_type_name || 'unknown';
+                    const typeClass = this.getTaskTypeClass(typeName);
+                    const typeIcon = this.getTaskTypeIcon(typeName);
+                    document.getElementById('metaTaskType').innerHTML = `<span class="type-badge ${typeClass}">${typeIcon} ${typeName.toUpperCase()}</span>`;
+
+                    const profilerName = metadata.profiler_name || 'unknown';
+                    const profilerIcon = this.getProfilerIcon(profilerName);
+                    document.getElementById('metaProfiler').innerHTML = `<span class="profiler-badge">${profilerIcon} ${profilerName}</span>`;
+
+                    document.getElementById('metaInputFile').textContent = metadata.input_file || '-';
+                    document.getElementById('metaCreatedAt').textContent = metadata.created_at ? Utils.formatDateTime(metadata.created_at) : '-';
+                    document.getElementById('metaAnalysisTime').textContent = metadata.analysis_time_ms ? Utils.formatDuration(metadata.analysis_time_ms) : '-';
+                    document.getElementById('metaTaskUUID').textContent = this.summaryData?.task_uuid || '-';
+                },
+
+                // Render top functions
+                renderTopFunctions(data) {
+                    let funcs = [];
+                    if (data.top_items && data.top_items.length > 0) {
+                        funcs = data.top_items.map(item => ({ name: item.name, self: item.percentage || 0 }));
+                    } else if (data.top_funcs) {
+                        funcs = Object.entries(data.top_funcs)
+                            .map(([name, val]) => ({ name, self: val.self || 0 }))
+                            .sort((a, b) => b.self - a.self);
+                    }
+
+                    const self = this;
+                    const renderRow = (f, i) => `
+                        <tr>
+                            <td>${i + 1}</td>
+                            <td class="func-name func-name-clickable" title="Click to copy function name" onclick="Utils.copyToClipboard('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">${Utils.escapeHtml(f.name)}</td>
+                            <td>
+                                <div class="percentage-bar">
+                                    <div class="percentage-bar-fill" style="width: ${Math.min(f.self, 100)}%"></div>
+                                </div>
+                                ${f.self.toFixed(2)}%
+                            </td>
+                            <td>
+                                <button class="action-btn flame" title="Search in Flame Graph" onclick="App.searchInFlameGraph('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">🔥</button>
+                                <button class="action-btn callgraph" title="Search in Call Graph" onclick="App.searchInCallGraph('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">📈</button>
+                            </td>
+                        </tr>
+                    `;
+
+                    document.getElementById('topFuncsPreview').innerHTML = funcs.slice(0, 5).map(renderRow).join('');
+                    document.getElementById('topFuncsAll').innerHTML = funcs.map(renderRow).join('');
+                },
+
+                // Render threads
+                renderThreads(data) {
+                    const threadList = document.getElementById('threadList');
+                    threadList.innerHTML = (data.threads || []).map(t => `
+                        <li class="thread-item">
+                            <span class="thread-name">${Utils.escapeHtml(t.thread_name || 'Unknown')}</span>
+                            <span class="thread-samples">${t.samples} samples (${(t.percentage || 0).toFixed(2)}%)</span>
+                        </li>
+                    `).join('');
+                },
+
+                // Show panel
+                showPanel(panelId) {
+                    this.activePanel = panelId;
+
+                    // Trigger panel-specific actions after DOM update
+                    if (panelId === 'flamegraph' && FlameGraph.getData()) {
+                        // 等待 Alpine.js 更新 DOM 后再渲染火焰图
+                        this.$nextTick(() => {
+                            requestAnimationFrame(() => FlameGraph.render());
+                        });
+                    } else if (panelId === 'heapdiagnosis' && this.summaryData) {
+                        HeapAnalysis.renderDiagnosis(this.summaryData);
+                    } else if (panelId === 'heaptreemap') {
+                        // 等待 Alpine.js 更新 DOM 后再渲染 treemap
+                        this.$nextTick(() => {
+                            requestAnimationFrame(() => HeapAnalysis.resizeTreemap());
+                        });
+                    } else if (panelId === 'heaprootcause' && this.summaryData) {
+                        HeapAnalysis.renderRootCauseAnalysis(this.summaryData);
+                    }
+                },
+
+                // Search in flame graph
+                searchInFlameGraph(funcName) {
+                    this.showPanel('flamegraph');
+                    setTimeout(() => FlameGraph.searchFor(funcName), 100);
+                },
+
+                // Search in call graph
+                searchInCallGraph(funcName) {
+                    this.showPanel('callgraph');
+                    setTimeout(() => CallGraph.searchFor(funcName), 100);
+                },
+
+                // Helper methods
+                getTaskTypeClass(typeName) {
+                    const typeMap = {
+                        'java': 'java', 'generic': 'generic', 'pprof_mem': 'pprof',
+                        'memleak': 'memory', 'java_heap': 'heap', 'phys_mem': 'memory',
+                        'jeprof': 'memory', 'tracing': 'tracing', 'timing': 'tracing'
+                    };
+                    return typeMap[typeName] || 'generic';
+                },
+
+                getTaskTypeIcon(typeName) {
+                    const iconMap = {
+                        'java': '☕', 'generic': '🔧', 'pprof_mem': '🐹', 'memleak': '💾',
+                        'java_heap': '📦', 'phys_mem': '🧠', 'jeprof': '📊', 'tracing': '🔍',
+                        'timing': '⏱️', 'bolt': '⚡'
+                    };
+                    return iconMap[typeName] || '📊';
+                },
+
+                getProfilerIcon(profilerName) {
+                    const iconMap = { 'perf': '🔥', 'async_alloc': '📈', 'pprof': '🐹' };
+                    return iconMap[profilerName] || '📊';
+                }
+            };
+        }
+
+        // Register Alpine store for global access
+        document.addEventListener('alpine:init', () => {
+            Alpine.store('app', {
+                getAppData() {
+                    const appEl = document.querySelector('[x-data]');
+                    return appEl && appEl._x_dataStack ? appEl._x_dataStack[0] : null;
+                },
+                searchInFlameGraph(funcName) {
+                    const appData = this.getAppData();
+                    if (appData) {
+                        appData.searchInFlameGraph(funcName);
+                    }
+                },
+                searchInCallGraph(funcName) {
+                    const appData = this.getAppData();
+                    if (appData) {
+                        appData.searchInCallGraph(funcName);
+                    }
+                }
+            });
+        });
+    </script>
 
     <!-- Application Scripts -->
     <script src="/static/js/utils.js"></script>

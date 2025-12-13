@@ -17,6 +17,8 @@ const HeapTreemap = (function() {
     
     let treemapChart = null;
     let containerElement = null;
+    let cachedTopItems = null;  // 缓存数据用于重新渲染
+    let cachedTotalSize = 0;
 
     // ============================================
     // 私有方法
@@ -201,12 +203,41 @@ const HeapTreemap = (function() {
      * @param {number} totalSize - 总堆大小
      */
     function render(topItems, totalSize) {
+        // 缓存数据
+        if (topItems) {
+            cachedTopItems = topItems;
+            cachedTotalSize = totalSize;
+        }
+        
         if (!containerElement) {
             containerElement = document.getElementById('heapTreemap');
         }
         
         if (!containerElement) {
             console.warn('[HeapTreemap] Container element not found');
+            return;
+        }
+
+        // 检查容器是否可见
+        const panel = containerElement.closest('[x-show]');
+        const isVisible = !panel || window.getComputedStyle(panel).display !== 'none';
+        
+        // 如果容器不可见，延迟渲染
+        if (!isVisible) {
+            console.log('[HeapTreemap] Container not visible, deferring render');
+            return;
+        }
+
+        // 确保容器有正确的尺寸
+        if (containerElement.clientWidth === 0 || containerElement.clientHeight === 0) {
+            console.log('[HeapTreemap] Container has no size, deferring render');
+            return;
+        }
+
+        // 使用缓存数据
+        const itemsToRender = topItems || cachedTopItems;
+        if (!itemsToRender || itemsToRender.length === 0) {
+            console.log('[HeapTreemap] No data to render');
             return;
         }
 
@@ -219,7 +250,7 @@ const HeapTreemap = (function() {
         treemapChart = echarts.init(containerElement);
 
         // 聚合数据
-        const treeData = aggregateByPackage(topItems);
+        const treeData = aggregateByPackage(itemsToRender);
 
         // 生成配置并渲染
         const option = generateChartOption(treeData);
@@ -227,10 +258,16 @@ const HeapTreemap = (function() {
     }
 
     /**
-     * 调整图表大小
+     * 调整图表大小（当面板变为可见时调用）
      */
     function resize() {
-        handleResize();
+        // 如果图表已存在，只需 resize
+        if (treemapChart) {
+            treemapChart.resize();
+        } else if (cachedTopItems) {
+            // 图表不存在但有缓存数据，重新渲染
+            render(null, cachedTotalSize);
+        }
     }
 
     /**
