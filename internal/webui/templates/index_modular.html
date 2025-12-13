@@ -38,10 +38,11 @@
             <button class="tab cpu-tab" id="tab-callgraph" onclick="showPanel('callgraph')">📈 Call Graph</button>
             <button class="tab cpu-tab" id="tab-topfuncs" onclick="showPanel('topfuncs')">📋 Top Functions</button>
             <button class="tab cpu-tab" id="tab-threads" onclick="showPanel('threads')">🧵 Threads</button>
-            <button class="tab heap-tab hidden" id="tab-heaptreemap" onclick="showPanel('heaptreemap')">🗺️ Memory Map</button>
+            <button class="tab heap-tab hidden" id="tab-heaptreemap" onclick="showPanel('heaptreemap')">🗺️ Biggest Objects</button>
+            <button class="tab heap-tab hidden" id="tab-heapgcroots" onclick="showPanel('heapgcroots')">🌳 GC Roots</button>
+            <button class="tab heap-tab hidden" id="tab-heapmergedpaths" onclick="showPanel('heapmergedpaths')">🔀 Merged Paths</button>
             <button class="tab heap-tab hidden" id="tab-heaphistogram" onclick="showPanel('heaphistogram')">📊 Class Histogram</button>
             <button class="tab heap-tab hidden" id="tab-heaprootcause" onclick="showPanel('heaprootcause')">🎯 Root Cause</button>
-            <button class="tab heap-tab hidden" id="tab-heaprefgraph" onclick="showPanel('heaprefgraph')">🔗 Reference Graph</button>
         </div>
 
         <!-- Overview Panel -->
@@ -300,10 +301,10 @@
             </div>
         </div>
 
-        <!-- Heap TreeMap Panel -->
+        <!-- Heap Biggest Objects Panel (TreeMap) -->
         <div id="heaptreemap-panel" class="panel">
             <div class="card">
-                <h2>🗺️ Heap Memory Distribution</h2>
+                <h2>🗺️ Biggest Objects</h2>
                 <div class="tips" style="margin-bottom: 15px;">
                     <span>💡 Click on a block to zoom in, right-click to zoom out</span>
                     <span>📊 Block size represents memory usage</span>
@@ -330,7 +331,69 @@
             </div>
         </div>
 
-        <!-- Heap Histogram Panel -->
+        <!-- Heap GC Roots Panel -->
+        <div id="heapgcroots-panel" class="panel">
+            <div class="card">
+                <h2>🌳 GC Roots</h2>
+                <div class="tips" style="margin-bottom: 15px;">
+                    <span>💡 GC Roots are objects that are always reachable and prevent garbage collection</span>
+                    <span>🔍 Click to expand and see retained objects</span>
+                </div>
+                <div class="gc-roots-summary" id="gcRootsSummary">
+                    <div class="gc-roots-stat">
+                        <span class="stat-value" id="gcRootsTotalCount">-</span>
+                        <span class="stat-label">Total GC Roots</span>
+                    </div>
+                    <div class="gc-roots-stat">
+                        <span class="stat-value" id="gcRootsRetainedSize">-</span>
+                        <span class="stat-label">Total Retained Size</span>
+                    </div>
+                </div>
+                <div class="gc-roots-filter">
+                    <input type="text" id="gcRootsSearch" placeholder="Filter GC Roots..." onkeyup="HeapAnalysis.filterGCRoots()">
+                    <select id="gcRootsTypeFilter" onchange="HeapAnalysis.filterGCRoots()">
+                        <option value="">All Types</option>
+                        <option value="Thread">Thread</option>
+                        <option value="Class">Class</option>
+                        <option value="JNI">JNI</option>
+                        <option value="Monitor">Monitor</option>
+                        <option value="Sticky">Sticky Class</option>
+                    </select>
+                </div>
+                <div class="gc-roots-table-container">
+                    <table class="gc-roots-table" id="gcRootsTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 30px"></th>
+                                <th>Item</th>
+                                <th style="width: 140px">Shallow</th>
+                                <th style="width: 140px">Retained</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gcRootsTableBody">
+                            <tr><td colspan="4" class="loading">Loading GC Roots...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Heap Merged Paths Panel -->
+        <div id="heapmergedpaths-panel" class="panel">
+            <div class="card">
+                <h2>🔀 Merged Paths (Retainers)</h2>
+                <div class="tips" style="margin-bottom: 15px;">
+                    <span>💡 展示内存占用大类被哪些类持有（Retained by）</span>
+                    <span>🔍 点击类名展开查看详细的持有者列表</span>
+                    <span>📊 按保留内存大小排序</span>
+                </div>
+                <div class="merged-paths-container" id="mergedPathsContainer">
+                    <div class="loading">加载 Retainer 数据中...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Heap Histogram Panel (IDEA-style) -->
         <div id="heaphistogram-panel" class="panel">
             <div class="card">
                 <h2>📊 Class Histogram</h2>
@@ -345,14 +408,14 @@
                 </div>
                 <div id="heapHistogramContainer">
                     <div id="heapFlatView">
-                        <table class="heap-class-table">
+                        <table class="heap-class-table idea-style">
                             <thead>
                                 <tr>
-                                    <th style="width: 50px">#</th>
-                                    <th>Class Name</th>
-                                    <th style="width: 250px">Size</th>
-                                    <th style="width: 120px">Instances</th>
-                                    <th style="width: 100px">Percentage</th>
+                                    <th style="width: 30px"></th>
+                                    <th class="sortable" data-sort="name" onclick="HeapAnalysis.sortHistogram('name')">Class</th>
+                                    <th class="sortable" data-sort="count" style="width: 120px" onclick="HeapAnalysis.sortHistogram('count')">Count</th>
+                                    <th class="sortable active" data-sort="shallow" style="width: 160px" onclick="HeapAnalysis.sortHistogram('shallow')">Shallow ▼</th>
+                                    <th class="sortable" data-sort="retained" style="width: 160px" onclick="HeapAnalysis.sortHistogram('retained')">Retained</th>
                                 </tr>
                             </thead>
                             <tbody id="heapClassTableBody"></tbody>
@@ -370,80 +433,64 @@
             <div class="card">
                 <h2>🎯 Root Cause Analysis</h2>
                 <div class="tips" style="margin-bottom: 15px;">
-                    <span>💡 Identify business-level classes that retain the most memory</span>
-                    <span>🔍 Focus on application code, not JDK/framework internals</span>
+                    <span>💡 快速定位内存问题根因</span>
+                    <span>🔍 按照诊断步骤逐一排查</span>
                 </div>
                 
-                <!-- Leak Suspects Section -->
+                <!-- Quick Diagnosis Section -->
                 <div class="root-cause-section">
-                    <h3>⚠️ Memory Leak Suspects</h3>
+                    <h3>🚀 快速诊断步骤</h3>
+                    <div id="quickDiagnosisContainer">
+                        <div class="loading">分析中...</div>
+                    </div>
+                </div>
+
+                <!-- Leak Suspects Section -->
+                <div class="root-cause-section" style="margin-top: 20px;">
+                    <h3>⚠️ 内存泄漏嫌疑</h3>
                     <div class="leak-suspects-container" id="leakSuspectsContainer">
-                        <div class="loading">Loading analysis...</div>
+                        <div class="loading">分析中...</div>
+                    </div>
+                </div>
+
+                <!-- Business Classes Section -->
+                <div class="root-cause-section" style="margin-top: 20px;">
+                    <h3>📦 Top 业务类 (非 JDK/框架)</h3>
+                    <div id="businessClassesContainer">
+                        <div class="loading">分析中...</div>
+                    </div>
+                </div>
+
+                <!-- Collection Issues Section -->
+                <div class="root-cause-section" style="margin-top: 20px;">
+                    <h3>📋 集合类问题</h3>
+                    <div id="collectionIssuesContainer">
+                        <div class="loading">分析中...</div>
                     </div>
                 </div>
 
                 <!-- Business Retainers Summary -->
                 <div class="root-cause-section" style="margin-top: 20px;">
-                    <h3>📊 Business Retainers by Target Class</h3>
+                    <h3>📊 详细 Retainer 分析</h3>
                     <div class="business-retainers-filter">
-                        <input type="text" id="rootCauseSearch" placeholder="Search class name..." onkeyup="HeapAnalysis.filterRootCause()">
-                        <button onclick="HeapAnalysis.filterRootCause()">🔍 Search</button>
+                        <input type="text" id="rootCauseSearch" placeholder="搜索类名..." onkeyup="HeapAnalysis.filterRootCause()">
+                        <button onclick="HeapAnalysis.filterRootCause()">🔍 搜索</button>
                     </div>
                     <div id="businessRetainersContainer">
-                        <div class="loading">Loading retainer data...</div>
+                        <div class="loading">加载 Retainer 数据中...</div>
                     </div>
                 </div>
 
                 <!-- Suggestions Section -->
                 <div class="root-cause-section" style="margin-top: 20px;">
-                    <h3>💡 Optimization Suggestions</h3>
+                    <h3>💡 优化建议</h3>
                     <div id="heapSuggestionsContainer">
-                        <div class="loading">Loading suggestions...</div>
+                        <div class="loading">加载建议中...</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Heap Reference Graph Panel -->
-        <div id="heaprefgraph-panel" class="panel">
-            <div class="card">
-                <h2>🔗 Object Reference Graph</h2>
-                <div class="tips" style="margin-bottom: 15px;">
-                    <span>💡 Visualize object references from GC Roots to target classes</span>
-                    <span>🔍 Select a class to see its reference paths</span>
-                    <span>🖱️ Drag to pan, scroll to zoom</span>
-                </div>
-                <div class="ref-graph-controls">
-                    <label>Select Class:</label>
-                    <select id="refGraphClassSelect" onchange="loadRefGraphForClass(this.value)">
-                        <option value="">-- Select a class --</option>
-                    </select>
-                    <button onclick="fitRefGraph()">Fit to View</button>
-                    <button class="secondary" onclick="resetRefGraph()">Reset</button>
-                </div>
-                <div id="heapRefGraph">
-                    <div class="loading">Select a class to view its reference graph</div>
-                </div>
-                <div class="ref-graph-legend">
-                    <div class="ref-graph-legend-item">
-                        <div class="ref-graph-legend-color" style="background: #00c853;"></div>
-                        <span>GC Root</span>
-                    </div>
-                    <div class="ref-graph-legend-item">
-                        <div class="ref-graph-legend-color" style="background: #7c4dff;"></div>
-                        <span>Intermediate Object</span>
-                    </div>
-                    <div class="ref-graph-legend-item">
-                        <div class="ref-graph-legend-color" style="background: #e040fb;"></div>
-                        <span>Target Class Instance</span>
-                    </div>
-                </div>
-                <div id="gcPathsContainer" class="gc-path-container" style="display: none;">
-                    <div class="gc-path-title">📍 Sample GC Root Paths</div>
-                    <div id="gcPathsList"></div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <!-- Node Tooltip -->
@@ -454,6 +501,13 @@
     <script src="/static/js/api.js"></script>
     <script src="/static/js/flamegraph.js"></script>
     <script src="/static/js/callgraph.js"></script>
+    <!-- Heap Analysis Modular Scripts (load order matters) -->
+    <script src="/static/js/heap-core.js"></script>
+    <script src="/static/js/heap-treemap.js"></script>
+    <script src="/static/js/heap-histogram.js"></script>
+    <script src="/static/js/heap-gcroots.js"></script>
+    <script src="/static/js/heap-merged-paths.js"></script>
+    <script src="/static/js/heap-rootcause.js"></script>
     <script src="/static/js/heap.js"></script>
     <script src="/static/js/app.js"></script>
 </body>

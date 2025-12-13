@@ -246,6 +246,10 @@ const App = (function() {
             } else if (panelId === 'heaptreemap') {
                 document.getElementById('heaptreemap-panel').classList.add('active');
                 requestAnimationFrame(() => HeapAnalysis.resizeTreemap());
+            } else if (panelId === 'heapgcroots') {
+                document.getElementById('heapgcroots-panel').classList.add('active');
+            } else if (panelId === 'heapmergedpaths') {
+                document.getElementById('heapmergedpaths-panel').classList.add('active');
             } else if (panelId === 'heaphistogram') {
                 document.getElementById('heaphistogram-panel').classList.add('active');
             } else if (panelId === 'heaprootcause') {

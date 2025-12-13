@@ -320,16 +320,52 @@ func (s *Server) handleRetainers(w http.ResponseWriter, r *http.Request) {
 		taskDir = s.dataDir
 	}
 
-	// Look for retainer_analysis.json
+	// Try multiple sources for retainer data
+	var data []byte
+	var err error
+
+	// 1. Try retainer_analysis.json first
 	retainerFile := filepath.Join(taskDir, "retainer_analysis.json")
-	data, err := os.ReadFile(retainerFile)
+	data, err = os.ReadFile(retainerFile)
 	if err != nil {
-		// Fall back to heap_analysis.json if retainer file doesn't exist
+		// 2. Try heap_analysis.json
 		heapFile := filepath.Join(taskDir, "heap_analysis.json")
 		data, err = os.ReadFile(heapFile)
 		if err != nil {
-			http.Error(w, "Retainer data not found", http.StatusNotFound)
-			return
+			// 3. Fall back to extracting from summary.json
+			summaryFile := filepath.Join(taskDir, "summary.json")
+			summaryData, summaryErr := os.ReadFile(summaryFile)
+			if summaryErr != nil {
+				http.Error(w, "Retainer data not found", http.StatusNotFound)
+				return
+			}
+
+			// Parse summary and extract retainer-related data
+			var summary map[string]interface{}
+			if jsonErr := json.Unmarshal(summaryData, &summary); jsonErr != nil {
+				http.Error(w, "Failed to parse summary", http.StatusInternalServerError)
+				return
+			}
+
+			// Extract data section which contains retainer info
+			retainerData := make(map[string]interface{})
+			if dataSection, ok := summary["data"].(map[string]interface{}); ok {
+				if businessRetainers, ok := dataSection["business_retainers"]; ok {
+					retainerData["business_retainers"] = businessRetainers
+				}
+				if referenceGraphs, ok := dataSection["reference_graphs"]; ok {
+					retainerData["reference_graphs"] = referenceGraphs
+				}
+				if topClasses, ok := dataSection["top_classes"]; ok {
+					retainerData["top_classes"] = topClasses
+				}
+			}
+
+			data, err = json.Marshal(retainerData)
+			if err != nil {
+				http.Error(w, "Failed to marshal retainer data", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
