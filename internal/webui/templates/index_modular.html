@@ -4,6 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Perf Analysis - Visualization</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#667eea',
+                        secondary: '#764ba2',
+                        accent: '#f093fb',
+                        success: '#00c853',
+                        warning: '#ff9800',
+                        danger: '#f44336',
+                    }
+                }
+            }
+        }
+    </script>
     <!-- External Libraries -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.min.js"></script>
@@ -15,100 +33,105 @@
     <link rel="stylesheet" href="/static/css/callgraph.css">
     <link rel="stylesheet" href="/static/css/heap.css">
 </head>
-<body>
-    <div class="header">
-        <div class="header-content">
+<body class="bg-gray-100 text-gray-800">
+    <!-- Header: Tailwind 替换 -->
+    <header class="bg-gradient-to-r from-primary to-secondary text-white px-8 py-5 shadow-lg">
+        <div class="flex items-center justify-between">
             <div>
-                <h1>🔥 Perf Analysis Viewer</h1>
-                <div class="subtitle">Interactive performance profiling visualization</div>
+                <h1 class="text-2xl font-semibold">🔥 Perf Analysis Viewer</h1>
+                <p class="text-sm opacity-90 mt-1">Interactive performance profiling visualization</p>
             </div>
-            <div class="task-selector">
-                <label>Task:</label>
-                <select id="taskSelect" onchange="loadTask(this.value)">
-                    <option value="">Loading...</option>
+            <div class="flex items-center gap-3">
+                <label class="text-sm">Task:</label>
+                <select id="taskSelect" onchange="loadTask(this.value)" 
+                    class="px-3 py-2 rounded-md border border-white/30 bg-white/10 text-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/50">
+                    <option value="" class="text-gray-800 bg-white">Loading...</option>
                 </select>
             </div>
         </div>
-    </div>
+    </header>
 
-    <div class="container">
-        <div class="tabs" id="tabsContainer">
-            <button class="tab active" id="tab-overview" onclick="showPanel('overview')">📊 Overview</button>
-            <button class="tab cpu-tab" id="tab-flamegraph" onclick="showPanel('flamegraph')">🔥 Flame Graph</button>
-            <button class="tab cpu-tab" id="tab-callgraph" onclick="showPanel('callgraph')">📈 Call Graph</button>
-            <button class="tab cpu-tab" id="tab-topfuncs" onclick="showPanel('topfuncs')">📋 Top Functions</button>
-            <button class="tab cpu-tab" id="tab-threads" onclick="showPanel('threads')">🧵 Threads</button>
-            <button class="tab heap-tab hidden" id="tab-heapdiagnosis" onclick="showPanel('heapdiagnosis')">🩺 问题诊断</button>
-            <button class="tab heap-tab hidden" id="tab-heaptreemap" onclick="showPanel('heaptreemap')">🗺️ Biggest Objects</button>
-            <button class="tab heap-tab hidden" id="tab-heapgcroots" onclick="showPanel('heapgcroots')">🌳 GC Roots</button>
-            <button class="tab heap-tab hidden" id="tab-heapmergedpaths" onclick="showPanel('heapmergedpaths')">🔀 Merged Paths</button>
-            <button class="tab heap-tab hidden" id="tab-heaphistogram" onclick="showPanel('heaphistogram')">📊 Class Histogram</button>
-            <button class="tab heap-tab hidden" id="tab-heaprootcause" onclick="showPanel('heaprootcause')">🎯 详细分析</button>
-        </div>
+    <!-- Container: Tailwind 替换 -->
+    <main class="max-w-[1800px] mx-auto p-5">
+        <!-- Tabs: Tailwind 替换 -->
+        <nav class="flex flex-wrap gap-2.5 mb-5" id="tabsContainer">
+            <button class="tab active px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-overview" onclick="showPanel('overview')">📊 Overview</button>
+            <button class="tab cpu-tab px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-flamegraph" onclick="showPanel('flamegraph')">🔥 Flame Graph</button>
+            <button class="tab cpu-tab px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-callgraph" onclick="showPanel('callgraph')">📈 Call Graph</button>
+            <button class="tab cpu-tab px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-topfuncs" onclick="showPanel('topfuncs')">📋 Top Functions</button>
+            <button class="tab cpu-tab px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-threads" onclick="showPanel('threads')">🧵 Threads</button>
+            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heapdiagnosis" onclick="showPanel('heapdiagnosis')">🩺 问题诊断</button>
+            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heaptreemap" onclick="showPanel('heaptreemap')">🗺️ Biggest Objects</button>
+            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heapgcroots" onclick="showPanel('heapgcroots')">🌳 GC Roots</button>
+            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heapmergedpaths" onclick="showPanel('heapmergedpaths')">🔀 Merged Paths</button>
+            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heaphistogram" onclick="showPanel('heaphistogram')">📊 Class Histogram</button>
+            <button class="tab heap-tab hidden px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors" id="tab-heaprootcause" onclick="showPanel('heaprootcause')">🎯 详细分析</button>
+        </nav>
 
-        <!-- Overview Panel -->
-        <div id="overview" class="panel active">
-            <div class="card" id="taskMetadataCard" style="margin-bottom: 20px; display: none;">
-                <h2>📋 Task Information</h2>
-                <div class="metadata-grid">
-                    <div class="metadata-item">
-                        <span class="metadata-label">Task Type</span>
-                        <span class="metadata-value" id="metaTaskType">-</span>
+        <!-- Overview Panel: Tailwind 替换 -->
+        <div id="overview" class="panel active bg-white rounded-xl shadow-md p-5">
+            <!-- Task Metadata Card -->
+            <div class="bg-white rounded-xl shadow-md p-5 mb-5 hidden" id="taskMetadataCard">
+                <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">📋 Task Information</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
+                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Task Type</span>
+                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaTaskType">-</span>
                     </div>
-                    <div class="metadata-item">
-                        <span class="metadata-label">Profiler</span>
-                        <span class="metadata-value" id="metaProfiler">-</span>
+                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
+                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Profiler</span>
+                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaProfiler">-</span>
                     </div>
-                    <div class="metadata-item">
-                        <span class="metadata-label">Input File</span>
-                        <span class="metadata-value" id="metaInputFile">-</span>
+                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
+                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Input File</span>
+                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaInputFile">-</span>
                     </div>
-                    <div class="metadata-item">
-                        <span class="metadata-label">Created At</span>
-                        <span class="metadata-value" id="metaCreatedAt">-</span>
+                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
+                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Created At</span>
+                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaCreatedAt">-</span>
                     </div>
-                    <div class="metadata-item">
-                        <span class="metadata-label">Analysis Time</span>
-                        <span class="metadata-value" id="metaAnalysisTime">-</span>
+                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
+                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Analysis Time</span>
+                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaAnalysisTime">-</span>
                     </div>
-                    <div class="metadata-item">
-                        <span class="metadata-label">Task UUID</span>
-                        <span class="metadata-value" id="metaTaskUUID">-</span>
+                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
+                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Task UUID</span>
+                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaTaskUUID">-</span>
                     </div>
                 </div>
             </div>
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value" id="totalSamples">-</div>
-                    <div class="stat-label">Total Samples</div>
+            <!-- Stats Grid: Tailwind 替换 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
+                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
+                    <div class="text-3xl font-bold text-primary" id="totalSamples">-</div>
+                    <div class="text-sm text-gray-500 mt-1">Total Samples</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="topFuncsCount">-</div>
-                    <div class="stat-label">Functions Analyzed</div>
+                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
+                    <div class="text-3xl font-bold text-primary" id="topFuncsCount">-</div>
+                    <div class="text-sm text-gray-500 mt-1">Functions Analyzed</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="threadsCount">-</div>
-                    <div class="stat-label">Active Threads</div>
+                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
+                    <div class="text-3xl font-bold text-primary" id="threadsCount">-</div>
+                    <div class="text-sm text-gray-500 mt-1">Active Threads</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="taskUUID">-</div>
-                    <div class="stat-label">Task UUID</div>
+                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
+                    <div class="text-3xl font-bold text-primary" id="taskUUID">-</div>
+                    <div class="text-sm text-gray-500 mt-1">Task UUID</div>
                 </div>
             </div>
 
-            <div class="card">
-                <h2>Top 5 Hot Functions</h2>
-                <div class="tips" style="margin-bottom: 10px;">
-                    <span>💡 Click action buttons to search in Flame Graph or Call Graph</span>
-                </div>
-                <table class="top-funcs-table">
+            <!-- Top Functions Card -->
+            <div class="bg-white rounded-xl shadow-md p-5">
+                <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">Top 5 Hot Functions</h2>
+                <p class="text-xs text-gray-400 mb-2.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
+                <table class="top-funcs-table w-full">
                     <thead>
                         <tr>
-                            <th style="width: 50px">#</th>
+                            <th class="w-[50px]">#</th>
                             <th>Function</th>
-                            <th style="width: 200px">Self %</th>
-                            <th style="width: 100px">Actions</th>
+                            <th class="w-[200px]">Self %</th>
+                            <th class="w-[100px]">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="topFuncsPreview"></tbody>
@@ -116,59 +139,64 @@
             </div>
         </div>
 
-        <!-- Flame Graph Panel -->
-        <div id="flamegraph-panel" class="panel">
-            <div class="tips">
+        <!-- Flame Graph Panel: Tailwind 替换 -->
+        <div id="flamegraph-panel" class="panel bg-white rounded-xl shadow-md p-5">
+            <p class="text-xs text-gray-400 mb-2.5 space-x-4">
                 <span>💡 Click to zoom in, double-click to zoom out</span>
                 <span>🔍 Use search to highlight functions</span>
-            </div>
-            <div class="controls">
-                <input type="text" id="searchInput" placeholder="Search function name (e.g. HashMap, alibaba, netty)..." onkeyup="handleSearchKeyup(event)">
-                <button onclick="searchFlameGraph()">🔍 Search</button>
-                <button class="secondary" onclick="clearSearch()">Clear</button>
-                <button class="secondary" onclick="resetFlameGraph()">Reset View</button>
+            </p>
+            <!-- Controls: Tailwind 替换 -->
+            <div class="flex flex-wrap items-center gap-2.5 mb-4">
+                <input type="text" id="searchInput" 
+                    placeholder="Search function name (e.g. HashMap, alibaba, netty)..." 
+                    onkeyup="handleSearchKeyup(event)"
+                    class="flex-1 min-w-[200px] max-w-[400px] px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+                <button onclick="searchFlameGraph()" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">🔍 Search</button>
+                <button onclick="clearSearch()" class="px-5 py-2.5 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">Clear</button>
+                <button onclick="resetFlameGraph()" class="px-5 py-2.5 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">Reset View</button>
                 <span id="searchResultBadge" class="search-result-badge hidden"></span>
             </div>
-            <div class="filter-section" id="flameFilterSection">
-                <span class="filter-label">🔧 Filter:</span>
-                <div class="filter-chips">
-                    <div class="filter-chip" data-filter="jvm" onclick="toggleFlameFilter('jvm')" title="JDK/JVM internal functions">
-                        <span class="chip-icon">☕</span> JVM
+            <!-- Filter Section: Tailwind 替换 -->
+            <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg text-sm mb-4" id="flameFilterSection">
+                <span class="text-gray-500 font-medium whitespace-nowrap">🔧 Filter:</span>
+                <div class="flex flex-wrap gap-1.5">
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="jvm" onclick="toggleFlameFilter('jvm')" title="JDK/JVM internal functions">
+                        <span class="text-[11px]">☕</span> JVM
                     </div>
-                    <div class="filter-chip" data-filter="gc" onclick="toggleFlameFilter('gc')" title="Garbage Collection functions">
-                        <span class="chip-icon">🗑️</span> GC
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="gc" onclick="toggleFlameFilter('gc')" title="Garbage Collection functions">
+                        <span class="text-[11px]">🗑️</span> GC
                     </div>
-                    <div class="filter-chip" data-filter="native" onclick="toggleFlameFilter('native')" title="Native/C++ runtime functions">
-                        <span class="chip-icon">⚙️</span> Native
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="native" onclick="toggleFlameFilter('native')" title="Native/C++ runtime functions">
+                        <span class="text-[11px]">⚙️</span> Native
                     </div>
-                    <div class="filter-chip" data-filter="kernel" onclick="toggleFlameFilter('kernel')" title="Linux kernel functions">
-                        <span class="chip-icon">🐧</span> Kernel
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="kernel" onclick="toggleFlameFilter('kernel')" title="Linux kernel functions">
+                        <span class="text-[11px]">🐧</span> Kernel
                     </div>
-                    <div class="filter-chip" data-filter="reflect" onclick="toggleFlameFilter('reflect')" title="Reflection and proxy functions">
-                        <span class="chip-icon">🔄</span> Reflect
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="reflect" onclick="toggleFlameFilter('reflect')" title="Reflection and proxy functions">
+                        <span class="text-[11px]">🔄</span> Reflect
                     </div>
                 </div>
             </div>
-            <div id="flame-details">
-                <div class="detail-item">
-                    <span class="detail-label">📊 Total Samples:</span>
-                    <span class="detail-value" id="flame-total-samples">-</span>
+            <div id="flame-details" class="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
+                <div class="flex items-center gap-1.5">
+                    <span class="font-medium">📊 Total Samples:</span>
+                    <span id="flame-total-samples">-</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">📈 Unique Functions:</span>
-                    <span class="detail-value" id="flame-unique-funcs">-</span>
+                <div class="flex items-center gap-1.5">
+                    <span class="font-medium">📈 Unique Functions:</span>
+                    <span id="flame-unique-funcs">-</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">🔥 Max Depth:</span>
-                    <span class="detail-value" id="flame-max-depth">-</span>
+                <div class="flex items-center gap-1.5">
+                    <span class="font-medium">🔥 Max Depth:</span>
+                    <span id="flame-max-depth">-</span>
                 </div>
-                <div class="detail-item">
-                    <span class="detail-label">💡 Tip:</span>
-                    <span style="color: #666;">Click frame to zoom, right-click to zoom out</span>
+                <div class="flex items-center gap-1.5">
+                    <span class="font-medium">💡 Tip:</span>
+                    <span class="text-gray-400">Click frame to zoom, right-click to zoom out</span>
                 </div>
             </div>
             <div id="flamegraph">
-                <div class="loading">Loading flame graph</div>
+                <div class="loading text-center py-10 text-gray-500">Loading flame graph</div>
             </div>
         </div>
 
@@ -273,243 +301,229 @@
             </div>
         </div>
 
-        <!-- Top Functions Panel -->
-        <div id="topfuncs" class="panel">
-            <div class="card" style="box-shadow: none; padding: 0;">
-                <h2>All Functions (sorted by self %)</h2>
-                <div class="tips" style="margin-bottom: 10px;">
-                    <span>💡 Click action buttons to search in Flame Graph or Call Graph</span>
+        <!-- Top Functions Panel: Tailwind 替换 -->
+        <div id="topfuncs" class="panel bg-white rounded-xl shadow-md p-5">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">All Functions (sorted by self %)</h2>
+            <p class="text-xs text-gray-400 mb-2.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
+            <table class="top-funcs-table w-full">
+                <thead>
+                    <tr>
+                        <th class="w-[50px]">#</th>
+                        <th>Function</th>
+                        <th class="w-[200px]">Self %</th>
+                        <th class="w-[100px]">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="topFuncsAll"></tbody>
+            </table>
+        </div>
+
+        <!-- Threads Panel: Tailwind 替换 -->
+        <div id="threads" class="panel bg-white rounded-xl shadow-md p-5">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">Thread Statistics</h2>
+            <ul class="thread-list divide-y divide-gray-100" id="threadList"></ul>
+        </div>
+
+        <!-- Heap Diagnosis Overview Panel: Tailwind 替换 -->
+        <div id="heapdiagnosis-panel" class="panel bg-white rounded-xl shadow-md p-5">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🩺 问题诊断概览</h2>
+            <p class="text-xs text-gray-400 mb-4 space-x-4">
+                <span>💡 快速定位内存问题，直接告诉你问题在哪</span>
+                <span>🔍 点击问题卡片查看详情和解决方案</span>
+            </p>
+            <div id="diagnosisContainer">
+                <div class="loading text-center py-10 text-gray-500">分析中...</div>
+            </div>
+        </div>
+
+        <!-- Heap Biggest Objects Panel: Tailwind 替换 -->
+        <div id="heaptreemap-panel" class="panel bg-white rounded-xl shadow-md p-5">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🗺️ Biggest Objects</h2>
+            <p class="text-xs text-gray-400 mb-4 space-x-4">
+                <span>💡 Click on a block to zoom in, right-click to zoom out</span>
+                <span>📊 Block size represents memory usage</span>
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5" id="heapStatsGrid">
+                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
+                    <div class="text-2xl font-bold text-primary" id="heapTotalSize">-</div>
+                    <div class="text-sm text-gray-500 mt-1">Total Heap Size</div>
                 </div>
-                <table class="top-funcs-table">
+                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
+                    <div class="text-2xl font-bold text-primary" id="heapTotalClasses">-</div>
+                    <div class="text-sm text-gray-500 mt-1">Total Classes</div>
+                </div>
+                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
+                    <div class="text-2xl font-bold text-primary" id="heapTotalInstances">-</div>
+                    <div class="text-sm text-gray-500 mt-1">Total Instances</div>
+                </div>
+                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
+                    <div class="text-2xl font-bold text-primary" id="heapFormat">-</div>
+                    <div class="text-sm text-gray-500 mt-1">Heap Format</div>
+                </div>
+            </div>
+            <div id="heapTreemap"></div>
+        </div>
+
+        <!-- Heap GC Roots Panel: Tailwind 替换 -->
+        <div id="heapgcroots-panel" class="panel bg-white rounded-xl shadow-md p-5">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🌳 GC Roots</h2>
+            <p class="text-xs text-gray-400 mb-4 space-x-4">
+                <span>💡 GC Roots are objects that are always reachable and prevent garbage collection</span>
+                <span>🔍 Click to expand and see retained objects</span>
+            </p>
+            <div class="flex gap-6 mb-4" id="gcRootsSummary">
+                <div class="flex flex-col items-center">
+                    <span class="text-2xl font-bold text-primary" id="gcRootsTotalCount">-</span>
+                    <span class="text-sm text-gray-500">Total GC Roots</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-2xl font-bold text-primary" id="gcRootsRetainedSize">-</span>
+                    <span class="text-sm text-gray-500">Total Retained Size</span>
+                </div>
+            </div>
+            <div class="flex gap-2.5 mb-4">
+                <input type="text" id="gcRootsSearch" placeholder="Filter GC Roots..." onkeyup="HeapAnalysis.filterGCRoots()"
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
+                <select id="gcRootsTypeFilter" onchange="HeapAnalysis.filterGCRoots()"
+                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    <option value="">All Types</option>
+                    <option value="Thread">Thread</option>
+                    <option value="Class">Class</option>
+                    <option value="JNI">JNI</option>
+                    <option value="Monitor">Monitor</option>
+                    <option value="Sticky">Sticky Class</option>
+                </select>
+            </div>
+            <div class="gc-roots-table-container overflow-x-auto">
+                <table class="gc-roots-table w-full" id="gcRootsTable">
                     <thead>
                         <tr>
-                            <th style="width: 50px">#</th>
-                            <th>Function</th>
-                            <th style="width: 200px">Self %</th>
-                            <th style="width: 100px">Actions</th>
+                            <th class="w-[30px]"></th>
+                            <th>Item</th>
+                            <th class="w-[140px]">Shallow</th>
+                            <th class="w-[140px]">Retained</th>
                         </tr>
                     </thead>
-                    <tbody id="topFuncsAll"></tbody>
+                    <tbody id="gcRootsTableBody">
+                        <tr><td colspan="4" class="loading text-center py-10 text-gray-500">Loading GC Roots...</td></tr>
+                    </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- Threads Panel -->
-        <div id="threads" class="panel">
-            <div class="card" style="box-shadow: none; padding: 0;">
-                <h2>Thread Statistics</h2>
-                <ul class="thread-list" id="threadList"></ul>
+        <!-- Heap Merged Paths Panel: Tailwind 替换 -->
+        <div id="heapmergedpaths-panel" class="panel bg-white rounded-xl shadow-md p-5">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🔀 Merged Paths (Retainers)</h2>
+            <p class="text-xs text-gray-400 mb-4 space-x-4">
+                <span>💡 展示内存占用大类被哪些类持有（Retained by）</span>
+                <span>🔍 点击类名展开查看详细的持有者列表</span>
+                <span>📊 按保留内存大小排序</span>
+            </p>
+            <div class="merged-paths-container" id="mergedPathsContainer">
+                <div class="loading text-center py-10 text-gray-500">加载 Retainer 数据中...</div>
             </div>
         </div>
 
-        <!-- Heap Diagnosis Overview Panel (首页诊断) -->
-        <div id="heapdiagnosis-panel" class="panel">
-            <div class="card">
-                <h2>🩺 问题诊断概览</h2>
-                <div class="tips" style="margin-bottom: 15px;">
-                    <span>💡 快速定位内存问题，直接告诉你问题在哪</span>
-                    <span>🔍 点击问题卡片查看详情和解决方案</span>
-                </div>
-                <div id="diagnosisContainer">
-                    <div class="loading">分析中...</div>
-                </div>
+        <!-- Heap Histogram Panel: Tailwind 替换 -->
+        <div id="heaphistogram-panel" class="panel bg-white rounded-xl shadow-md p-5">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">📊 Class Histogram</h2>
+            <div class="flex flex-wrap items-center gap-2.5 mb-4">
+                <input type="text" id="heapClassSearch" placeholder="Search class name (e.g. HashMap, byte[], String)..." onkeyup="filterHeapClasses()"
+                    class="flex-1 min-w-[200px] max-w-[400px] px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
+                <button onclick="filterHeapClasses()" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">🔍 Search</button>
+                <button onclick="clearHeapSearch()" class="px-5 py-2.5 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">Clear</button>
             </div>
-        </div>
-
-        <!-- Heap Biggest Objects Panel (TreeMap) -->
-        <div id="heaptreemap-panel" class="panel">
-            <div class="card">
-                <h2>🗺️ Biggest Objects</h2>
-                <div class="tips" style="margin-bottom: 15px;">
-                    <span>💡 Click on a block to zoom in, right-click to zoom out</span>
-                    <span>📊 Block size represents memory usage</span>
-                </div>
-                <div class="heap-stats-grid" id="heapStatsGrid">
-                    <div class="heap-stat-card">
-                        <div class="stat-value" id="heapTotalSize">-</div>
-                        <div class="stat-label">Total Heap Size</div>
-                    </div>
-                    <div class="heap-stat-card">
-                        <div class="stat-value" id="heapTotalClasses">-</div>
-                        <div class="stat-label">Total Classes</div>
-                    </div>
-                    <div class="heap-stat-card">
-                        <div class="stat-value" id="heapTotalInstances">-</div>
-                        <div class="stat-label">Total Instances</div>
-                    </div>
-                    <div class="heap-stat-card">
-                        <div class="stat-value" id="heapFormat">-</div>
-                        <div class="stat-label">Heap Format</div>
-                    </div>
-                </div>
-                <div id="heapTreemap"></div>
+            <div class="flex gap-2 mb-4">
+                <button class="heap-view-btn active px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium" id="heapViewFlat" onclick="setHeapView('flat')">📋 Flat View</button>
+                <button class="heap-view-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300" id="heapViewPackage" onclick="setHeapView('package')">📦 Package View</button>
             </div>
-        </div>
-
-        <!-- Heap GC Roots Panel -->
-        <div id="heapgcroots-panel" class="panel">
-            <div class="card">
-                <h2>🌳 GC Roots</h2>
-                <div class="tips" style="margin-bottom: 15px;">
-                    <span>💡 GC Roots are objects that are always reachable and prevent garbage collection</span>
-                    <span>🔍 Click to expand and see retained objects</span>
-                </div>
-                <div class="gc-roots-summary" id="gcRootsSummary">
-                    <div class="gc-roots-stat">
-                        <span class="stat-value" id="gcRootsTotalCount">-</span>
-                        <span class="stat-label">Total GC Roots</span>
-                    </div>
-                    <div class="gc-roots-stat">
-                        <span class="stat-value" id="gcRootsRetainedSize">-</span>
-                        <span class="stat-label">Total Retained Size</span>
-                    </div>
-                </div>
-                <div class="gc-roots-filter">
-                    <input type="text" id="gcRootsSearch" placeholder="Filter GC Roots..." onkeyup="HeapAnalysis.filterGCRoots()">
-                    <select id="gcRootsTypeFilter" onchange="HeapAnalysis.filterGCRoots()">
-                        <option value="">All Types</option>
-                        <option value="Thread">Thread</option>
-                        <option value="Class">Class</option>
-                        <option value="JNI">JNI</option>
-                        <option value="Monitor">Monitor</option>
-                        <option value="Sticky">Sticky Class</option>
-                    </select>
-                </div>
-                <div class="gc-roots-table-container">
-                    <table class="gc-roots-table" id="gcRootsTable">
+            <div id="heapHistogramContainer">
+                <div id="heapFlatView">
+                    <table class="heap-class-table idea-style w-full">
                         <thead>
                             <tr>
-                                <th style="width: 30px"></th>
-                                <th>Item</th>
-                                <th style="width: 140px">Shallow</th>
-                                <th style="width: 140px">Retained</th>
+                                <th class="w-[30px]"></th>
+                                <th class="sortable" data-sort="name" onclick="HeapAnalysis.sortHistogram('name')">Class</th>
+                                <th class="sortable w-[120px]" data-sort="count" onclick="HeapAnalysis.sortHistogram('count')">Count</th>
+                                <th class="sortable active w-[160px]" data-sort="shallow" onclick="HeapAnalysis.sortHistogram('shallow')">Shallow ▼</th>
+                                <th class="sortable w-[160px]" data-sort="retained" onclick="HeapAnalysis.sortHistogram('retained')">Retained</th>
                             </tr>
                         </thead>
-                        <tbody id="gcRootsTableBody">
-                            <tr><td colspan="4" class="loading">Loading GC Roots...</td></tr>
-                        </tbody>
+                        <tbody id="heapClassTableBody"></tbody>
                     </table>
                 </div>
-            </div>
-        </div>
-
-        <!-- Heap Merged Paths Panel -->
-        <div id="heapmergedpaths-panel" class="panel">
-            <div class="card">
-                <h2>🔀 Merged Paths (Retainers)</h2>
-                <div class="tips" style="margin-bottom: 15px;">
-                    <span>💡 展示内存占用大类被哪些类持有（Retained by）</span>
-                    <span>🔍 点击类名展开查看详细的持有者列表</span>
-                    <span>📊 按保留内存大小排序</span>
-                </div>
-                <div class="merged-paths-container" id="mergedPathsContainer">
-                    <div class="loading">加载 Retainer 数据中...</div>
+                <div id="heapPackageView" class="hidden">
+                    <div id="heapPackageGroups"></div>
                 </div>
             </div>
         </div>
 
-        <!-- Heap Histogram Panel (IDEA-style) -->
-        <div id="heaphistogram-panel" class="panel">
-            <div class="card">
-                <h2>📊 Class Histogram</h2>
-                <div class="heap-search-box">
-                    <input type="text" id="heapClassSearch" placeholder="Search class name (e.g. HashMap, byte[], String)..." onkeyup="filterHeapClasses()">
-                    <button onclick="filterHeapClasses()">🔍 Search</button>
-                    <button class="secondary" onclick="clearHeapSearch()">Clear</button>
+        <!-- Heap Root Cause Analysis Panel: Tailwind 替换 -->
+        <div id="heaprootcause-panel" class="panel bg-white rounded-xl shadow-md p-5">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🎯 Root Cause Analysis</h2>
+            <p class="text-xs text-gray-400 mb-4 space-x-4">
+                <span>💡 快速定位内存问题根因</span>
+                <span>🔍 按照诊断步骤逐一排查</span>
+            </p>
+            
+            <!-- Quick Diagnosis Section -->
+            <section class="mb-6">
+                <h3 class="text-base font-semibold text-gray-700 mb-3">🚀 快速诊断步骤</h3>
+                <div id="quickDiagnosisContainer">
+                    <div class="loading text-center py-6 text-gray-500">分析中...</div>
                 </div>
-                <div class="heap-view-toggle">
-                    <button class="heap-view-btn active" id="heapViewFlat" onclick="setHeapView('flat')">📋 Flat View</button>
-                    <button class="heap-view-btn" id="heapViewPackage" onclick="setHeapView('package')">📦 Package View</button>
+            </section>
+
+            <!-- Leak Suspects Section -->
+            <section class="mb-6">
+                <h3 class="text-base font-semibold text-gray-700 mb-3">⚠️ 内存泄漏嫌疑</h3>
+                <div id="leakSuspectsContainer">
+                    <div class="loading text-center py-6 text-gray-500">分析中...</div>
                 </div>
-                <div id="heapHistogramContainer">
-                    <div id="heapFlatView">
-                        <table class="heap-class-table idea-style">
-                            <thead>
-                                <tr>
-                                    <th style="width: 30px"></th>
-                                    <th class="sortable" data-sort="name" onclick="HeapAnalysis.sortHistogram('name')">Class</th>
-                                    <th class="sortable" data-sort="count" style="width: 120px" onclick="HeapAnalysis.sortHistogram('count')">Count</th>
-                                    <th class="sortable active" data-sort="shallow" style="width: 160px" onclick="HeapAnalysis.sortHistogram('shallow')">Shallow ▼</th>
-                                    <th class="sortable" data-sort="retained" style="width: 160px" onclick="HeapAnalysis.sortHistogram('retained')">Retained</th>
-                                </tr>
-                            </thead>
-                            <tbody id="heapClassTableBody"></tbody>
-                        </table>
-                    </div>
-                    <div id="heapPackageView" style="display: none;">
-                        <div id="heapPackageGroups"></div>
-                    </div>
+            </section>
+
+            <!-- Business Classes Section -->
+            <section class="mb-6">
+                <h3 class="text-base font-semibold text-gray-700 mb-3">📦 Top 业务类 (非 JDK/框架)</h3>
+                <div id="businessClassesContainer">
+                    <div class="loading text-center py-6 text-gray-500">分析中...</div>
                 </div>
-            </div>
+            </section>
+
+            <!-- Collection Issues Section -->
+            <section class="mb-6">
+                <h3 class="text-base font-semibold text-gray-700 mb-3">📋 集合类问题</h3>
+                <div id="collectionIssuesContainer">
+                    <div class="loading text-center py-6 text-gray-500">分析中...</div>
+                </div>
+            </section>
+
+            <!-- Business Retainers Summary -->
+            <section class="mb-6">
+                <h3 class="text-base font-semibold text-gray-700 mb-3">📊 详细 Retainer 分析</h3>
+                <div class="flex gap-2.5 mb-4">
+                    <input type="text" id="rootCauseSearch" placeholder="搜索类名..." onkeyup="HeapAnalysis.filterRootCause()"
+                        class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    <button onclick="HeapAnalysis.filterRootCause()" class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">🔍 搜索</button>
+                </div>
+                <div id="businessRetainersContainer">
+                    <div class="loading text-center py-6 text-gray-500">加载 Retainer 数据中...</div>
+                </div>
+            </section>
+
+            <!-- Suggestions Section -->
+            <section>
+                <h3 class="text-base font-semibold text-gray-700 mb-3">💡 优化建议</h3>
+                <div id="heapSuggestionsContainer">
+                    <div class="loading text-center py-6 text-gray-500">加载建议中...</div>
+                </div>
+            </section>
         </div>
 
-        <!-- Heap Root Cause Analysis Panel -->
-        <div id="heaprootcause-panel" class="panel">
-            <div class="card">
-                <h2>🎯 Root Cause Analysis</h2>
-                <div class="tips" style="margin-bottom: 15px;">
-                    <span>💡 快速定位内存问题根因</span>
-                    <span>🔍 按照诊断步骤逐一排查</span>
-                </div>
-                
-                <!-- Quick Diagnosis Section -->
-                <div class="root-cause-section">
-                    <h3>🚀 快速诊断步骤</h3>
-                    <div id="quickDiagnosisContainer">
-                        <div class="loading">分析中...</div>
-                    </div>
-                </div>
-
-                <!-- Leak Suspects Section -->
-                <div class="root-cause-section" style="margin-top: 20px;">
-                    <h3>⚠️ 内存泄漏嫌疑</h3>
-                    <div class="leak-suspects-container" id="leakSuspectsContainer">
-                        <div class="loading">分析中...</div>
-                    </div>
-                </div>
-
-                <!-- Business Classes Section -->
-                <div class="root-cause-section" style="margin-top: 20px;">
-                    <h3>📦 Top 业务类 (非 JDK/框架)</h3>
-                    <div id="businessClassesContainer">
-                        <div class="loading">分析中...</div>
-                    </div>
-                </div>
-
-                <!-- Collection Issues Section -->
-                <div class="root-cause-section" style="margin-top: 20px;">
-                    <h3>📋 集合类问题</h3>
-                    <div id="collectionIssuesContainer">
-                        <div class="loading">分析中...</div>
-                    </div>
-                </div>
-
-                <!-- Business Retainers Summary -->
-                <div class="root-cause-section" style="margin-top: 20px;">
-                    <h3>📊 详细 Retainer 分析</h3>
-                    <div class="business-retainers-filter">
-                        <input type="text" id="rootCauseSearch" placeholder="搜索类名..." onkeyup="HeapAnalysis.filterRootCause()">
-                        <button onclick="HeapAnalysis.filterRootCause()">🔍 搜索</button>
-                    </div>
-                    <div id="businessRetainersContainer">
-                        <div class="loading">加载 Retainer 数据中...</div>
-                    </div>
-                </div>
-
-                <!-- Suggestions Section -->
-                <div class="root-cause-section" style="margin-top: 20px;">
-                    <h3>💡 优化建议</h3>
-                    <div id="heapSuggestionsContainer">
-                        <div class="loading">加载建议中...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </div>
+    </main>
 
     <!-- Node Tooltip -->
-    <div id="nodeTooltip" class="node-tooltip" style="display: none;"></div>
+    <div id="nodeTooltip" class="node-tooltip fixed bg-black/85 text-white px-4 py-2.5 rounded-lg text-sm max-w-[400px] break-all pointer-events-none z-[1000] hidden"></div>
 
     <!-- Application Scripts -->
     <script src="/static/js/utils.js"></script>
