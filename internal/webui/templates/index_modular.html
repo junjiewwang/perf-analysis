@@ -38,11 +38,12 @@
             <button class="tab cpu-tab" id="tab-callgraph" onclick="showPanel('callgraph')">📈 Call Graph</button>
             <button class="tab cpu-tab" id="tab-topfuncs" onclick="showPanel('topfuncs')">📋 Top Functions</button>
             <button class="tab cpu-tab" id="tab-threads" onclick="showPanel('threads')">🧵 Threads</button>
+            <button class="tab heap-tab hidden" id="tab-heapdiagnosis" onclick="showPanel('heapdiagnosis')">🩺 问题诊断</button>
             <button class="tab heap-tab hidden" id="tab-heaptreemap" onclick="showPanel('heaptreemap')">🗺️ Biggest Objects</button>
             <button class="tab heap-tab hidden" id="tab-heapgcroots" onclick="showPanel('heapgcroots')">🌳 GC Roots</button>
             <button class="tab heap-tab hidden" id="tab-heapmergedpaths" onclick="showPanel('heapmergedpaths')">🔀 Merged Paths</button>
             <button class="tab heap-tab hidden" id="tab-heaphistogram" onclick="showPanel('heaphistogram')">📊 Class Histogram</button>
-            <button class="tab heap-tab hidden" id="tab-heaprootcause" onclick="showPanel('heaprootcause')">🎯 Root Cause</button>
+            <button class="tab heap-tab hidden" id="tab-heaprootcause" onclick="showPanel('heaprootcause')">🎯 详细分析</button>
         </div>
 
         <!-- Overview Panel -->
@@ -301,6 +302,20 @@
             </div>
         </div>
 
+        <!-- Heap Diagnosis Overview Panel (首页诊断) -->
+        <div id="heapdiagnosis-panel" class="panel">
+            <div class="card">
+                <h2>🩺 问题诊断概览</h2>
+                <div class="tips" style="margin-bottom: 15px;">
+                    <span>💡 快速定位内存问题，直接告诉你问题在哪</span>
+                    <span>🔍 点击问题卡片查看详情和解决方案</span>
+                </div>
+                <div id="diagnosisContainer">
+                    <div class="loading">分析中...</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Heap Biggest Objects Panel (TreeMap) -->
         <div id="heaptreemap-panel" class="panel">
             <div class="card">
@@ -503,6 +518,7 @@
     <script src="/static/js/callgraph.js"></script>
     <!-- Heap Analysis Modular Scripts (load order matters) -->
     <script src="/static/js/heap-core.js"></script>
+    <script src="/static/js/heap-diagnosis.js"></script>
     <script src="/static/js/heap-treemap.js"></script>
     <script src="/static/js/heap-histogram.js"></script>
     <script src="/static/js/heap-gcroots.js"></script>

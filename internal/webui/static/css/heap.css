@@ -1827,3 +1827,435 @@
     border-radius: 8px;
     margin-top: 10px;
 }
+
+/* ============================================
+   Diagnosis Overview Panel Styles
+   ============================================ */
+
+/* Diagnosis Summary Card */
+.diagnosis-summary {
+    display: flex;
+    align-items: center;
+    padding: 20px 25px;
+    border-radius: 12px;
+    margin-bottom: 25px;
+    gap: 20px;
+}
+
+.diagnosis-summary.critical {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+    border: 2px solid #e53935;
+}
+
+.diagnosis-summary.warning {
+    background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
+    border: 2px solid #ffa000;
+}
+
+.diagnosis-summary.normal {
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    border: 2px solid #4caf50;
+}
+
+.diagnosis-summary .summary-icon {
+    font-size: 48px;
+    flex-shrink: 0;
+}
+
+.diagnosis-summary .summary-content {
+    flex: 1;
+}
+
+.diagnosis-summary .summary-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 6px;
+}
+
+.diagnosis-summary .summary-subtitle {
+    font-size: 14px;
+    color: #666;
+}
+
+.diagnosis-summary .summary-stats {
+    display: flex;
+    gap: 20px;
+}
+
+.diagnosis-summary .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 15px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 8px;
+    min-width: 60px;
+}
+
+.diagnosis-summary .stat-item .stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #333;
+}
+
+.diagnosis-summary .stat-item .stat-label {
+    font-size: 11px;
+    color: #666;
+    margin-top: 2px;
+}
+
+/* Issues Section */
+.issues-section {
+    margin-bottom: 25px;
+}
+
+.issues-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #9b59b6;
+}
+
+.issues-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Issue Card */
+.issue-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 16px 20px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.issue-card:hover {
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.issue-card.critical {
+    border-left: 5px solid #e53935;
+    background: linear-gradient(135deg, #fff 0%, #fff5f5 100%);
+}
+
+.issue-card.warning {
+    border-left: 5px solid #ffa000;
+    background: linear-gradient(135deg, #fff 0%, #fffbf0 100%);
+}
+
+.issue-card.info {
+    border-left: 5px solid #2196f3;
+    background: linear-gradient(135deg, #fff 0%, #f5faff 100%);
+}
+
+.issue-card .issue-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.issue-card .issue-severity {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.issue-card.critical .issue-severity {
+    background: #e53935;
+    color: white;
+}
+
+.issue-card.warning .issue-severity {
+    background: #ffa000;
+    color: white;
+}
+
+.issue-card.info .issue-severity {
+    background: #2196f3;
+    color: white;
+}
+
+.issue-card .issue-type {
+    font-size: 12px;
+    color: #888;
+    padding: 2px 8px;
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+
+.issue-card .issue-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 6px;
+}
+
+.issue-card .issue-description {
+    font-size: 13px;
+    color: #666;
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.issue-card .issue-metrics {
+    display: flex;
+    gap: 15px;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.issue-card .issue-metrics .metric {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+
+.issue-card .issue-root-cause {
+    padding: 10px 12px;
+    background: linear-gradient(135deg, #f8f4fc 0%, #f0e8f5 100%);
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-size: 13px;
+}
+
+.issue-card .cause-label {
+    font-weight: 600;
+    color: #7b1fa2;
+    margin-right: 8px;
+}
+
+.issue-card .cause-detail {
+    color: #555;
+}
+
+.issue-card .issue-retainers {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    font-size: 12px;
+}
+
+.issue-card .retainers-label {
+    color: #666;
+    font-weight: 500;
+}
+
+.issue-card .retainer-chip {
+    padding: 4px 10px;
+    background: #e3f2fd;
+    color: #1565c0;
+    border-radius: 12px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 11px;
+}
+
+.issue-card .more-retainers {
+    color: #888;
+    font-size: 11px;
+}
+
+.issue-card .issue-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.issue-card .issue-action-btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s;
+    background: #f5f5f5;
+    color: #333;
+    border: 1px solid #ddd;
+}
+
+.issue-card .issue-action-btn:hover {
+    background: #e0e0e0;
+    transform: translateY(-1px);
+}
+
+.issue-card.critical .issue-action-btn:first-child {
+    background: #e53935;
+    color: white;
+    border-color: transparent;
+}
+
+.issue-card.critical .issue-action-btn:first-child:hover {
+    background: #c62828;
+}
+
+.issue-card.warning .issue-action-btn:first-child {
+    background: #ffa000;
+    color: white;
+    border-color: transparent;
+}
+
+.issue-card.warning .issue-action-btn:first-child:hover {
+    background: #ff8f00;
+}
+
+/* No Issues Message */
+.no-issues-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+}
+
+.no-issues-message .icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+}
+
+.no-issues-message .title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.no-issues-message .hint {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.6;
+}
+
+/* More Issues Hint */
+.more-issues-hint {
+    padding: 12px 20px;
+    background: #f5f5f5;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 13px;
+    color: #666;
+    margin-top: 15px;
+}
+
+/* Recommendations Section */
+.recommendations-section {
+    margin-top: 25px;
+}
+
+.recommendations-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #2196f3;
+}
+
+.recommendations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.recommendation-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    padding: 15px 20px;
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    border: 1px solid #90caf9;
+    border-radius: 10px;
+}
+
+.recommendation-card.priority-1 {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+    border-color: #e53935;
+}
+
+.recommendation-card.priority-2 {
+    background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
+    border-color: #ffa000;
+}
+
+.recommendation-card .rec-priority {
+    padding: 4px 10px;
+    background: #1976d2;
+    color: white;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.recommendation-card.priority-1 .rec-priority {
+    background: #e53935;
+}
+
+.recommendation-card.priority-2 .rec-priority {
+    background: #ffa000;
+}
+
+.recommendation-card .rec-content {
+    flex: 1;
+}
+
+.recommendation-card .rec-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.recommendation-card .rec-detail {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+}
+
+/* Action Item Severity Colors */
+.action-item.critical {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+    border-color: #e53935;
+}
+
+.action-item.warning {
+    background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
+    border-color: #ffa000;
+}
+
+.action-item.info {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    border-color: #2196f3;
+}
+
+.action-priority.critical {
+    background: #e53935;
+    color: white;
+}
+
+.action-priority.warning {
+    background: #ffa000;
+    color: white;
+}
+
+.action-priority.info {
+    background: #2196f3;
+    color: white;
+}

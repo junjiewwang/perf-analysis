@@ -4,11 +4,12 @@
  * 
  * 架构说明：
  * - HeapCore: 核心模块，状态管理和事件系统
+ * - HeapDiagnosis: 问题诊断概览（首页展示）
  * - HeapTreemap: Treemap 可视化
  * - HeapHistogram: Class Histogram 表格
  * - HeapGCRoots: GC Roots 分析
  * - HeapMergedPaths: Merged Paths 分析（IDEA 风格）
- * - HeapRootCause: Root Cause 分析
+ * - HeapRootCause: Root Cause 详细分析
  * 
  * 设计原则：
  * - 门面模式：提供统一的简化接口
@@ -32,7 +33,7 @@ const HeapAnalysis = (function() {
         
         // 子模块会在加载时自动注册到核心模块
         console.log('[HeapAnalysis] Initialized with modules:', 
-            Array.from(['treemap', 'histogram', 'gcroots', 'mergedPaths', 'rootcause'])
+            Array.from(['diagnosis', 'treemap', 'histogram', 'gcroots', 'mergedPaths', 'rootcause'])
                 .filter(name => HeapCore.getModule(name))
                 .join(', ')
         );
@@ -109,6 +110,12 @@ const HeapAnalysis = (function() {
         // 加载数据到核心模块（触发各子模块渲染）
         HeapCore.loadAnalysisData(data);
 
+        // 渲染问题诊断概览（首页）
+        const diagnosisModule = HeapCore.getModule('diagnosis');
+        if (diagnosisModule) {
+            diagnosisModule.render(data);
+        }
+
         // Treemap 需要额外的参数
         const treemapModule = HeapCore.getModule('treemap');
         if (treemapModule) {
@@ -120,6 +127,22 @@ const HeapAnalysis = (function() {
         if (gcRootsModule) {
             gcRootsModule.render();
         }
+    }
+
+    // ============================================
+    // 委托方法 - Diagnosis
+    // ============================================
+    
+    function renderDiagnosis(data) {
+        const diagnosisModule = HeapCore.getModule('diagnosis');
+        if (diagnosisModule) {
+            diagnosisModule.render(data);
+        }
+    }
+
+    function getDiagnosisData() {
+        const diagnosisModule = HeapCore.getModule('diagnosis');
+        return diagnosisModule ? diagnosisModule.getDiagnosisData() : null;
     }
 
     // ============================================
@@ -259,6 +282,10 @@ const HeapAnalysis = (function() {
         
         // 分析
         renderAnalysis,
+        
+        // Diagnosis (新增)
+        renderDiagnosis,
+        getDiagnosisData,
         
         // Histogram
         filterClasses,

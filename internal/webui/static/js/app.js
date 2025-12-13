@@ -243,6 +243,12 @@ const App = (function() {
                 }
             } else if (panelId === 'callgraph') {
                 document.getElementById('callgraph-panel').classList.add('active');
+            } else if (panelId === 'heapdiagnosis') {
+                document.getElementById('heapdiagnosis-panel').classList.add('active');
+                // Trigger diagnosis rendering if needed
+                if (summaryData) {
+                    HeapAnalysis.renderDiagnosis(summaryData);
+                }
             } else if (panelId === 'heaptreemap') {
                 document.getElementById('heaptreemap-panel').classList.add('active');
                 requestAnimationFrame(() => HeapAnalysis.resizeTreemap());

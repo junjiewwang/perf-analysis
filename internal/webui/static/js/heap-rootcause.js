@@ -8,6 +8,7 @@
  * - 渲染业务类分析
  * - 渲染集合类问题
  * - 加载详细 retainer 数据
+ * - 提供具体可执行的优化建议
  */
 
 const HeapRootCause = (function() {
@@ -18,9 +19,264 @@ const HeapRootCause = (function() {
     // ============================================
     
     let summaryData = null;
+    let diagnosisResult = null;
 
     // ============================================
-    // 私有方法
+    // 智能诊断引擎
+    // ============================================
+
+    /**
+     * 执行智能诊断
+     */
+    function runSmartDiagnosis(data) {
+        const topClasses = data.data?.top_classes || [];
+        const totalHeapSize = data.data?.total_heap_size || 0;
+        const suggestions = data.suggestions || [];
+        
+        const result = {
+            actionItems: [],
+            leakSuspects: [],
+            businessClasses: [],
+            collectionIssues: []
+        };
+
+        // 分析 Top 类
+        for (let i = 0; i < Math.min(topClasses.length, 20); i++) {
+            const cls = topClasses[i];
+            const className = cls.class_name || '';
+            const percentage = cls.percentage || 0;
+            const instanceCount = cls.instance_count || 0;
+            const retainers = cls.retainers || [];
+
+            // 检测泄漏嫌疑
+            const leakInfo = analyzeLeakSuspect(cls, retainers);
+            if (leakInfo) {
+                result.leakSuspects.push(leakInfo);
+            }
+
+            // 检测集合问题
+            const collectionInfo = analyzeCollectionIssue(cls);
+            if (collectionInfo) {
+                result.collectionIssues.push(collectionInfo);
+            }
+
+            // 检测业务类
+            if (isBusinessClass(className) && percentage > 3) {
+                result.businessClasses.push({
+                    class_name: className,
+                    total_size: cls.total_size,
+                    instance_count: instanceCount,
+                    percentage: percentage,
+                    retainers: retainers.slice(0, 3)
+                });
+            }
+        }
+
+        // 生成具体的行动项
+        result.actionItems = generateActionItems(result, topClasses, totalHeapSize);
+
+        return result;
+    }
+
+    /**
+     * 分析泄漏嫌疑
+     */
+    function analyzeLeakSuspect(cls, retainers) {
+        const className = cls.class_name || '';
+        const percentage = cls.percentage || 0;
+        const instanceCount = cls.instance_count || 0;
+
+        let risk = 'low';
+        const reasons = [];
+        const solutions = [];
+
+        // 规则 1: 高内存占用
+        if (percentage > 20) {
+            risk = 'high';
+            reasons.push(`占用 ${percentage.toFixed(1)}% 堆内存，远超正常水平`);
+            solutions.push('检查是否有缓存未清理或数据累积');
+        } else if (percentage > 10) {
+            risk = risk === 'high' ? 'high' : 'medium';
+            reasons.push(`占用 ${percentage.toFixed(1)}% 堆内存`);
+        }
+
+        // 规则 2: 检查 retainer 模式
+        if (retainers.length > 0) {
+            const topRetainer = retainers[0];
+            const retainerClass = topRetainer.retainer_class || '';
+            const fieldName = topRetainer.field_name || '';
+
+            // 静态字段持有
+            if (topRetainer.depth === 1 || fieldName.includes('static')) {
+                risk = 'high';
+                reasons.push(`被静态字段持有: ${getShortClassName(retainerClass)}.${fieldName}`);
+                solutions.push('静态字段持有的对象生命周期与应用相同，考虑使用 WeakReference 或添加清理机制');
+            }
+
+            // 缓存持有
+            if (retainerClass.toLowerCase().includes('cache') || 
+                fieldName.toLowerCase().includes('cache')) {
+                risk = risk === 'low' ? 'medium' : risk;
+                reasons.push(`被缓存持有: ${getShortClassName(retainerClass)}`);
+                solutions.push('检查缓存是否有过期策略，考虑使用 LRU 或添加大小限制');
+            }
+
+            // 集合持有
+            if (retainerClass.includes('Map') || retainerClass.includes('List')) {
+                reasons.push(`被集合持有: ${getShortClassName(retainerClass)}`);
+                solutions.push('检查集合是否在使用后被正确清理');
+            }
+        }
+
+        // 规则 3: 实例数异常
+        if (instanceCount > 100000) {
+            risk = risk === 'low' ? 'medium' : risk;
+            reasons.push(`实例数量异常: ${Utils.formatNumber(instanceCount)}`);
+            solutions.push('检查是否有对象创建过多或未释放的问题');
+        }
+
+        if (reasons.length === 0) return null;
+
+        return {
+            class_name: className,
+            risk_level: risk,
+            reasons: reasons,
+            solutions: solutions,
+            total_size: cls.total_size,
+            instance_count: instanceCount,
+            percentage: percentage,
+            retainers: retainers.slice(0, 3)
+        };
+    }
+
+    /**
+     * 分析集合问题
+     */
+    function analyzeCollectionIssue(cls) {
+        const className = cls.class_name || '';
+        const instanceCount = cls.instance_count || 0;
+
+        const collectionTypes = {
+            'java.util.HashMap': { threshold: 10000, issue: 'HashMap 实例过多' },
+            'java.util.ArrayList': { threshold: 10000, issue: 'ArrayList 实例过多' },
+            'java.util.LinkedList': { threshold: 5000, issue: 'LinkedList 实例过多，考虑使用 ArrayList' },
+            'java.util.HashSet': { threshold: 10000, issue: 'HashSet 实例过多' },
+            'java.util.concurrent.ConcurrentHashMap': { threshold: 5000, issue: 'ConcurrentHashMap 实例过多' },
+            'java.util.LinkedHashMap': { threshold: 5000, issue: 'LinkedHashMap 实例过多' }
+        };
+
+        for (const [type, config] of Object.entries(collectionTypes)) {
+            if (className.includes(type.split('.').pop()) && instanceCount > config.threshold) {
+                return {
+                    class_name: className,
+                    instance_count: instanceCount,
+                    total_size: cls.total_size,
+                    issue: config.issue,
+                    suggestion: `当前有 ${Utils.formatNumber(instanceCount)} 个实例，检查是否在循环中创建或缓存未清理`
+                };
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 生成具体行动项
+     */
+    function generateActionItems(result, topClasses, totalHeapSize) {
+        const items = [];
+        let priority = 1;
+
+        // 高风险泄漏嫌疑
+        const highRiskLeaks = result.leakSuspects.filter(s => s.risk_level === 'high');
+        if (highRiskLeaks.length > 0) {
+            const topLeak = highRiskLeaks[0];
+            items.push({
+                priority: priority++,
+                action: `检查 ${getShortClassName(topLeak.class_name)}`,
+                detail: `${topLeak.reasons[0]}。${topLeak.solutions[0] || ''}`,
+                target: topLeak.class_name,
+                severity: 'critical'
+            });
+        }
+
+        // 集合问题
+        if (result.collectionIssues.length > 0) {
+            const topIssue = result.collectionIssues[0];
+            items.push({
+                priority: priority++,
+                action: `优化 ${getShortClassName(topIssue.class_name)} 使用`,
+                detail: topIssue.suggestion,
+                target: topIssue.class_name,
+                severity: 'warning'
+            });
+        }
+
+        // 业务类占用
+        if (result.businessClasses.length > 0) {
+            const topBusiness = result.businessClasses[0];
+            if (topBusiness.percentage > 10) {
+                items.push({
+                    priority: priority++,
+                    action: `分析业务类 ${getShortClassName(topBusiness.class_name)}`,
+                    detail: `业务类占用 ${topBusiness.percentage.toFixed(1)}% 内存，检查数据结构是否合理`,
+                    target: topBusiness.class_name,
+                    severity: 'info'
+                });
+            }
+        }
+
+        // byte[] 问题
+        const byteArrayClass = topClasses.find(c => (c.class_name || '').includes('byte[]'));
+        if (byteArrayClass && byteArrayClass.percentage > 20) {
+            items.push({
+                priority: priority++,
+                action: '检查 byte[] 缓冲区',
+                detail: `byte[] 占用 ${byteArrayClass.percentage.toFixed(1)}% 内存，检查 I/O 流是否正确关闭`,
+                target: 'byte[]',
+                severity: 'warning'
+            });
+        }
+
+        // String 问题
+        const stringClass = topClasses.find(c => 
+            (c.class_name || '') === 'java.lang.String' || (c.class_name || '') === 'String'
+        );
+        if (stringClass && stringClass.instance_count > 500000) {
+            items.push({
+                priority: priority++,
+                action: '优化 String 使用',
+                detail: `${Utils.formatNumber(stringClass.instance_count)} 个 String 对象，使用 StringBuilder 替代字符串拼接`,
+                target: 'java.lang.String',
+                severity: 'info'
+            });
+        }
+
+        return items;
+    }
+
+    function getShortClassName(fullName) {
+        if (!fullName) return '';
+        const lastDot = fullName.lastIndexOf('.');
+        return lastDot === -1 ? fullName : fullName.substring(lastDot + 1);
+    }
+
+    function isBusinessClass(className) {
+        if (!className) return false;
+        return !className.startsWith('java.') && 
+               !className.startsWith('javax.') &&
+               !className.startsWith('sun.') && 
+               !className.startsWith('jdk.') &&
+               !className.startsWith('com.sun.') &&
+               !className.startsWith('org.springframework.') &&
+               !className.startsWith('org.apache.') &&
+               !className.startsWith('io.netty.') &&
+               !className.startsWith('com.google.') &&
+               !className.includes('[]');
+    }
+
+    // ============================================
+    // 渲染方法
     // ============================================
     
     /**
@@ -31,12 +287,15 @@ const HeapRootCause = (function() {
         const container = document.getElementById('quickDiagnosisContainer');
         if (!container) return;
 
-        const actionItems = diagnosis.action_items || [];
+        // 优先使用智能诊断结果
+        const actionItems = diagnosisResult?.actionItems || diagnosis.action_items || [];
+        
         if (actionItems.length === 0) {
             container.innerHTML = `
                 <div class="no-data-message">
                     <div class="icon">✅</div>
-                    <div>暂无诊断建议</div>
+                    <div>未检测到明显问题</div>
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">堆内存使用正常</div>
                 </div>
             `;
             return;
@@ -45,19 +304,21 @@ const HeapRootCause = (function() {
         container.innerHTML = `
             <div class="action-items-list">
                 ${actionItems.map((item, idx) => `
-                    <div class="action-item priority-${item.priority}">
+                    <div class="action-item ${item.severity || 'info'}">
                         <div class="action-item-header">
-                            <span class="action-priority">步骤 ${idx + 1}</span>
+                            <span class="action-priority ${item.severity || 'info'}">
+                                ${getSeverityIcon(item.severity)} 步骤 ${idx + 1}
+                            </span>
                             <span class="action-title">${Utils.escapeHtml(item.action)}</span>
                         </div>
                         <div class="action-detail">${Utils.escapeHtml(item.detail)}</div>
                         ${item.target ? `
                             <div class="action-buttons">
                                 <button class="action-btn" onclick="HeapRootCause.searchClass('${Utils.escapeHtml(item.target).replace(/'/g, "\\'")}')">
-                                    🔍 在 Class Histogram 中搜索
+                                    🔍 在 Histogram 中搜索
                                 </button>
-                                <button class="action-btn secondary" onclick="HeapRootCause.viewInRefGraph('${Utils.escapeHtml(item.target).replace(/'/g, "\\'")}')">
-                                    🔗 查看引用图
+                                <button class="action-btn secondary" onclick="HeapRootCause.viewRetainers('${Utils.escapeHtml(item.target).replace(/'/g, "\\'")}')">
+                                    🔗 查看持有者
                                 </button>
                             </div>
                         ` : ''}
@@ -65,6 +326,11 @@ const HeapRootCause = (function() {
                 `).join('')}
             </div>
         `;
+    }
+
+    function getSeverityIcon(severity) {
+        const icons = { critical: '🔴', warning: '🟡', info: '🔵' };
+        return icons[severity] || '🔵';
     }
 
     /**
@@ -359,15 +625,34 @@ const HeapRootCause = (function() {
     function render(data) {
         summaryData = data;
         
+        // 运行智能诊断
+        diagnosisResult = runSmartDiagnosis(data);
+        
         const suggestions = data.suggestions || [];
         const topClasses = data.data?.top_classes || [];
         const quickDiagnosis = data.data?.quick_diagnosis || {};
 
-        // 渲染各个部分
+        // 渲染各个部分 - 优先使用智能诊断结果
         renderQuickDiagnosis(quickDiagnosis);
-        renderLeakSuspects(quickDiagnosis.leak_suspects || [], topClasses, suggestions);
-        renderBusinessClasses(quickDiagnosis.top_business_classes || []);
-        renderCollectionIssues(quickDiagnosis.collection_issues || []);
+        
+        // 使用智能诊断的泄漏嫌疑
+        const leakSuspects = diagnosisResult.leakSuspects.length > 0 
+            ? diagnosisResult.leakSuspects 
+            : quickDiagnosis.leak_suspects || [];
+        renderLeakSuspects(leakSuspects, topClasses, suggestions);
+        
+        // 使用智能诊断的业务类
+        const businessClasses = diagnosisResult.businessClasses.length > 0
+            ? diagnosisResult.businessClasses
+            : quickDiagnosis.top_business_classes || [];
+        renderBusinessClasses(businessClasses);
+        
+        // 使用智能诊断的集合问题
+        const collectionIssues = diagnosisResult.collectionIssues.length > 0
+            ? diagnosisResult.collectionIssues
+            : quickDiagnosis.collection_issues || [];
+        renderCollectionIssues(collectionIssues);
+        
         renderSuggestions(suggestions);
 
         // 按需加载详细 retainer 数据
@@ -454,21 +739,35 @@ const HeapRootCause = (function() {
      * @param {string} className - 类名
      */
     function searchClass(className) {
-        if (typeof App !== 'undefined') {
+        if (typeof showPanel === 'function') {
+            showPanel('heaphistogram');
+        } else if (typeof App !== 'undefined') {
             App.showPanel('heaphistogram');
         }
-        HeapHistogram.searchClass(className);
+        if (typeof HeapHistogram !== 'undefined') {
+            HeapHistogram.searchClass(className);
+        }
     }
 
     /**
-     * 在引用图中查看
+     * 查看持有者（跳转到 Merged Paths）
+     * @param {string} className - 类名
+     */
+    function viewRetainers(className) {
+        if (typeof showPanel === 'function') {
+            showPanel('heapmergedpaths');
+        } else if (typeof App !== 'undefined') {
+            App.showPanel('heapmergedpaths');
+        }
+        HeapCore.showNotification(`查看 ${getShortClassName(className)} 的持有者`, 'info');
+    }
+
+    /**
+     * 在引用图中查看（已废弃，跳转到 Merged Paths）
      * @param {string} className - 类名
      */
     function viewInRefGraph(className) {
-        if (typeof App !== 'undefined') {
-            App.showPanel('heaprefgraph');
-        }
-        HeapRefGraph.viewClass(className);
+        viewRetainers(className);
     }
 
     // ============================================
@@ -482,6 +781,7 @@ const HeapRootCause = (function() {
         toggleBusinessGroup,
         filter,
         searchClass,
+        viewRetainers,
         viewInRefGraph
     };
 
