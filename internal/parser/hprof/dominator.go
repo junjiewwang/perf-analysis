@@ -516,21 +516,27 @@ func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxD
 	// Convert to slice and calculate percentages
 	var retainers []*RetainerInfo
 	for _, r := range retainerStats {
-		// Calculate percentage based on sample total size
-		if sampleTotalSize > 0 {
-			r.Percentage = float64(r.RetainedSize) * 100.0 / float64(sampleTotalSize)
-		}
-		
-		// Cap percentage at 100%
-		if r.Percentage > 100.0 {
-			r.Percentage = 100.0
-		}
-		
-		// Scale count and size to estimate full population values
+		// Scale count and size to estimate full population values FIRST
+		// This ensures percentage is calculated on the scaled values
 		if sampleRatio < 1.0 {
 			r.RetainedCount = int64(float64(r.RetainedCount) / sampleRatio)
 			r.RetainedSize = int64(float64(r.RetainedSize) / sampleRatio)
 		}
+		
+		// Calculate percentage based on TOTAL size (not sample size)
+		// This gives accurate percentage representation
+		if totalSize > 0 {
+			r.Percentage = float64(r.RetainedSize) * 100.0 / float64(totalSize)
+		}
+		
+		// Cap percentage at 100% and size at total size
+		if r.Percentage > 100.0 {
+			r.Percentage = 100.0
+		}
+		if r.RetainedSize > totalSize {
+			r.RetainedSize = totalSize
+		}
+		
 		retainers = append(retainers, r)
 	}
 

@@ -681,6 +681,28 @@
     margin-left: 8px;
 }
 
+/* Cyclic Reference Badge */
+.cyclic-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    background: #ff9800;
+    color: white;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+.retainer-row.cyclic {
+    opacity: 0.7;
+    background: rgba(255, 152, 0, 0.1);
+}
+
+.retainer-row.cyclic .retainer-class {
+    color: #ff9800;
+}
+
 /* Suggestions */
 .suggestion-card {
     background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
@@ -1392,6 +1414,318 @@
     padding-left: 40px;
 }
 
+/* GC Root Detail Panel */
+.gc-root-detail {
+    padding: 15px 20px;
+}
+
+.gc-root-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #808080;
+    font-size: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #3c3f41;
+}
+
+.gc-root-detail-header .detail-hint {
+    color: #589df6;
+    font-size: 11px;
+}
+
+.gc-root-retained-classes {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.retained-class-item {
+    background: #2b2d30;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.retained-class-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.retained-class-header:hover {
+    background: #3c3f41;
+}
+
+.retained-class-header.expandable {
+    cursor: pointer;
+}
+
+.retained-class-header.business-class {
+    background: rgba(255, 152, 0, 0.1);
+}
+
+.retained-class-header .expand-indicator {
+    width: 16px;
+    color: #808080;
+    font-size: 10px;
+}
+
+.retained-class-header .class-icon {
+    margin-right: 8px;
+}
+
+.retained-class-header .class-name {
+    flex: 1;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    color: #ffc66d;
+}
+
+.retained-class-header .class-name.highlight {
+    color: #ff9800;
+    font-weight: 600;
+}
+
+.retained-class-header .business-badge {
+    padding: 2px 6px;
+    background: #ff9800;
+    color: white;
+    border-radius: 3px;
+    font-size: 10px;
+    margin-left: 8px;
+}
+
+.retained-class-header .search-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    margin-left: 8px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.retained-class-header .search-btn:hover {
+    opacity: 1;
+}
+
+.retained-class-children {
+    background: #1e2123;
+    padding: 8px 0;
+}
+
+/* Reference Chain Styles */
+.chain-node {
+    padding: 2px 0;
+}
+
+.chain-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: default;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.chain-row.expandable {
+    cursor: pointer;
+}
+
+.chain-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.chain-row.business-class {
+    background: rgba(255, 152, 0, 0.1);
+}
+
+.chain-expand {
+    width: 16px;
+    color: #808080;
+    font-size: 10px;
+}
+
+.chain-icon {
+    margin-right: 8px;
+}
+
+.chain-class {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    color: #a9b7c6;
+}
+
+.chain-class.highlight {
+    color: #ff9800;
+    font-weight: 600;
+}
+
+.chain-field {
+    color: #9876aa;
+    margin-left: 2px;
+}
+
+.chain-stats {
+    margin-left: auto;
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+}
+
+.chain-percentage {
+    color: #6897bb;
+}
+
+.chain-size {
+    color: #808080;
+}
+
+.business-badge {
+    padding: 2px 6px;
+    background: #ff9800;
+    color: white;
+    border-radius: 3px;
+    font-size: 10px;
+    margin-left: 8px;
+}
+
+.chain-children {
+    /* nested chain items */
+}
+
+.chain-max-depth,
+.chain-no-data {
+    font-size: 11px;
+    padding: 8px 12px;
+}
+
+.more-classes {
+    color: #808080;
+    font-size: 12px;
+    padding: 8px 12px;
+}
+
+/* ============================================
+   Business Retainers Section (Merged Paths)
+   ============================================ */
+
+.business-retainers-section {
+    background: linear-gradient(135deg, #3d3520 0%, #2a2515 100%);
+    border: 1px solid #ff9800;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    overflow: hidden;
+}
+
+.business-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 15px;
+    background: rgba(255, 152, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+.business-section-header .section-icon {
+    font-size: 18px;
+}
+
+.business-section-header .section-title {
+    font-weight: 600;
+    color: #ff9800;
+}
+
+.business-section-header .section-hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: rgba(255, 152, 0, 0.7);
+}
+
+.business-retainers-list {
+    padding: 10px;
+}
+
+.business-retainer-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.business-retainer-item:hover {
+    background: rgba(255, 152, 0, 0.15);
+}
+
+.business-retainer-item:last-child {
+    margin-bottom: 0;
+}
+
+.business-retainer-item .br-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.business-retainer-item .br-depth {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: #ff9800;
+    color: white;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.business-retainer-item .br-class {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    color: #ff9800;
+    font-weight: 600;
+}
+
+.business-retainer-item .br-path {
+    font-size: 11px;
+    color: #9876aa;
+    padding-left: 30px;
+}
+
+.business-retainer-item .br-stats {
+    display: flex;
+    gap: 15px;
+    font-size: 11px;
+    color: #808080;
+    padding-left: 30px;
+}
+
+.business-retainer-item .gc-root-badge {
+    padding: 2px 6px;
+    background: #4caf50;
+    color: white;
+    border-radius: 3px;
+    font-size: 10px;
+}
+
+.br-more {
+    text-align: center;
+    color: #808080;
+    font-size: 12px;
+    padding: 8px;
+}
+
+.stat-item.business-hint {
+    color: #ff9800;
+    font-weight: 600;
+}
+
 /* ============================================
    Merged Paths Panel Styles (IDEA-style)
    ============================================ */
@@ -1783,6 +2117,38 @@
 
 .retainer-row.gc-root:hover {
     background: linear-gradient(135deg, #3d4b3d 0%, #2e3a2e 100%);
+}
+
+/* 业务类样式 */
+.retainer-row.business-class {
+    background: linear-gradient(135deg, #3d3520 0%, #2a2515 100%);
+    border-left: 3px solid #ff9800;
+}
+
+.retainer-row.business-class:hover {
+    background: linear-gradient(135deg, #4d4530 0%, #3a3525 100%);
+}
+
+.retainer-row.business-class .retainer-class {
+    color: #ff9800;
+    font-weight: 600;
+}
+
+.retainer-class.highlight {
+    color: #ff9800 !important;
+    font-weight: 600;
+}
+
+.retainer-row .business-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    background: #ff9800;
+    color: white;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 8px;
 }
 
 /* 展开指示器 */

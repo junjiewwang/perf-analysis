@@ -24,6 +24,7 @@ const HeapMergedPaths = (function() {
     let expandedNodes = new Set();
     let loadedRetainers = new Map(); // 缓存已加载的 retainer 数据
     let classDataMap = new Map(); // 类名 -> 类数据的映射
+    let currentPathClasses = new Set(); // 当前路径上的类，用于检测循环
 
     // ============================================
     // 私有方法
@@ -95,9 +96,10 @@ const HeapMergedPaths = (function() {
      * @param {string} parentId - 父节点 ID
      * @param {number} index - 索引
      * @param {number} level - 嵌套层级
+     * @param {Set} pathClasses - 当前路径上的类（用于检测循环）
      * @returns {string} HTML 字符串
      */
-    function renderRetainerNode(retainer, parentId, index, level = 0) {
+    function renderRetainerNode(retainer, parentId, index, level = 0, pathClasses = new Set()) {
         const retainerClass = retainer.retainer_class || retainer.class_name || 'Unknown';
         const fieldName = retainer.field_name || '';
         const retainedSize = retainer.retained_size || 0;
@@ -108,20 +110,24 @@ const HeapMergedPaths = (function() {
         const nodeId = `${parentId}-r${index}`;
         const isExpanded = expandedNodes.has(nodeId);
         
-        // 检查这个 retainer 是否有自己的 retainers
-        const hasNestedRetainers = findRetainersForClass(retainerClass).length > 0;
+        // 检测循环引用
+        const isCyclic = pathClasses.has(retainerClass);
+        
+        // 检查这个 retainer 是否有自己的 retainers（循环引用时不继续展开）
+        const hasNestedRetainers = !isCyclic && findRetainersForClass(retainerClass).length > 0;
         const isGCRoot = isGCRootClass(retainerClass);
+        const isBusinessClass = checkIsBusinessClass(retainerClass);
         
         // 计算缩进
         const indent = level * 20;
         
         let html = `
             <div class="retainer-node level-${level}" data-node-id="${nodeId}" data-class="${Utils.escapeHtml(retainerClass)}" style="padding-left: ${indent}px;">
-                <div class="retainer-row ${hasNestedRetainers ? 'expandable' : ''} ${isGCRoot ? 'gc-root' : ''}" 
+                <div class="retainer-row ${hasNestedRetainers ? 'expandable' : ''} ${isGCRoot ? 'gc-root' : ''} ${isCyclic ? 'cyclic' : ''} ${isBusinessClass ? 'business-class' : ''}" 
                      onclick="HeapMergedPaths.toggleRetainerNode('${nodeId}', '${Utils.escapeHtml(retainerClass).replace(/'/g, "\\'")}', ${level})">
-                    <span class="expand-indicator">${hasNestedRetainers ? (isExpanded ? '▼' : '▶') : '─'}</span>
-                    <span class="retainer-icon">${isGCRoot ? '🌳' : '📦'}</span>
-                    <span class="retainer-class" title="${Utils.escapeHtml(retainerClass)}">${Utils.escapeHtml(shortName)}</span>
+                    <span class="expand-indicator">${hasNestedRetainers ? (isExpanded ? '▼' : '▶') : (isCyclic ? '🔄' : '─')}</span>
+                    <span class="retainer-icon">${isGCRoot ? '🌳' : (isBusinessClass ? '🎯' : '📦')}</span>
+                    <span class="retainer-class ${isBusinessClass ? 'highlight' : ''}" title="${Utils.escapeHtml(retainerClass)}">${Utils.escapeHtml(shortName)}</span>
                     ${fieldName ? `<span class="retainer-field">.${Utils.escapeHtml(fieldName)}</span>` : ''}
                     <span class="retainer-stats">
                         <span class="stat-percentage" title="占比">${percentage.toFixed(1)}%</span>
@@ -129,9 +135,15 @@ const HeapMergedPaths = (function() {
                         <span class="stat-count" title="保留对象数">×${retainedCount.toLocaleString()}</span>
                     </span>
                     ${isGCRoot ? '<span class="gc-root-badge">GC Root</span>' : ''}
+                    ${isCyclic ? '<span class="cyclic-badge">循环引用</span>' : ''}
+                    ${isBusinessClass ? '<span class="business-badge">业务类</span>' : ''}
                 </div>
                 <div id="${nodeId}-children" class="retainer-children" style="display: ${isExpanded ? 'block' : 'none'};">
         `;
+        
+        // 将当前类加入路径
+        const newPathClasses = new Set(pathClasses);
+        newPathClasses.add(retainerClass);
         
         // 如果已展开，渲染子节点
         if (isExpanded && hasNestedRetainers) {
@@ -143,7 +155,7 @@ const HeapMergedPaths = (function() {
             // 限制深度，避免无限递归
             if (level < 5) {
                 sortedNested.slice(0, 10).forEach((nested, nestedIndex) => {
-                    html += renderRetainerNode(nested, nodeId, nestedIndex, level + 1);
+                    html += renderRetainerNode(nested, nodeId, nestedIndex, level + 1, newPathClasses);
                 });
                 
                 if (sortedNested.length > 10) {
@@ -160,6 +172,39 @@ const HeapMergedPaths = (function() {
         
         html += '</div></div>';
         return html;
+    }
+
+    /**
+     * 检查是否是业务类
+     */
+    function checkIsBusinessClass(className) {
+        if (!className) return false;
+        
+        // JDK 类
+        if (className.startsWith('java.') || className.startsWith('javax.') ||
+            className.startsWith('sun.') || className.startsWith('com.sun.') ||
+            className.startsWith('jdk.')) {
+            return false;
+        }
+        
+        // 数组类型
+        if (className.includes('[]')) return false;
+        
+        // 框架内部类
+        const frameworkPrefixes = [
+            'org.springframework.aop.', 'org.springframework.beans.factory.support.',
+            'io.netty.buffer.Pool', 'io.netty.util.internal.', 'io.netty.util.Recycler',
+            'com.google.common.collect.', 'com.google.common.cache.',
+            'org.slf4j.', 'ch.qos.logback.',
+            'com.fasterxml.jackson.core.', 'com.fasterxml.jackson.databind.cfg.',
+            'net.bytebuddy.', 'io.opentelemetry.javaagent.'
+        ];
+        
+        for (const prefix of frameworkPrefixes) {
+            if (className.startsWith(prefix)) return false;
+        }
+        
+        return true;
     }
 
     /**
@@ -221,6 +266,10 @@ const HeapMergedPaths = (function() {
         const className = classInfo.class_name || classInfo.name || '';
         const shortName = Utils.getShortClassName(className);
         
+        // 获取业务类 retainers
+        const businessRetainers = getBusinessRetainersForClass(className);
+        const hasBusinessRetainers = businessRetainers.length > 0;
+        
         return `
             <div class="merged-class-card" data-class-name="${Utils.escapeHtml(className)}">
                 <div class="merged-class-header" onclick="HeapMergedPaths.toggleClassCard('${cardId}')">
@@ -237,14 +286,61 @@ const HeapMergedPaths = (function() {
                         <span class="stat-item" title="Retainer 数量">
                             🔗 ${retainers.length} retainers
                         </span>
+                        ${hasBusinessRetainers ? `<span class="stat-item business-hint" title="业务类持有者">🎯 ${businessRetainers.length} 业务类</span>` : ''}
                     </span>
                 </div>
                 <div id="${cardId}" class="merged-class-content" style="display: ${isExpanded ? 'block' : 'none'};">
+                    ${hasBusinessRetainers ? renderBusinessRetainersSection(businessRetainers, cardId) : ''}
                     <div class="retainers-header">
                         <span class="header-title">📍 Retained by (谁持有这个类的实例)</span>
-                        <span class="header-hint">💡 点击类名展开查看详细的持有者列表</span>
+                        <span class="header-hint">💡 点击类名展开查看详细的持有者列表，🎯 标记为业务类</span>
                     </div>
                     ${renderRetainersTree(retainers, cardId)}
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * 获取类的业务类 retainers
+     */
+    function getBusinessRetainersForClass(className) {
+        const businessRetainers = HeapCore.getState('businessRetainers') || {};
+        return businessRetainers[className] || [];
+    }
+
+    /**
+     * 渲染业务类 retainers 区域
+     */
+    function renderBusinessRetainersSection(businessRetainers, cardId) {
+        if (!businessRetainers || businessRetainers.length === 0) return '';
+        
+        return `
+            <div class="business-retainers-section">
+                <div class="business-section-header">
+                    <span class="section-icon">🎯</span>
+                    <span class="section-title">业务类持有者 (直接定位根因)</span>
+                    <span class="section-hint">这些是持有该类的业务代码，通常是问题的根源</span>
+                </div>
+                <div class="business-retainers-list">
+                    ${businessRetainers.slice(0, 5).map((br, idx) => `
+                        <div class="business-retainer-item" onclick="HeapHistogram.searchClass('${Utils.escapeHtml(br.class_name).replace(/'/g, "\\'")}')">
+                            <div class="br-main">
+                                <span class="br-depth">${br.depth}</span>
+                                <span class="br-class">${Utils.escapeHtml(Utils.getShortClassName(br.class_name))}</span>
+                                ${br.is_gc_root ? `<span class="gc-root-badge">${br.gc_root_type || 'GC Root'}</span>` : ''}
+                            </div>
+                            ${br.field_path && br.field_path.length > 0 ? `
+                                <div class="br-path">via ${br.field_path.join(' → ')}</div>
+                            ` : ''}
+                            <div class="br-stats">
+                                <span>${br.percentage.toFixed(1)}%</span>
+                                <span>${Utils.formatBytes(br.retained_size)}</span>
+                                <span>×${Utils.formatNumber(br.retained_count)}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${businessRetainers.length > 5 ? `<div class="br-more">还有 ${businessRetainers.length - 5} 个业务类...</div>` : ''}
                 </div>
             </div>
         `;
