@@ -71,6 +71,12 @@
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 📊 Overview
             </button>
+            <!-- Heap: Class Histogram (moved to second position) -->
+            <button @click="showPanel('heaphistogram')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heaphistogram'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                📊 Class Histogram
+            </button>
             <button @click="showPanel('flamegraph')" x-show="analysisType === 'cpu'"
                 :class="{'tab-active': activePanel === 'flamegraph'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
@@ -112,11 +118,6 @@
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 🔀 Merged Paths
             </button>
-            <button @click="showPanel('heaphistogram')" x-show="analysisType === 'heap'"
-                :class="{'tab-active': activePanel === 'heaphistogram'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
-                📊 Class Histogram
-            </button>
             <button @click="showPanel('heaprootcause')" x-show="analysisType === 'heap'"
                 :class="{'tab-active': activePanel === 'heaprootcause'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
@@ -125,73 +126,97 @@
         </nav>
 
         <!-- Overview Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'overview'" x-cloak class="bg-white rounded-xl shadow-md p-5">
+        <div x-show="activePanel === 'overview'" x-cloak class="space-y-5">
             <!-- Task Metadata Card -->
-            <div class="bg-white rounded-xl shadow-md p-5 mb-5 hidden" id="taskMetadataCard">
-                <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">📋 Task Information</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
-                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Task Type</span>
-                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaTaskType">-</span>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hidden" id="taskMetadataCard">
+                <div class="flex items-center gap-3 mb-5">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-lg">📋</div>
+                    <h2 class="text-lg font-semibold text-gray-800">Task Information</h2>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Task Type</span>
+                        <div class="mt-2" id="metaTaskType">-</div>
                     </div>
-                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
-                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Profiler</span>
-                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaProfiler">-</span>
+                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Profiler</span>
+                        <div class="mt-2 text-sm font-medium text-gray-700" id="metaProfiler">-</div>
                     </div>
-                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
-                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Input File</span>
-                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaInputFile">-</span>
+                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Input File</span>
+                        <div class="mt-2 text-sm font-medium text-gray-700 font-mono truncate" id="metaInputFile" title="">-</div>
                     </div>
-                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
-                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Created At</span>
-                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaCreatedAt">-</span>
+                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Created At</span>
+                        <div class="mt-2 text-sm font-medium text-gray-700" id="metaCreatedAt">-</div>
                     </div>
-                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
-                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Analysis Time</span>
-                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaAnalysisTime">-</span>
+                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Analysis Time</span>
+                        <div class="mt-2 text-sm font-medium text-gray-700" id="metaAnalysisTime">-</div>
                     </div>
-                    <div class="flex flex-col gap-1 p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-l-[3px] border-primary">
-                        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">Task UUID</span>
-                        <span class="text-sm font-semibold text-gray-800 font-mono break-all" id="metaTaskUUID">-</span>
+                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Task UUID</span>
+                        <div class="mt-2 text-sm font-medium text-gray-700 font-mono" id="metaTaskUUID">-</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Stats Grid: Tailwind 替换 -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
-                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
-                    <div class="text-3xl font-bold text-primary" id="totalSamples">-</div>
-                    <div class="text-sm text-gray-500 mt-1">Total Samples</div>
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="relative overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-5 group hover:shadow-md transition-shadow">
+                    <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-bl-[80px] -mr-2 -mt-2"></div>
+                    <div class="relative">
+                        <div class="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent" id="totalSamples">-</div>
+                        <div class="text-sm text-gray-500 mt-1 stat-label">Total Samples</div>
+                    </div>
                 </div>
-                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
-                    <div class="text-3xl font-bold text-primary" id="topFuncsCount">-</div>
-                    <div class="text-sm text-gray-500 mt-1">Functions Analyzed</div>
+                <div class="relative overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-5 group hover:shadow-md transition-shadow">
+                    <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-green-500/10 to-teal-500/10 rounded-bl-[80px] -mr-2 -mt-2"></div>
+                    <div class="relative">
+                        <div class="text-3xl font-bold bg-gradient-to-r from-green-600 to-teal-600 bg-clip-text text-transparent" id="topFuncsCount">-</div>
+                        <div class="text-sm text-gray-500 mt-1 stat-label">Functions Analyzed</div>
+                    </div>
                 </div>
-                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
-                    <div class="text-3xl font-bold text-primary" id="threadsCount">-</div>
-                    <div class="text-sm text-gray-500 mt-1">Active Threads</div>
+                <div class="relative overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-5 group hover:shadow-md transition-shadow">
+                    <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-500/10 to-amber-500/10 rounded-bl-[80px] -mr-2 -mt-2"></div>
+                    <div class="relative">
+                        <div class="text-3xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent" id="threadsCount">-</div>
+                        <div class="text-sm text-gray-500 mt-1 stat-label">Active Threads</div>
+                    </div>
                 </div>
-                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
-                    <div class="text-3xl font-bold text-primary" id="taskUUID">-</div>
-                    <div class="text-sm text-gray-500 mt-1">Task UUID</div>
+                <div class="relative overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-5 group hover:shadow-md transition-shadow">
+                    <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-pink-500/10 to-rose-500/10 rounded-bl-[80px] -mr-2 -mt-2"></div>
+                    <div class="relative">
+                        <div class="text-xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent font-mono truncate" id="taskUUID">-</div>
+                        <div class="text-sm text-gray-500 mt-1">Task UUID</div>
+                    </div>
                 </div>
             </div>
 
             <!-- Top Functions Card -->
-            <div class="bg-white rounded-xl shadow-md p-5">
-                <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">Top 5 Hot Functions</h2>
-                <p class="text-xs text-gray-400 mb-2.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
-                <table class="top-funcs-table w-full" style="table-layout: auto;">
-                    <thead>
-                        <tr>
-                            <th style="width: 50px;">#</th>
-                            <th>Function</th>
-                            <th style="width: 180px;">Self %</th>
-                            <th style="width: 100px; white-space: nowrap;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="topFuncsPreview"></tbody>
-                </table>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white">🔥</div>
+                        <div>
+                            <h2 class="text-base font-semibold text-gray-800">Top 5 Hot Functions</h2>
+                            <p class="text-xs text-gray-400 mt-0.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="bg-gray-50 text-left">
+                                <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-12">#</th>
+                                <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Function</th>
+                                <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Self %</th>
+                                <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topFuncsPreview" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -358,26 +383,36 @@
         </div>
 
         <!-- Top Functions Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'topfuncs'" x-cloak class="bg-white rounded-xl shadow-md p-5">
-            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">All Functions (sorted by self %)</h2>
-            <p class="text-xs text-gray-400 mb-2.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
-            <table class="top-funcs-table w-full" style="table-layout: auto;">
-                <thead>
-                    <tr>
-                        <th style="width: 50px;">#</th>
-                        <th>Function</th>
-                        <th style="width: 180px;">Self %</th>
-                        <th style="width: 100px; white-space: nowrap;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="topFuncsAll"></tbody>
-            </table>
+        <div x-show="activePanel === 'topfuncs'" x-cloak class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white">📋</div>
+                <div>
+                    <h2 class="text-base font-semibold text-gray-800">All Functions (sorted by self %)</h2>
+                    <p class="text-xs text-gray-400 mt-0.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-gray-50 text-left">
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-12">#</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Function</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Self %</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topFuncsAll" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Threads Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'threads'" x-cloak class="bg-white rounded-xl shadow-md p-5">
-            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">Thread Statistics</h2>
-            <ul class="thread-list divide-y divide-gray-100" id="threadList"></ul>
+        <div x-show="activePanel === 'threads'" x-cloak class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white">🧵</div>
+                <h2 class="text-base font-semibold text-gray-800">Thread Statistics</h2>
+            </div>
+            <ul class="divide-y divide-gray-100" id="threadList"></ul>
         </div>
 
         <!-- Heap Diagnosis Overview Panel: Alpine.js 控制显示 -->
@@ -481,32 +516,68 @@
         </div>
 
         <!-- Heap Histogram Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'heaphistogram'" x-cloak class="bg-white rounded-xl shadow-md p-5">
-            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">📊 Class Histogram</h2>
-            <div class="flex flex-wrap items-center gap-2.5 mb-4">
-                <input type="text" id="heapClassSearch" placeholder="Search class name (e.g. HashMap, byte[], String)..." onkeyup="filterHeapClasses()"
-                    class="flex-1 min-w-[200px] max-w-[400px] px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
-                <button onclick="filterHeapClasses()" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">🔍 Search</button>
-                <button onclick="clearHeapSearch()" class="px-5 py-2.5 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">Clear</button>
+        <div x-show="activePanel === 'heaphistogram'" x-cloak class="bg-gray-900 rounded-xl shadow-md p-5">
+            <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-700">
+                <h2 class="text-lg font-semibold text-gray-100">📊 Class Histogram</h2>
+                <div class="text-sm text-gray-400" id="heapHistogramStats"></div>
             </div>
-            <div class="flex gap-2 mb-4">
-                <button class="heap-view-btn active px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium" id="heapViewFlat" onclick="setHeapView('flat')">📋 Flat View</button>
-                <button class="heap-view-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300" id="heapViewPackage" onclick="setHeapView('package')">📦 Package View</button>
+            
+            <!-- 搜索和视图切换 -->
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+                <div class="flex items-center gap-2">
+                    <input type="text" id="heapClassSearch" placeholder="搜索类名 (如 HashMap, byte[], String)..." 
+                        onkeyup="if(event.key==='Enter') HeapHistogram.filter(this.value)"
+                        class="w-80 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <button onclick="HeapHistogram.filter(document.getElementById('heapClassSearch').value)" 
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                        🔍 搜索
+                    </button>
+                    <button onclick="HeapHistogram.clearSearch()" 
+                        class="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">
+                        清除
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium" id="heapViewFlat" 
+                        onclick="HeapHistogram.setViewMode('flat')">
+                        📋 平铺视图
+                    </button>
+                    <button class="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-600" id="heapViewPackage" 
+                        onclick="HeapHistogram.setViewMode('package')">
+                        📦 包视图
+                    </button>
+                </div>
             </div>
-            <div id="heapHistogramContainer">
+            
+            <!-- 表格容器 -->
+            <div id="heapHistogramContainer" class="overflow-x-auto">
                 <div id="heapFlatView">
-                    <table class="heap-class-table idea-style w-full">
-                        <thead>
-                            <tr>
-                                <th class="w-[30px]"></th>
-                                <th class="sortable" data-sort="name" onclick="HeapAnalysis.sortHistogram('name')">Class</th>
-                                <th class="sortable w-[120px]" data-sort="count" onclick="HeapAnalysis.sortHistogram('count')">Count</th>
-                                <th class="sortable active w-[160px]" data-sort="shallow" onclick="HeapAnalysis.sortHistogram('shallow')">Shallow ▼</th>
-                                <th class="sortable w-[160px]" data-sort="retained" onclick="HeapAnalysis.sortHistogram('retained')">Retained</th>
+                    <table class="w-full border-collapse" id="heapHistogramTable">
+                        <thead class="sticky top-0 z-10">
+                            <tr class="bg-gray-800 text-gray-400 text-xs uppercase tracking-wider">
+                                <th class="py-3 px-3 text-center w-12">#</th>
+                                <th class="py-3 px-3 text-left sortable cursor-pointer hover:bg-gray-700 transition-colors" 
+                                    data-sort="name" onclick="HeapHistogram.sort('name')">
+                                    Class <span class="sort-arrow ml-1"></span>
+                                </th>
+                                <th class="py-3 px-3 text-right w-28 sortable cursor-pointer hover:bg-gray-700 transition-colors" 
+                                    data-sort="count" onclick="HeapHistogram.sort('count')">
+                                    Count <span class="sort-arrow ml-1"></span>
+                                </th>
+                                <th class="py-3 px-3 text-right w-36 sortable cursor-pointer hover:bg-gray-700 transition-colors active" 
+                                    data-sort="shallow" onclick="HeapHistogram.sort('shallow')">
+                                    Shallow <span class="sort-arrow ml-1">▼</span>
+                                </th>
+                                <th class="py-3 px-3 text-right w-36 sortable cursor-pointer hover:bg-gray-700 transition-colors" 
+                                    data-sort="retained" onclick="HeapHistogram.sort('retained')">
+                                    Retained <span class="sort-arrow ml-1"></span>
+                                </th>
                             </tr>
                         </thead>
-                        <tbody id="heapClassTableBody"></tbody>
+                        <tbody id="heapClassTableBody" class="text-gray-300"></tbody>
                     </table>
+                    <!-- 分页控件 -->
+                    <div id="heapPagination"></div>
                 </div>
                 <div id="heapPackageView" class="hidden">
                     <div id="heapPackageGroups"></div>
@@ -736,18 +807,24 @@
 
                     const self = this;
                     const renderRow = (f, i) => `
-                        <tr>
-                            <td>${i + 1}</td>
-                            <td class="func-name func-name-clickable" title="Click to copy function name" onclick="Utils.copyToClipboard('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">${Utils.escapeHtml(f.name)}</td>
-                            <td>
-                                <div class="percentage-bar">
-                                    <div class="percentage-bar-fill" style="width: ${Math.min(f.self, 100)}%"></div>
-                                </div>
-                                ${f.self.toFixed(2)}%
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-6 py-4 text-sm text-gray-500 font-medium">${i + 1}</td>
+                            <td class="px-6 py-4">
+                                <span class="font-mono text-sm text-gray-800 cursor-pointer hover:text-primary hover:underline" title="Click to copy" onclick="Utils.copyToClipboard('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">${Utils.escapeHtml(f.name)}</span>
                             </td>
-                            <td>
-                                <button class="action-btn flame" title="Search in Flame Graph" onclick="App.searchInFlameGraph('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">🔥</button>
-                                <button class="action-btn callgraph" title="Search in Call Graph" onclick="App.searchInCallGraph('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">📈</button>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden max-w-[120px]">
+                                        <div class="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-300" style="width: ${Math.min(f.self, 100)}%"></div>
+                                    </div>
+                                    <span class="text-sm font-semibold text-gray-700 w-16 text-right">${f.self.toFixed(2)}%</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <div class="flex items-center justify-center gap-2">
+                                    <button class="w-8 h-8 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white flex items-center justify-center hover:scale-110 transition-transform" title="Search in Flame Graph" onclick="App.searchInFlameGraph('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">🔥</button>
+                                    <button class="w-8 h-8 rounded-lg bg-gradient-to-r from-primary to-secondary text-white flex items-center justify-center hover:scale-110 transition-transform" title="Search in Call Graph" onclick="App.searchInCallGraph('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">📈</button>
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -759,10 +836,21 @@
                 // Render threads
                 renderThreads(data) {
                     const threadList = document.getElementById('threadList');
-                    threadList.innerHTML = (data.threads || []).map(t => `
-                        <li class="thread-item">
-                            <span class="thread-name">${Utils.escapeHtml(t.thread_name || 'Unknown')}</span>
-                            <span class="thread-samples">${t.samples} samples (${(t.percentage || 0).toFixed(2)}%)</span>
+                    threadList.innerHTML = (data.threads || []).map((t, i) => `
+                        <li class="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
+                            <div class="flex items-center gap-3">
+                                <span class="w-6 h-6 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 text-white text-xs flex items-center justify-center font-medium">${i + 1}</span>
+                                <span class="font-mono text-sm text-gray-800">${Utils.escapeHtml(t.thread_name || 'Unknown')}</span>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                        <div class="h-full bg-gradient-to-r from-teal-500 to-cyan-500 rounded-full" style="width: ${Math.min(t.percentage || 0, 100)}%"></div>
+                                    </div>
+                                    <span class="text-sm text-gray-600 w-14 text-right">${(t.percentage || 0).toFixed(2)}%</span>
+                                </div>
+                                <span class="text-xs text-gray-400">${Utils.formatNumber(t.samples)} samples</span>
+                            </div>
                         </li>
                     `).join('');
                 },

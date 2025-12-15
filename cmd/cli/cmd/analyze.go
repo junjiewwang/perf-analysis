@@ -133,6 +133,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	config := &analyzer.BaseAnalyzerConfig{
 		OutputDir: outputDir,
 		TopFuncsN: topN,
+		Logger:    log, // Pass logger for debug output with -v flag
 	}
 
 	// Create analyzer using factory

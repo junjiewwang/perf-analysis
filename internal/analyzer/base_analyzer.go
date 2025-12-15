@@ -13,6 +13,7 @@ import (
 	"github.com/perf-analysis/internal/parser/collapsed"
 	"github.com/perf-analysis/internal/statistics"
 	"github.com/perf-analysis/pkg/model"
+	"github.com/perf-analysis/pkg/utils"
 )
 
 // BaseAnalyzerConfig holds configuration for the base analyzer.
@@ -31,6 +32,9 @@ type BaseAnalyzerConfig struct {
 
 	// IncludeSwapper includes swapper thread in statistics.
 	IncludeSwapper bool
+
+	// Logger is used for debug logging. If nil, debug logs are suppressed.
+	Logger utils.Logger
 }
 
 // DefaultBaseAnalyzerConfig returns default configuration.

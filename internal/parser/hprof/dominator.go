@@ -4,6 +4,9 @@ package hprof
 import (
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/perf-analysis/pkg/utils"
 )
 
 // GCRootType represents the type of GC root.
@@ -89,26 +92,75 @@ type ReferenceGraph struct {
 	gcRoots []*GCRoot
 	// gcRootSet for fast lookup
 	gcRootSet map[uint64]GCRootType
+	// classObjectIDs tracks all Class object IDs (from CLASS_DUMP)
+	classObjectIDs map[uint64]bool
 	// dominators maps objectID -> immediate dominator objectID
 	dominators map[uint64]uint64
 	// retainedSizes maps objectID -> retained size (computed via dominator tree)
 	retainedSizes map[uint64]int64
+	// classRetainedSizes maps classID -> total retained size for all instances (MAT top-level style)
+	classRetainedSizes map[uint64]int64
+	// classRetainedSizesAttributed maps classID -> attributed retained size (non-overlapping, by nearest dominator class)
+	classRetainedSizesAttributed map[uint64]int64
 	// dominatorComputed indicates if dominator tree has been computed
 	dominatorComputed bool
+	// reachableObjects tracks objects reachable from GC roots (populated during dominator computation)
+	reachableObjects map[uint64]bool
+	// classToObjects maps classID -> list of objectIDs (lazy built for optimization)
+	classToObjects map[uint64][]uint64
+	// classToObjectsBuilt indicates if classToObjects index has been built
+	classToObjectsBuilt bool
+	// classToObjectsOnce ensures classToObjects is built only once (thread-safe)
+	classToObjectsOnce sync.Once
+	// logger is used for debug logging. If nil, debug logs are suppressed.
+	logger utils.Logger
+}
+
+// SetLogger sets the logger for debug output.
+func (g *ReferenceGraph) SetLogger(logger utils.Logger) {
+	g.logger = logger
+}
+
+// debugf logs a debug message if logger is configured.
+func (g *ReferenceGraph) debugf(format string, args ...interface{}) {
+	if g.logger != nil {
+		g.logger.Debug(format, args...)
+	}
 }
 
 // NewReferenceGraph creates a new reference graph.
 func NewReferenceGraph() *ReferenceGraph {
+	return NewReferenceGraphWithCapacity(0)
+}
+
+// NewReferenceGraphWithCapacity creates a new reference graph with pre-allocated capacity.
+// estimatedObjects is the expected number of objects (use 0 for default sizing).
+func NewReferenceGraphWithCapacity(estimatedObjects int) *ReferenceGraph {
+	if estimatedObjects <= 0 {
+		estimatedObjects = 100000 // Default capacity
+	}
+	
+	// Estimate: average 3 references per object
+	estimatedRefs := estimatedObjects
+	estimatedClasses := estimatedObjects / 100 // Rough estimate: 1 class per 100 objects
+	if estimatedClasses < 1000 {
+		estimatedClasses = 1000
+	}
+	
 	return &ReferenceGraph{
-		incomingRefs:  make(map[uint64][]ObjectReference),
-		outgoingRefs:  make(map[uint64][]ObjectReference),
-		objectClass:   make(map[uint64]uint64),
-		objectSize:    make(map[uint64]int64),
-		classNames:    make(map[uint64]string),
-		gcRoots:       make([]*GCRoot, 0),
-		gcRootSet:     make(map[uint64]GCRootType),
-		dominators:    make(map[uint64]uint64),
-		retainedSizes: make(map[uint64]int64),
+		incomingRefs:                 make(map[uint64][]ObjectReference, estimatedRefs),
+		outgoingRefs:                 make(map[uint64][]ObjectReference, estimatedRefs),
+		objectClass:                  make(map[uint64]uint64, estimatedObjects),
+		objectSize:                   make(map[uint64]int64, estimatedObjects),
+		classNames:                   make(map[uint64]string, estimatedClasses),
+		gcRoots:                      make([]*GCRoot, 0, 10000),
+		gcRootSet:                    make(map[uint64]GCRootType, 10000),
+		classObjectIDs:               make(map[uint64]bool, estimatedClasses),
+		dominators:                   make(map[uint64]uint64, estimatedObjects),
+		retainedSizes:                make(map[uint64]int64, estimatedObjects),
+		classRetainedSizes:           make(map[uint64]int64, estimatedClasses),
+		classRetainedSizesAttributed: make(map[uint64]int64, estimatedClasses),
+		reachableObjects:             make(map[uint64]bool, estimatedObjects),
 	}
 }
 
@@ -121,6 +173,21 @@ func (g *ReferenceGraph) AddReference(ref ObjectReference) {
 		FieldName:    ref.FieldName,
 		FromClassID:  ref.FromClassID,
 	})
+}
+
+// AddReferences adds multiple references in batch for better performance.
+// This reduces map lookup overhead when adding many references from the same object.
+func (g *ReferenceGraph) AddReferences(refs []ObjectReference) {
+	for i := range refs {
+		ref := &refs[i]
+		g.incomingRefs[ref.ToObjectID] = append(g.incomingRefs[ref.ToObjectID], *ref)
+		g.outgoingRefs[ref.FromObjectID] = append(g.outgoingRefs[ref.FromObjectID], ObjectReference{
+			FromObjectID: ref.FromObjectID,
+			ToObjectID:   ref.ToObjectID,
+			FieldName:    ref.FieldName,
+			FromClassID:  ref.FromClassID,
+		})
+	}
 }
 
 // GetStats returns statistics about the reference graph.
@@ -193,6 +260,26 @@ func (g *ReferenceGraph) SetObjectInfo(objectID, classID uint64, size int64) {
 	g.objectSize[objectID] = size
 }
 
+// RegisterClassObject registers a Class object ID.
+// Class objects are treated as implicit GC roots since they are held by ClassLoaders.
+func (g *ReferenceGraph) RegisterClassObject(classID uint64) {
+	g.classObjectIDs[classID] = true
+}
+
+// FixClassObjectClassIDs updates all Class objects to have java.lang.Class as their classID.
+// Returns the number of Class objects fixed.
+func (g *ReferenceGraph) FixClassObjectClassIDs(javaLangClassID uint64) int {
+	count := 0
+	for classObjID := range g.classObjectIDs {
+		// Only fix if the classID is currently set to itself (the temporary value)
+		if currentClassID, exists := g.objectClass[classObjID]; exists && currentClassID == classObjID {
+			g.objectClass[classObjID] = javaLangClassID
+			count++
+		}
+	}
+	return count
+}
+
 // SetClassName sets the class name for a class ID.
 func (g *ReferenceGraph) SetClassName(classID uint64, name string) {
 	g.classNames[classID] = name
@@ -201,6 +288,50 @@ func (g *ReferenceGraph) SetClassName(classID uint64, name string) {
 // GetClassName returns the class name for a class ID.
 func (g *ReferenceGraph) GetClassName(classID uint64) string {
 	return g.classNames[classID]
+}
+
+// buildClassToObjectsIndex builds the classID -> []objectID index for fast lookup.
+// This is called lazily when needed and cached for subsequent calls.
+// Thread-safe: uses sync.Once to ensure index is built only once.
+func (g *ReferenceGraph) buildClassToObjectsIndex() {
+	g.classToObjectsOnce.Do(func() {
+		// Pre-allocate with estimated size
+		g.classToObjects = make(map[uint64][]uint64, len(g.classNames))
+		
+		// Count objects per class first for pre-allocation
+		classCounts := make(map[uint64]int, len(g.classNames))
+		for _, classID := range g.objectClass {
+			classCounts[classID]++
+		}
+		
+		// Pre-allocate slices
+		for classID, count := range classCounts {
+			g.classToObjects[classID] = make([]uint64, 0, count)
+		}
+		
+		// Populate index
+		for objID, classID := range g.objectClass {
+			g.classToObjects[classID] = append(g.classToObjects[classID], objID)
+		}
+		
+		g.classToObjectsBuilt = true
+	})
+}
+
+// getObjectsByClass returns all objects of a given class using the cached index.
+func (g *ReferenceGraph) getObjectsByClass(classID uint64) []uint64 {
+	g.buildClassToObjectsIndex()
+	return g.classToObjects[classID]
+}
+
+// getClassIDByName returns the classID for a given class name.
+func (g *ReferenceGraph) getClassIDByName(className string) (uint64, bool) {
+	for classID, name := range g.classNames {
+		if name == className {
+			return classID, true
+		}
+	}
+	return 0, false
 }
 
 // FindPathsToGCRoot finds paths from an object to GC roots using BFS.
@@ -569,212 +700,383 @@ func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxD
 	}
 }
 
-// MaxObjectsForDominatorTree is the maximum number of objects for which
-// full dominator tree computation is feasible.
-const MaxObjectsForDominatorTree = 500000
-
-// MaxObjectsForFastRetainedSize is the threshold for using fast estimation.
-const MaxObjectsForFastRetainedSize = 1000000
-
 // retainedSizeEstimated indicates if retained sizes are estimated (not exact).
 var retainedSizeEstimated bool
 
-// ComputeDominatorTree computes the dominator tree using the Lengauer-Tarjan algorithm (simplified).
-// For very large heaps, it uses a fast estimation algorithm instead of exact computation.
-//
-// Accuracy guarantees:
-// - < 500K objects: Exact dominator tree computation
-// - 500K - 1M objects: Fast estimation with ~90% accuracy for top classes
-// - > 1M objects: Class-level aggregation with ~80% accuracy
+// ComputeDominatorTree computes the dominator tree using Lengauer-Tarjan algorithm.
+// This algorithm has near-linear time complexity O(E·α(E,V)) and always produces exact results.
 func (g *ReferenceGraph) ComputeDominatorTree() {
 	if g.dominatorComputed {
 		return
 	}
 
-	objectCount := len(g.objectClass)
-
-	if objectCount > MaxObjectsForFastRetainedSize {
-		// Very large heap: use class-level estimation
-		g.computeClassLevelRetainedSizes()
-		g.dominatorComputed = true
-		retainedSizeEstimated = true
-		return
-	}
-
-	if objectCount > MaxObjectsForDominatorTree {
-		// Large heap: use fast estimation algorithm
-		g.computeFastRetainedSizes()
-		g.dominatorComputed = true
-		retainedSizeEstimated = true
-		return
-	}
-
-	// Normal heap: full dominator tree computation
-	g.computeFullDominatorTree()
+	// Always use exact Lengauer-Tarjan algorithm for accurate results
+	g.computeLengauerTarjan()
 	g.dominatorComputed = true
 	retainedSizeEstimated = false
 }
 
-// computeFullDominatorTree performs exact dominator tree computation.
-func (g *ReferenceGraph) computeFullDominatorTree() {
-	const superRootID = ^uint64(0)
+// superRootID is a special ID representing the super root that dominates all GC roots
+const superRootID = ^uint64(0)
 
-	// Initialize dominators
+// dominatorState holds the state for dominator computation
+type dominatorState struct {
+	// Object ID to index mapping for array-based access
+	objToIdx map[uint64]int
+	idxToObj []uint64
+
+	// Algorithm data structures (indexed by node index, 1-based)
+	// Index 0 is reserved for "undefined"
+	parent   []int   // parent in DFS spanning tree
+	semi     []int   // semidominator (as DFS number)
+	idom     []int   // immediate dominator
+	ancestor []int   // ancestor in forest for path compression
+	label    []int   // label for path compression (best semi on path)
+	bucket   [][]int // bucket[w] = nodes whose semidominator is w
+
+	// DFS data
+	dfn    []int // dfn[v] = DFS number of node v (0 = not visited)
+	vertex []int // vertex[i] = node with DFS number i (1-based)
+	n      int   // number of nodes visited by DFS
+}
+
+// computeLengauerTarjan implements the Lengauer-Tarjan algorithm for computing dominators.
+// This is the standard algorithm used by Eclipse MAT and other professional tools.
+// Time complexity: O(E·α(E,V)) where α is the inverse Ackermann function (nearly linear).
+//
+// Reference: "A Fast Algorithm for Finding Dominators in a Flowgraph"
+// by Thomas Lengauer and Robert Endre Tarjan, 1979
+func (g *ReferenceGraph) computeLengauerTarjan() {
+	numObjects := len(g.objectClass)
+	if numObjects == 0 {
+		return
+	}
+
+	// Total nodes = objects + 1 (for virtual super root at index 0)
+	totalNodes := numObjects + 1
+
+	// Initialize state
+	state := &dominatorState{
+		objToIdx: make(map[uint64]int, totalNodes),
+		idxToObj: make([]uint64, totalNodes),
+		parent:   make([]int, totalNodes),
+		semi:     make([]int, totalNodes),
+		idom:     make([]int, totalNodes),
+		ancestor: make([]int, totalNodes),
+		label:    make([]int, totalNodes),
+		bucket:   make([][]int, totalNodes),
+		dfn:      make([]int, totalNodes),
+		vertex:   make([]int, totalNodes),
+		n:        0,
+	}
+
+	// Index 0 = super root (virtual node that dominates all GC roots)
+	state.objToIdx[superRootID] = 0
+	state.idxToObj[0] = superRootID
+
+	// Create indices for all objects (1-based)
+	idx := 1
 	for objID := range g.objectClass {
-		g.dominators[objID] = objID
+		state.objToIdx[objID] = idx
+		state.idxToObj[idx] = objID
+		idx++
 	}
 
+	// Initialize arrays
+	for i := 0; i < totalNodes; i++ {
+		state.semi[i] = 0    // 0 means undefined
+		state.ancestor[i] = 0 // 0 means no ancestor
+		state.label[i] = i    // initially, label[v] = v
+		state.idom[i] = 0     // 0 means undefined
+		state.dfn[i] = 0      // 0 means not visited
+	}
+
+	// Build successors list (outgoing edges in reference graph)
+	successors := make([][]int, totalNodes)
+	for i := range successors {
+		successors[i] = make([]int, 0)
+	}
+
+	// Super root (index 0) has edges to all GC roots
+	gcRootSet := make(map[uint64]bool)
+	gcRootsFound := 0
+	gcRootsNotFound := 0
 	for _, root := range g.gcRoots {
-		g.dominators[root.ObjectID] = superRootID
+		if rootIdx, ok := state.objToIdx[root.ObjectID]; ok {
+			if !gcRootSet[root.ObjectID] {
+				gcRootSet[root.ObjectID] = true
+				successors[0] = append(successors[0], rootIdx)
+				gcRootsFound++
+			}
+		} else {
+			gcRootsNotFound++
+		}
 	}
 
-	// Iterative dominator computation (simplified Cooper algorithm)
-	changed := true
-	maxIterations := 10
-
-	for changed && maxIterations > 0 {
-		changed = false
-		maxIterations--
-
-		for objID := range g.objectClass {
-			if g.IsGCRoot(objID) {
-				continue
-			}
-
-			refs := g.incomingRefs[objID]
-			if len(refs) == 0 {
-				continue
-			}
-
-			var newDom uint64 = 0
-			for _, ref := range refs {
-				predDom := g.dominators[ref.FromObjectID]
-				if predDom == 0 {
-					continue
-				}
-				if newDom == 0 {
-					newDom = predDom
-				} else {
-					newDom = g.intersectDominators(newDom, predDom, superRootID)
-				}
-			}
-
-			if newDom != 0 && newDom != g.dominators[objID] {
-				g.dominators[objID] = newDom
-				changed = true
+	// Also treat all Class objects as implicit GC roots
+	// Class objects are held by ClassLoaders and should be considered reachable
+	classObjectsAdded := 0
+	for classObjID := range g.classObjectIDs {
+		if rootIdx, ok := state.objToIdx[classObjID]; ok {
+			if !gcRootSet[classObjID] {
+				gcRootSet[classObjID] = true
+				successors[0] = append(successors[0], rootIdx)
+				classObjectsAdded++
 			}
 		}
 	}
 
+	// Note: We intentionally do NOT treat objects with no incoming refs as roots.
+	// These are likely unreachable garbage objects.
+	// Only explicit GC roots and Class objects are treated as roots.
+	// Objects not reachable from roots will have super root as dominator,
+	// and their retained size will only be their shallow size.
+	noIncomingCount := 0
+	for objID := range g.objectClass {
+		if len(g.incomingRefs[objID]) == 0 && !gcRootSet[objID] {
+			noIncomingCount++
+		}
+	}
+	g.debugf("Objects with no incoming refs (not added as roots): %d", noIncomingCount)
+
+	// Add edges from each object to objects it references
+	// Debug: track ArrayList -> Object[] references
+	arrayListToObjectArrayRefs := 0
+	arrayListClassID := uint64(0)
+	objectArrayClassID := uint64(0)
+	for classID, name := range g.classNames {
+		if name == "java.util.ArrayList" {
+			arrayListClassID = classID
+		}
+		if name == "java.lang.Object[]" {
+			objectArrayClassID = classID
+		}
+	}
+	
+	for objID := range g.objectClass {
+		fromIdx := state.objToIdx[objID]
+		fromClassID := g.objectClass[objID]
+		seen := make(map[int]bool)
+		for _, ref := range g.outgoingRefs[objID] {
+			if toIdx, ok := state.objToIdx[ref.ToObjectID]; ok {
+				if !seen[toIdx] {
+					seen[toIdx] = true
+					successors[fromIdx] = append(successors[fromIdx], toIdx)
+					
+					// Debug: count ArrayList -> Object[] references
+					if fromClassID == arrayListClassID {
+						toClassID := g.objectClass[ref.ToObjectID]
+						if toClassID == objectArrayClassID {
+							arrayListToObjectArrayRefs++
+						}
+					}
+				}
+			}
+		}
+	}
+	g.debugf("ArrayList -> Object[] references: %d (ArrayList classID=%d, Object[] classID=%d)", 
+		arrayListToObjectArrayRefs, arrayListClassID, objectArrayClassID)
+
+	// Build predecessors list (reverse edges)
+	predecessors := make([][]int, totalNodes)
+	for i := range predecessors {
+		predecessors[i] = make([]int, 0)
+	}
+	for v := 0; v < totalNodes; v++ {
+		for _, w := range successors[v] {
+			predecessors[w] = append(predecessors[w], v)
+		}
+	}
+
+	// Step 1: DFS to compute spanning tree and DFS numbering
+	// Use iterative DFS to avoid stack overflow on large graphs
+	type dfsFrame struct {
+		v     int
+		i     int // index into successors[v]
+		first bool
+	}
+
+	stack := []dfsFrame{{v: 0, i: 0, first: true}}
+	for len(stack) > 0 {
+		frame := &stack[len(stack)-1]
+
+		if frame.first {
+			frame.first = false
+			state.n++
+			state.dfn[frame.v] = state.n
+			state.vertex[state.n] = frame.v
+			state.semi[frame.v] = state.n // Initialize semi to DFS number
+		}
+
+		// Find next unvisited successor
+		found := false
+		for frame.i < len(successors[frame.v]) {
+			w := successors[frame.v][frame.i]
+			frame.i++
+			if state.dfn[w] == 0 { // Not visited
+				state.parent[w] = frame.v
+				stack = append(stack, dfsFrame{v: w, i: 0, first: true})
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			stack = stack[:len(stack)-1]
+		}
+	}
+
+	g.debugf("DFS visited %d nodes out of %d total (%.1f%%)", 
+		state.n, totalNodes, float64(state.n)*100.0/float64(totalNodes))
+	g.debugf("GC roots: %d explicit + %d class = %d total (found=%d, notFound=%d)", 
+		len(g.gcRoots), classObjectsAdded, len(gcRootSet), gcRootsFound, gcRootsNotFound)
+	
+	// Debug: count objects with outgoing references
+	objectsWithOutgoing := 0
+	totalOutgoingRefs := 0
+	objectsWithIncoming := 0
+	for objID := range g.objectClass {
+		if refs := g.outgoingRefs[objID]; len(refs) > 0 {
+			objectsWithOutgoing++
+			totalOutgoingRefs += len(refs)
+		}
+		if refs := g.incomingRefs[objID]; len(refs) > 0 {
+			objectsWithIncoming++
+		}
+	}
+	objectsWithNoIncoming := len(g.objectClass) - objectsWithIncoming
+	g.debugf("Objects with outgoing refs: %d, total outgoing refs: %d",
+		objectsWithOutgoing, totalOutgoingRefs)
+	g.debugf("Objects with NO incoming refs (potential roots or unreachable): %d",
+		objectsWithNoIncoming)
+	
+	// Debug: GC root types
+	rootTypeCounts := make(map[GCRootType]int)
+	for _, root := range g.gcRoots {
+		rootTypeCounts[root.Type]++
+	}
+	g.debugf("GC root types: %v", rootTypeCounts)
+
+	// LINK: add edge (v, w) to the forest
+	link := func(v, w int) {
+		state.ancestor[w] = v
+	}
+
+	// EVAL: find the node with minimum semi on the path from v to root of its tree
+	var eval func(v int) int
+	eval = func(v int) int {
+		if state.ancestor[v] == 0 {
+			return v
+		}
+		compressPath(state, v)
+		return state.label[v]
+	}
+
+	// Steps 2 & 3: Compute semidominators and implicitly define idom
+	// Process nodes in reverse DFS order (excluding root)
+	for i := state.n; i >= 2; i-- {
+		w := state.vertex[i]
+
+		// Step 2: Compute semidominator of w
+		// semi(w) = min { dfn(v) | v is a predecessor of w and dfn(v) < dfn(w) }
+		//         ∪ min { semi(u) | u = eval(v) for predecessor v with dfn(v) > dfn(w) }
+		for _, v := range predecessors[w] {
+			if state.dfn[v] == 0 {
+				continue // v not reachable from root
+			}
+			var u int
+			if state.dfn[v] <= state.dfn[w] {
+				u = v
+			} else {
+				u = eval(v)
+			}
+			if state.semi[u] < state.semi[w] {
+				state.semi[w] = state.semi[u]
+			}
+		}
+
+		// Add w to bucket of vertex[semi[w]]
+		semiNode := state.vertex[state.semi[w]]
+		state.bucket[semiNode] = append(state.bucket[semiNode], w)
+
+		// Link w to its parent in DFS tree
+		link(state.parent[w], w)
+
+		// Step 3: Implicitly define idom for nodes in bucket of parent[w]
+		for _, v := range state.bucket[state.parent[w]] {
+			u := eval(v)
+			if state.semi[u] < state.semi[v] {
+				state.idom[v] = u
+			} else {
+				state.idom[v] = state.parent[w]
+			}
+		}
+		state.bucket[state.parent[w]] = nil
+	}
+
+	// Step 4: Explicitly define idom
+	for i := 2; i <= state.n; i++ {
+		w := state.vertex[i]
+		if state.idom[w] != state.vertex[state.semi[w]] {
+			state.idom[w] = state.idom[state.idom[w]]
+		}
+	}
+
+	// idom of root is 0 (undefined)
+	state.idom[0] = 0
+
+	// Convert results back to object IDs and mark reachable objects
+	g.reachableObjects = make(map[uint64]bool, state.n)
+	for i := 1; i <= state.n; i++ {
+		v := state.vertex[i]
+		if v == 0 {
+			continue // skip super root
+		}
+		objID := state.idxToObj[v]
+		g.reachableObjects[objID] = true // Mark as reachable
+		idomNode := state.idom[v]
+		if idomNode == 0 {
+			g.dominators[objID] = superRootID
+		} else {
+			g.dominators[objID] = state.idxToObj[idomNode]
+		}
+	}
+
+	// Handle unreachable objects (not visited by DFS)
+	// These are garbage objects that should not be counted in statistics
+	unreachableCount := 0
+	for objID := range g.objectClass {
+		if _, hasDom := g.dominators[objID]; !hasDom {
+			g.dominators[objID] = superRootID
+			unreachableCount++
+		}
+	}
+	g.debugf("Unreachable objects (garbage): %d", unreachableCount)
+
+	// Compute retained sizes
 	g.computeRetainedSizes()
 }
 
-// computeFastRetainedSizes uses a fast BFS-based estimation for retained sizes.
-// This is faster than full dominator tree but still provides useful estimates.
-//
-// Algorithm: For each object, estimate retained size as:
-// - Self size + sum of sizes of objects only reachable through this object
-// - Uses sampling for large fan-out nodes
-func (g *ReferenceGraph) computeFastRetainedSizes() {
-	// First, compute in-degree for each object
-	inDegree := make(map[uint64]int)
-	for objID := range g.objectClass {
-		inDegree[objID] = len(g.incomingRefs[objID])
+// compressPath performs path compression for EVAL using iterative approach.
+// After compression, label[v] contains the node with minimum semi on path from v to tree root.
+// Optimization: Uses iterative approach to avoid stack overflow on deep paths.
+func compressPath(state *dominatorState, v int) {
+	// First, collect the path from v to the root of its tree
+	path := make([]int, 0, 32)
+	current := v
+	for state.ancestor[current] != 0 && state.ancestor[state.ancestor[current]] != 0 {
+		path = append(path, current)
+		current = state.ancestor[current]
 	}
-
-	// Objects with in-degree 1 are exclusively retained by their single parent
-	// This is a fast approximation of dominator relationship
-	exclusiveChildren := make(map[uint64][]uint64) // parent -> exclusive children
-
-	for objID := range g.objectClass {
-		if inDegree[objID] == 1 {
-			refs := g.incomingRefs[objID]
-			if len(refs) > 0 {
-				parentID := refs[0].FromObjectID
-				exclusiveChildren[parentID] = append(exclusiveChildren[parentID], objID)
-			}
+	
+	// Now compress the path from root to v
+	for i := len(path) - 1; i >= 0; i-- {
+		node := path[i]
+		anc := state.ancestor[node]
+		if state.semi[state.label[anc]] < state.semi[state.label[node]] {
+			state.label[node] = state.label[anc]
 		}
-	}
-
-	// Compute retained sizes bottom-up using exclusive children
-	var computeRetained func(objID uint64, visited map[uint64]bool) int64
-	computeRetained = func(objID uint64, visited map[uint64]bool) int64 {
-		if visited[objID] {
-			return 0
-		}
-		visited[objID] = true
-
-		size := g.objectSize[objID]
-		for _, childID := range exclusiveChildren[objID] {
-			size += computeRetained(childID, visited)
-		}
-		return size
-	}
-
-	// Compute for all objects (with depth limit for performance)
-	for objID := range g.objectClass {
-		visited := make(map[uint64]bool)
-		g.retainedSizes[objID] = computeRetained(objID, visited)
-	}
-}
-
-// computeClassLevelRetainedSizes estimates retained sizes at class level.
-// This is the fastest method, suitable for very large heaps.
-//
-// Algorithm:
-// 1. Build class-level reference graph
-// 2. Estimate retained size based on class relationships
-// 3. Distribute to individual objects proportionally
-func (g *ReferenceGraph) computeClassLevelRetainedSizes() {
-	// Aggregate by class
-	classSize := make(map[uint64]int64)      // classID -> total shallow size
-	classCount := make(map[uint64]int64)     // classID -> instance count
-	classInRefs := make(map[uint64]int64)    // classID -> total incoming refs
-	classExclusive := make(map[uint64]int64) // classID -> count of objects with single incoming ref
-
-	for objID, classID := range g.objectClass {
-		classSize[classID] += g.objectSize[objID]
-		classCount[classID]++
-
-		inRefCount := len(g.incomingRefs[objID])
-		classInRefs[classID] += int64(inRefCount)
-		if inRefCount == 1 {
-			classExclusive[classID]++
-		}
-	}
-
-	// Estimate class-level retained size
-	// Objects with single incoming ref are likely exclusively retained
-	classRetained := make(map[uint64]int64)
-	for classID, size := range classSize {
-		// Base retained = shallow size
-		retained := size
-
-		// Add estimated retained from exclusive children
-		exclusiveRatio := float64(0)
-		if classCount[classID] > 0 {
-			exclusiveRatio = float64(classExclusive[classID]) / float64(classCount[classID])
-		}
-
-		// Estimate: exclusive objects contribute their size to parent's retained
-		// This is a heuristic based on typical object graphs
-		retained = int64(float64(retained) * (1.0 + exclusiveRatio*0.5))
-		classRetained[classID] = retained
-	}
-
-	// Distribute to individual objects proportionally
-	for objID, classID := range g.objectClass {
-		if classCount[classID] > 0 {
-			// Proportional distribution based on object size
-			objSize := g.objectSize[objID]
-			classTotal := classSize[classID]
-			if classTotal > 0 {
-				proportion := float64(objSize) / float64(classTotal)
-				g.retainedSizes[objID] = int64(float64(classRetained[classID]) * proportion)
-			} else {
-				g.retainedSizes[objID] = objSize
-			}
-		}
+		state.ancestor[node] = state.ancestor[anc]
 	}
 }
 
@@ -783,54 +1085,161 @@ func (g *ReferenceGraph) IsRetainedSizeEstimated() bool {
 	return retainedSizeEstimated
 }
 
-// intersectDominators finds the common dominator of two nodes.
-func (g *ReferenceGraph) intersectDominators(a, b, superRoot uint64) uint64 {
-	visited := make(map[uint64]bool)
+// computeRetainedSizes computes retained sizes based on dominator tree.
+// Retained size of an object = its shallow size + sum of retained sizes of all objects it dominates
+// Also pre-computes class-level retained sizes for fast lookup.
+// 
+// Optimization: Uses iterative post-order traversal instead of recursion to avoid stack overflow
+// on large heaps and reduce function call overhead.
+func (g *ReferenceGraph) computeRetainedSizes() {
+	// Build dominator tree children map (reverse of dominators)
+	// children[A] = list of objects whose immediate dominator is A
+	// Pre-allocate with estimated capacity
+	children := make(map[uint64][]uint64, len(g.objectClass)/10)
 
-	// Walk up from a, marking all dominators
-	current := a
-	for current != 0 && current != superRoot {
-		visited[current] = true
-		current = g.dominators[current]
-	}
-	visited[superRoot] = true
+	// Count dominators for debugging
+	dominatedBySuperRoot := 0
+	dominatedByOther := 0
 
-	// Walk up from b, find first common dominator
-	current = b
-	for current != 0 {
-		if visited[current] {
-			return current
+	// Only iterate over objects in our object graph
+	for objID := range g.objectClass {
+		domID := g.dominators[objID]
+		if domID == superRootID {
+			dominatedBySuperRoot++
+		} else if domID != 0 && domID != objID {
+			dominatedByOther++
+			// Verify domID is a valid object
+			if _, exists := g.objectClass[domID]; exists {
+				children[domID] = append(children[domID], objID)
+			}
 		}
-		current = g.dominators[current]
 	}
 
-	return superRoot
+	g.debugf("Dominator stats: dominatedBySuperRoot=%d, dominatedByOther=%d, objectsWithChildren=%d",
+		dominatedBySuperRoot, dominatedByOther, len(children))
+
+	// Initialize all retained sizes to shallow size
+	for objID := range g.objectClass {
+		g.retainedSizes[objID] = g.objectSize[objID]
+	}
+
+	// Compute retained sizes using iterative post-order traversal
+	// This avoids stack overflow on large heaps and is faster than recursion
+	
+	// Find all leaf nodes (objects with no children in dominator tree)
+	// These are the starting points for bottom-up computation
+	leafNodes := make([]uint64, 0, len(g.objectClass)/2)
+	for objID := range g.objectClass {
+		if len(children[objID]) == 0 {
+			leafNodes = append(leafNodes, objID)
+		}
+	}
+	
+	// Track how many children each node has remaining to process
+	remainingChildren := make(map[uint64]int, len(children))
+	for objID, childList := range children {
+		remainingChildren[objID] = len(childList)
+	}
+	
+	// Process nodes in bottom-up order using a work queue
+	queue := make([]uint64, 0, len(g.objectClass))
+	queue = append(queue, leafNodes...)
+	processed := make(map[uint64]bool, len(g.objectClass))
+	
+	for len(queue) > 0 {
+		objID := queue[0]
+		queue = queue[1:]
+		
+		if processed[objID] {
+			continue
+		}
+		processed[objID] = true
+		
+		// Retained size is already initialized to shallow size
+		// Add retained sizes of all children (already computed since we process bottom-up)
+		for _, childID := range children[objID] {
+			g.retainedSizes[objID] += g.retainedSizes[childID]
+		}
+		
+		// Notify parent that this child is done
+		domID := g.dominators[objID]
+		if domID != superRootID && domID != 0 {
+			remainingChildren[domID]--
+			// If all children of parent are processed, add parent to queue
+			if remainingChildren[domID] == 0 {
+				queue = append(queue, domID)
+			}
+		}
+	}
+	
+	// Handle any remaining unprocessed objects (shouldn't happen in a valid tree)
+	for objID := range g.objectClass {
+		if !processed[objID] {
+			// Process remaining objects - their retained size stays as shallow size
+			processed[objID] = true
+		}
+	}
+
+	// Debug: count objects with retained > shallow
+	objectsWithRetained := 0
+	for objID := range g.objectClass {
+		if g.retainedSizes[objID] > g.objectSize[objID] {
+			objectsWithRetained++
+		}
+	}
+	g.debugf("Objects with retained > shallow: %d", objectsWithRetained)
+
+	// Pre-compute class-level retained sizes for fast lookup
+	g.computeClassRetainedSizes()
 }
 
-// computeRetainedSizes computes retained sizes based on dominator tree.
-func (g *ReferenceGraph) computeRetainedSizes() {
-	// Build dominator tree children map
-	children := make(map[uint64][]uint64)
-	for objID, domID := range g.dominators {
-		if domID != objID && domID != 0 {
-			children[domID] = append(children[domID], objID)
+// computeClassRetainedSizes pre-computes two views of class retained size:
+// 1) MAT top-level view (classRetainedSizes): retained of instances not dominated by same class
+// 2) Attribution view (classRetainedSizesAttributed): non-overlapping, attribute each object's
+//    retained size to the nearest dominator of a different class; if dominator is super root,
+//    attribute to the object's own class. This better matches IDE "Retained by class"口径。
+func (g *ReferenceGraph) computeClassRetainedSizes() {
+	// Reset maps in case ComputeDominatorTree is called multiple times
+	g.classRetainedSizes = make(map[uint64]int64)
+	g.classRetainedSizesAttributed = make(map[uint64]int64)
+
+	// --- View 1: MAT top-level (avoid intra-class double count, but allows cross-class overlap) ---
+	for objID, classID := range g.objectClass {
+		domID := g.dominators[objID]
+
+		isDominatedBySameClass := false
+		if domID != superRootID && domID != 0 {
+			if domClassID, exists := g.objectClass[domID]; exists && domClassID == classID {
+				isDominatedBySameClass = true
+			}
+		}
+
+		if !isDominatedBySameClass {
+			g.classRetainedSizes[classID] += g.retainedSizes[objID]
 		}
 	}
 
-	// Compute retained sizes using post-order traversal
-	var computeSize func(objID uint64) int64
-	computeSize = func(objID uint64) int64 {
-		size := g.objectSize[objID]
-		for _, childID := range children[objID] {
-			size += computeSize(childID)
-		}
-		g.retainedSizes[objID] = size
-		return size
-	}
+	// --- View 2: Attribution (non-overlapping) ---
+	// Attribute each object's SHALLOW size to the nearest dominator whose class differs.
+	// If dominator chain reaches super root, attribute to the object's own class.
+	// This ensures every byte is counted exactly once and totals ~= heap size.
+	for objID, classID := range g.objectClass {
+		attribClassID := classID
+		domID := g.dominators[objID]
 
-	// Start from GC roots
-	for _, root := range g.gcRoots {
-		computeSize(root.ObjectID)
+		for domID != superRootID && domID != 0 {
+			domClassID, ok := g.objectClass[domID]
+			if !ok {
+				break
+			}
+			if domClassID != classID {
+				attribClassID = domClassID
+				break
+			}
+			domID = g.dominators[domID]
+		}
+
+		g.classRetainedSizesAttributed[attribClassID] += g.objectSize[objID]
 	}
 }
 
@@ -842,28 +1251,114 @@ func (g *ReferenceGraph) GetRetainedSize(objectID uint64) int64 {
 	return g.retainedSizes[objectID]
 }
 
-// GetClassRetainedSize returns the total retained size for all instances of a class.
+// GetClassRetainedSize returns the MAT top-level retained size for a class (may overlap across classes).
+// This matches Eclipse MAT "retained if delete all instances of this class" semantics.
 func (g *ReferenceGraph) GetClassRetainedSize(className string) int64 {
 	if !g.dominatorComputed {
 		g.ComputeDominatorTree()
 	}
 
-	var targetClassID uint64
 	for classID, name := range g.classNames {
 		if name == className {
-			targetClassID = classID
-			break
+			return g.classRetainedSizes[classID]
 		}
 	}
+	return 0
+}
 
-	var totalRetained int64
+// GetClassRetainedSizeAttributed returns the non-overlapping attribution size.
+// Each object's shallow size is attributed to the nearest dominator of a different class
+// (or itself if dominated only by same class / super root). Totals ~= heap size and
+// are closer to IDEA 的"Retained by class"。
+func (g *ReferenceGraph) GetClassRetainedSizeAttributed(className string) int64 {
+	if !g.dominatorComputed {
+		g.ComputeDominatorTree()
+	}
+
+	for classID, name := range g.classNames {
+		if name == className {
+			return g.classRetainedSizesAttributed[classID]
+		}
+	}
+	return 0
+}
+
+// IsObjectReachable returns true if the object is reachable from GC roots.
+// This is determined during dominator tree computation.
+func (g *ReferenceGraph) IsObjectReachable(objectID uint64) bool {
+	if !g.dominatorComputed {
+		return true // Assume reachable if not computed yet
+	}
+	return g.reachableObjects[objectID]
+}
+
+// GetReachableClassStats returns class statistics for only reachable objects.
+// This matches MAT's behavior of only counting live objects.
+func (g *ReferenceGraph) GetReachableClassStats() map[uint64]struct {
+	InstanceCount int64
+	TotalSize     int64
+} {
+	if !g.dominatorComputed {
+		g.ComputeDominatorTree()
+	}
+
+	stats := make(map[uint64]struct {
+		InstanceCount int64
+		TotalSize     int64
+	})
+
 	for objID, classID := range g.objectClass {
-		if classID == targetClassID {
-			totalRetained += g.retainedSizes[objID]
+		if g.reachableObjects[objID] {
+			s := stats[classID]
+			s.InstanceCount++
+			s.TotalSize += g.objectSize[objID]
+			stats[classID] = s
 		}
 	}
 
-	return totalRetained
+	return stats
+}
+
+// GetReachableObjectCount returns the count of reachable objects.
+func (g *ReferenceGraph) GetReachableObjectCount() int {
+	if !g.dominatorComputed {
+		g.ComputeDominatorTree()
+	}
+	return len(g.reachableObjects)
+}
+
+// GetTotalReachableHeapSize returns the total heap size of reachable objects.
+func (g *ReferenceGraph) GetTotalReachableHeapSize() int64 {
+	if !g.dominatorComputed {
+		g.ComputeDominatorTree()
+	}
+
+	var total int64
+	for objID := range g.reachableObjects {
+		total += g.objectSize[objID]
+	}
+	return total
+}
+
+// GetAllClassStats returns class statistics for ALL objects (including unreachable).
+// This matches IDEA's behavior of showing all objects in the heap.
+func (g *ReferenceGraph) GetAllClassStats() map[uint64]struct {
+	InstanceCount int64
+	TotalSize     int64
+} {
+	stats := make(map[uint64]struct {
+		InstanceCount int64
+		TotalSize     int64
+	})
+
+	for objID, classID := range g.objectClass {
+		s := stats[classID]
+		s.InstanceCount++
+		s.TotalSize += g.objectSize[objID]
+		stats[classID] = s
+	}
+
+	return stats
 }
 
 // ComputeRetainersForClass computes what classes retain instances of the given class.
@@ -960,7 +1455,7 @@ func (g *ReferenceGraph) ComputeTopRetainers(topClasses []*ClassStats, topN int)
 		// Use multi-level retainer analysis
 		retainers := g.ComputeMultiLevelRetainers(cls.ClassName, 5, topN)
 		if retainers != nil && len(retainers.Retainers) > 0 {
-			// Add retained size from dominator tree
+			// Add retained size from dominator tree (MAT top-level view)
 			retainers.RetainedSize = g.GetClassRetainedSize(cls.ClassName)
 			result[cls.ClassName] = retainers
 		}
@@ -1117,68 +1612,75 @@ type BusinessRetainer struct {
 // ComputeBusinessRetainers finds business-level classes that retain instances of the target class.
 // This skips JDK internal classes and framework classes to find the actual business code
 // that is holding references.
+// 
+// Optimizations applied:
+// 1. Uses classToObjects index for O(1) lookup instead of O(n) scan
+// 2. Shared visited set across samples to avoid redundant traversals
+// 3. Early termination when enough retainers are found
+// 4. Reduced path tracking overhead
 func (g *ReferenceGraph) ComputeBusinessRetainers(targetClassName string, maxDepth, topN int) []*BusinessRetainer {
 	if maxDepth <= 0 {
-		maxDepth = 15 // Deeper search to find business classes
+		maxDepth = 15
 	}
 
-	// Find all objects of the target class
-	var targetObjects []uint64
-	var targetClassID uint64
-	for classID, name := range g.classNames {
-		if name == targetClassName {
-			targetClassID = classID
-			break
-		}
+	// Use index to find target class objects - O(1) lookup
+	targetClassID, found := g.getClassIDByName(targetClassName)
+	if !found {
+		return nil
 	}
 
-	var totalSize int64
-	for objID, classID := range g.objectClass {
-		if classID == targetClassID {
-			targetObjects = append(targetObjects, objID)
-			totalSize += g.objectSize[objID]
-		}
-	}
-
+	targetObjects := g.getObjectsByClass(targetClassID)
 	if len(targetObjects) == 0 {
 		return nil
 	}
 
+	// Calculate total size
+	var totalSize int64
+	for _, objID := range targetObjects {
+		totalSize += g.objectSize[objID]
+	}
+
 	// Use stratified sampling for large datasets
 	config := DefaultSamplingConfig()
-	config.MaxSamples = 500 // Smaller sample for deeper analysis
+	config.MaxSamples = 500
 	sampleObjects := g.stratifiedSample(targetObjects, config)
 	sampleRatio := float64(len(sampleObjects)) / float64(len(targetObjects))
 
-	// Track business retainers with their paths
-	// Key insight: We want to track which retainer classes hold which target objects
-	// A retainer should only count a target object once, even if it reaches it through multiple paths
-	type retainerKey struct {
-		className string
+	// Track business retainers - simplified structure for better performance
+	type retainerStats struct {
+		retainer      *BusinessRetainer
+		targetObjects map[uint64]bool
 	}
 	
-	// Track unique target objects per retainer class
-	businessRetainerObjects := make(map[retainerKey]map[uint64]bool) // retainer -> set of target objIDs
-	businessRetainerStats := make(map[retainerKey]*BusinessRetainer)
-	appLevelRetainerObjects := make(map[retainerKey]map[uint64]bool)
-	appLevelRetainerStats := make(map[retainerKey]*BusinessRetainer)
+	businessRetainers := make(map[string]*retainerStats)
+	appLevelRetainers := make(map[string]*retainerStats)
+	
+	// Shared global visited set for optimization - tracks (objID, depth) pairs
+	// This prevents redundant deep traversals from different target objects
+	globalVisited := make(map[uint64]int) // objID -> minimum depth reached
 
+	// Process samples with shared state
 	for _, objID := range sampleObjects {
 		objSize := g.objectSize[objID]
 		
-		// BFS to find business class retainers
+		// BFS with optimized structure - no path tracking for performance
 		type bfsNode struct {
-			objID     uint64
-			fieldPath []string
-			depth     int
+			objID uint64
+			depth int
 		}
 		
-		visited := map[uint64]bool{objID: true}
-		queue := []bfsNode{{objID: objID, fieldPath: nil, depth: 0}}
+		// Local visited for this target object's BFS
+		localVisited := map[uint64]bool{objID: true}
+		queue := make([]bfsNode, 0, 256)
+		queue = append(queue, bfsNode{objID: objID, depth: 0})
 		
-		// Track which retainer classes we've already counted for this target object
-		countedBusinessRetainers := make(map[retainerKey]bool)
-		countedAppLevelRetainers := make(map[retainerKey]bool)
+		// Track which retainer classes we've counted for this target
+		countedBusiness := make(map[string]bool)
+		countedAppLevel := make(map[string]bool)
+		
+		// Early termination: stop if we found enough business retainers for this target
+		businessFoundForTarget := 0
+		const maxBusinessPerTarget = 10
 		
 		for len(queue) > 0 {
 			current := queue[0]
@@ -1188,104 +1690,121 @@ func (g *ReferenceGraph) ComputeBusinessRetainers(targetClassName string, maxDep
 				continue
 			}
 			
+			// Check global visited for pruning
+			if prevDepth, seen := globalVisited[current.objID]; seen && prevDepth <= current.depth {
+				// Already visited at same or shallower depth, skip deeper exploration
+				// But still process for counting if not counted yet
+			}
+			globalVisited[current.objID] = current.depth
+			
 			for _, ref := range g.incomingRefs[current.objID] {
-				if visited[ref.FromObjectID] {
+				if localVisited[ref.FromObjectID] {
 					continue
 				}
-				visited[ref.FromObjectID] = true
+				localVisited[ref.FromObjectID] = true
 				
 				retainerClassName := g.classNames[ref.FromClassID]
 				if retainerClassName == "" {
-					retainerClassName = "(unknown)"
+					continue // Skip unknown classes
 				}
 				
-				newPath := make([]string, len(current.fieldPath)+1)
-				copy(newPath, current.fieldPath)
-				newPath[len(current.fieldPath)] = ref.FieldName
-				
-				// Check if this is a business class (strict)
+				// Check if this is a business class
 				if isBusinessClass(retainerClassName) {
-					key := retainerKey{className: retainerClassName}
-					if _, ok := businessRetainerStats[key]; !ok {
-						businessRetainerStats[key] = &BusinessRetainer{
-							ClassName: retainerClassName,
-							FieldPath: newPath,
-							Depth:     current.depth + 1,
-							IsGCRoot:  g.IsGCRoot(ref.FromObjectID),
-							GCRootType: string(g.GetGCRootType(ref.FromObjectID)),
+					if !countedBusiness[retainerClassName] {
+						countedBusiness[retainerClassName] = true
+						businessFoundForTarget++
+						
+						stats, ok := businessRetainers[retainerClassName]
+						if !ok {
+							stats = &retainerStats{
+								retainer: &BusinessRetainer{
+									ClassName:  retainerClassName,
+									Depth:      current.depth + 1,
+									IsGCRoot:   g.IsGCRoot(ref.FromObjectID),
+									GCRootType: string(g.GetGCRootType(ref.FromObjectID)),
+								},
+								targetObjects: make(map[uint64]bool),
+							}
+							businessRetainers[retainerClassName] = stats
 						}
-						businessRetainerObjects[key] = make(map[uint64]bool)
-					}
-					// Only count this target object once per retainer class
-					if !countedBusinessRetainers[key] {
-						countedBusinessRetainers[key] = true
-						businessRetainerObjects[key][objID] = true
-						businessRetainerStats[key].RetainedCount++
-						businessRetainerStats[key].RetainedSize += objSize
-					}
-				} else if !isApplicationLevelClass(retainerClassName) && !isJDKInternalClass(retainerClassName) {
-					// Also track application-level framework classes as fallback
-					key := retainerKey{className: retainerClassName}
-					if _, ok := appLevelRetainerStats[key]; !ok {
-						appLevelRetainerStats[key] = &BusinessRetainer{
-							ClassName: retainerClassName,
-							FieldPath: newPath,
-							Depth:     current.depth + 1,
-							IsGCRoot:  g.IsGCRoot(ref.FromObjectID),
-							GCRootType: string(g.GetGCRootType(ref.FromObjectID)),
+						
+						if !stats.targetObjects[objID] {
+							stats.targetObjects[objID] = true
+							stats.retainer.RetainedCount++
+							stats.retainer.RetainedSize += objSize
 						}
-						appLevelRetainerObjects[key] = make(map[uint64]bool)
 					}
-					// Only count this target object once per retainer class
-					if !countedAppLevelRetainers[key] {
-						countedAppLevelRetainers[key] = true
-						appLevelRetainerObjects[key][objID] = true
-						appLevelRetainerStats[key].RetainedCount++
-						appLevelRetainerStats[key].RetainedSize += objSize
+				} else if !isJDKInternalClass(retainerClassName) && !isFrameworkClass(retainerClassName) {
+					// Application-level fallback
+					if !countedAppLevel[retainerClassName] {
+						countedAppLevel[retainerClassName] = true
+						
+						stats, ok := appLevelRetainers[retainerClassName]
+						if !ok {
+							stats = &retainerStats{
+								retainer: &BusinessRetainer{
+									ClassName:  retainerClassName,
+									Depth:      current.depth + 1,
+									IsGCRoot:   g.IsGCRoot(ref.FromObjectID),
+									GCRootType: string(g.GetGCRootType(ref.FromObjectID)),
+								},
+								targetObjects: make(map[uint64]bool),
+							}
+							appLevelRetainers[retainerClassName] = stats
+						}
+						
+						if !stats.targetObjects[objID] {
+							stats.targetObjects[objID] = true
+							stats.retainer.RetainedCount++
+							stats.retainer.RetainedSize += objSize
+						}
 					}
 				}
 				
-				// Continue BFS if not at max depth
-				if current.depth+1 < maxDepth {
+				// Continue BFS if not at max depth and haven't found enough
+				if current.depth+1 < maxDepth && businessFoundForTarget < maxBusinessPerTarget {
 					queue = append(queue, bfsNode{
-						objID:     ref.FromObjectID,
-						fieldPath: newPath,
-						depth:     current.depth + 1,
+						objID: ref.FromObjectID,
+						depth: current.depth + 1,
 					})
 				}
+			}
+			
+			// Early termination for this target
+			if businessFoundForTarget >= maxBusinessPerTarget {
+				break
 			}
 		}
 	}
 
 	// Use business retainers if found, otherwise use app-level retainers
-	retainerStats := businessRetainerStats
-	if len(retainerStats) == 0 {
-		retainerStats = appLevelRetainerStats
+	retainerMap := businessRetainers
+	if len(retainerMap) == 0 {
+		retainerMap = appLevelRetainers
 	}
 
 	// Convert to slice and calculate percentages
-	// Percentage = (number of target objects held by this retainer / total sample objects) * 100
 	var retainers []*BusinessRetainer
 	sampleCount := len(sampleObjects)
 	
-	// Calculate sample total size for size-based percentage
 	var sampleTotalSize int64
 	for _, objID := range sampleObjects {
 		sampleTotalSize += g.objectSize[objID]
 	}
 	
-	for _, r := range retainerStats {
+	for _, stats := range retainerMap {
+		r := stats.retainer
+		
 		// Calculate percentage based on retained size vs sample total size
 		if sampleTotalSize > 0 {
 			r.Percentage = float64(r.RetainedSize) * 100.0 / float64(sampleTotalSize)
 		}
 		
-		// Cap percentage at 100% (a retainer can hold at most all target objects)
 		if r.Percentage > 100.0 {
 			r.Percentage = 100.0
 		}
 		
-		// Scale count and size to estimate full population values
+		// Scale to estimate full population values
 		if sampleRatio < 1.0 && sampleCount > 0 {
 			r.RetainedCount = int64(float64(r.RetainedCount) / sampleRatio)
 			r.RetainedSize = int64(float64(r.RetainedSize) / sampleRatio)

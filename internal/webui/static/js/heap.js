@@ -51,7 +51,7 @@ const HeapAnalysis = (function() {
         const heapData = data.data || {};
 
         document.getElementById('totalSamples').textContent = Utils.formatBytes(heapData.total_heap_size || 0);
-        document.getElementById('topFuncsCount').textContent = heapData.total_classes || 0;
+        document.getElementById('topFuncsCount').textContent = Utils.formatNumber(heapData.total_classes || 0);
         document.getElementById('threadsCount').textContent = Utils.formatNumber(heapData.total_instances || 0);
         document.getElementById('taskUUID').textContent = data.task_uuid || '-';
 
@@ -62,32 +62,34 @@ const HeapAnalysis = (function() {
             statLabels[2].textContent = 'Total Instances';
         }
 
-        // 渲染 top classes 预览
+        // 渲染 top classes 预览（使用新的 Tailwind 样式）
         const topItems = data.top_items || [];
         const previewBody = document.getElementById('topFuncsPreview');
         previewBody.innerHTML = topItems.slice(0, 5).map((item, i) => `
-            <tr>
-                <td>${i + 1}</td>
-                <td class="func-name" title="${Utils.escapeHtml(item.name)}">${Utils.escapeHtml(item.name)}</td>
-                <td>
-                    <div class="percentage-bar">
-                        <div class="percentage-bar-fill" style="width: ${Math.min(item.percentage, 100)}%; background: linear-gradient(90deg, #9b59b6 0%, #8e44ad 100%);"></div>
-                    </div>
-                    ${item.percentage.toFixed(2)}%
+            <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-6 py-4 text-sm text-gray-500 font-medium">${i + 1}</td>
+                <td class="px-6 py-4">
+                    <span class="font-mono text-sm text-gray-800" title="${Utils.escapeHtml(item.name)}">${Utils.escapeHtml(item.name)}</span>
                 </td>
-                <td>
-                    <span style="font-size: 12px; color: #666;">${Utils.formatBytes(item.value)}</span>
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-3">
+                        <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden max-w-[120px]">
+                            <div class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300" style="width: ${Math.min(item.percentage, 100)}%"></div>
+                        </div>
+                        <span class="text-sm font-semibold text-gray-700 w-16 text-right">${item.percentage.toFixed(2)}%</span>
+                    </div>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">${Utils.formatBytes(item.value)}</span>
                 </td>
             </tr>
         `).join('');
 
-        const cardTitle = document.querySelector('#overview .card h2');
-        if (cardTitle) cardTitle.textContent = 'Top 5 Classes by Memory';
-
-        const tips = document.querySelector('#overview .card .tips');
-        if (tips) tips.innerHTML = '<span>💡 Click on Memory Map or Class Histogram tabs for detailed analysis</span>';
-
-        document.getElementById('threadList').innerHTML = '<li class="thread-item"><span class="thread-name">N/A for Heap Analysis</span></li>';
+        // 隐藏 threadList（Heap 分析不需要）
+        const threadList = document.getElementById('threadList');
+        if (threadList) {
+            threadList.innerHTML = '';
+        }
     }
 
     // ============================================

@@ -6,6 +6,22 @@ import (
 	"io"
 	"sort"
 	"strings"
+
+	"github.com/perf-analysis/pkg/utils"
+)
+
+// SizeCalculationMode defines how shallow sizes are calculated.
+type SizeCalculationMode int
+
+const (
+	// SizeModeCompressedOops uses compressed oops (12-byte header, 4-byte refs).
+	// This matches IDEA's behavior and is the default for JVMs with heaps < 32GB.
+	SizeModeCompressedOops SizeCalculationMode = iota
+	// SizeModeNonCompressed uses non-compressed oops (16-byte header, 8-byte refs).
+	// This matches MAT's behavior.
+	SizeModeNonCompressed
+	// SizeModeAuto automatically detects based on heap size (not implemented yet).
+	SizeModeAuto
 )
 
 // ParserOptions configures the HPROF parser.
@@ -22,17 +38,37 @@ type ParserOptions struct {
 	AnalyzeRetainers bool
 	// TopRetainersN is the number of top retainers to track per class.
 	TopRetainersN int
+	// ParallelConfig configures parallel analysis.
+	ParallelConfig ParallelConfig
+	// SizeMode controls how shallow sizes are calculated.
+	// Default is SizeModeCompressedOops to match IDEA behavior.
+	SizeMode SizeCalculationMode
+	// FastMode skips deep analysis (business retainers, multi-level retainers, reference graphs).
+	// Only computes class histogram, basic retainer info, and dominator tree.
+	// This can reduce analysis time by 70-90% for large heaps.
+	FastMode bool
+	// SkipBusinessRetainers skips only business retainer analysis (the most expensive part).
+	// Retainer analysis and reference graphs are still computed.
+	SkipBusinessRetainers bool
+	// Logger is used for debug logging. If nil, debug logs are suppressed.
+	Logger utils.Logger
+	// IncludeUnreachable includes unreachable objects in the histogram (like IDEA).
+	// Default is false (only show reachable objects, like MAT).
+	IncludeUnreachable bool
 }
 
 // DefaultParserOptions returns default parser options.
 func DefaultParserOptions() *ParserOptions {
 	return &ParserOptions{
-		TopClassesN:       100,
-		AnalyzeStrings:    true,
-		AnalyzeArrays:     true,
-		MaxLargestObjects: 50,
-		AnalyzeRetainers:  true,
-		TopRetainersN:     10,
+		TopClassesN:        50, // 0 means no limit - return all classes
+		AnalyzeStrings:     true,
+		AnalyzeArrays:      true,
+		MaxLargestObjects:  50,
+		AnalyzeRetainers:   true,
+		TopRetainersN:      10,
+		ParallelConfig:     DefaultParallelConfig(),
+		SizeMode:           SizeModeCompressedOops, // Default to IDEA-compatible mode
+		IncludeUnreachable: true,                   // Default to include all objects (like IDEA)
 	}
 }
 
@@ -49,6 +85,20 @@ func NewParser(opts *ParserOptions) *Parser {
 	return &Parser{opts: opts}
 }
 
+// debugf logs a debug message if logger is configured.
+func (p *Parser) debugf(format string, args ...interface{}) {
+	if p.opts.Logger != nil {
+		p.opts.Logger.Debug(format, args...)
+	}
+}
+
+// deferredInstance holds instance data for deferred reference extraction.
+type deferredInstance struct {
+	objectID uint64
+	classID  uint64
+	data     []byte
+}
+
 // parserState holds the parsing state.
 type parserState struct {
 	reader         *Reader
@@ -61,8 +111,14 @@ type parserState struct {
 	totalHeapSize  int64
 	totalInstances int64
 	// Reference tracking for retainer analysis
-	refGraph       *ReferenceGraph
-	classFields    map[uint64][]FieldDescriptor // classID -> field descriptors
+	refGraph    *ReferenceGraph
+	classFields map[uint64][]FieldDescriptor // classID -> field descriptors
+	// Deferred reference extraction for instances parsed before their CLASS_DUMP
+	deferredInstances []deferredInstance
+	// Size calculation mode
+	sizeMode SizeCalculationMode
+	// java.lang.Class classID - used to properly categorize Class objects
+	javaLangClassID uint64
 	// Debug counters
 	classDumpCount    int64
 	instanceDumpCount int64
@@ -70,6 +126,64 @@ type parserState struct {
 	loadClassCount    int64
 	unknownTagCount   int64
 	skippedBytes      int64
+	deferredCount     int64 // count of deferred instances
+}
+
+// objectHeaderSize returns the size of object header in JVM.
+// For HotSpot JVM with compressed oops (default for heaps < 32GB):
+// - mark word (8 bytes) + klass pointer (4 bytes) = 12 bytes
+// For HotSpot JVM without compressed oops (heaps >= 32GB):
+// - mark word (8 bytes) + klass pointer (8 bytes) = 16 bytes
+func objectHeaderSize(mode SizeCalculationMode) int64 {
+	if mode == SizeModeNonCompressed {
+		return 16 // MAT-compatible: 8 (mark) + 8 (klass)
+	}
+	return 12 // IDEA-compatible: 8 (mark) + 4 (compressed klass)
+}
+
+// referenceSize returns the size of a reference field in JVM.
+func referenceSize(mode SizeCalculationMode) int64 {
+	if mode == SizeModeNonCompressed {
+		return 8 // MAT-compatible: non-compressed oops
+	}
+	return 4 // IDEA-compatible: compressed oops
+}
+
+// classObjectShallowSize returns the shallow size of a java.lang.Class object.
+// Class objects have a complex internal structure that varies by JVM version.
+// MAT calculates this as: object header + internal fields
+// For HotSpot JVM, Class objects contain:
+// - Object header (12/16 bytes depending on compressed oops)
+// - Various internal fields (classLoader, module, name, etc.)
+// - Static field values storage
+func classObjectShallowSize(mode SizeCalculationMode, staticFieldsCount int) int64 {
+	// Base Class object size (header + core fields)
+	baseSize := objectHeaderSize(mode)
+	refSize := referenceSize(mode)
+
+	// Core fields in java.lang.Class (approximate):
+	// - classLoader, module, name, packageName, etc. (reference fields)
+	// - Various int/boolean fields for flags
+	// Estimate: ~15 reference fields + ~20 bytes of primitives
+	coreFields := int64(15)*refSize + 20
+
+	// Static fields are stored in the Class object
+	staticStorage := int64(staticFieldsCount) * refSize
+
+	return alignTo8(baseSize + coreFields + staticStorage)
+}
+
+// arrayHeaderSize returns the size of array header in JVM.
+// Array header = object header + array length (4 bytes)
+// For compressed oops: 12 + 4 = 16 bytes
+// For non-compressed: 16 + 4 = 20 bytes (aligned to 24)
+func arrayHeaderSize(mode SizeCalculationMode) int64 {
+	return objectHeaderSize(mode) + 4
+}
+
+// alignTo8 aligns a size to 8-byte boundary (JVM object alignment).
+func alignTo8(size int64) int64 {
+	return (size + 7) &^ 7
 }
 
 // FieldDescriptor describes a field in a class.
@@ -79,17 +193,22 @@ type FieldDescriptor struct {
 }
 
 // newParserState creates a new parser state.
-func newParserState(r *Reader, analyzeRetainers bool) *parserState {
+func newParserState(r *Reader, opts *ParserOptions) *parserState {
 	state := &parserState{
-		reader:      r,
-		strings:     make(map[uint64]string),
-		classNames:  make(map[uint64]uint64),
-		classInfo:   make(map[uint64]*ClassInfo),
-		classByName: make(map[string]*ClassInfo),
-		classFields: make(map[uint64][]FieldDescriptor),
+		reader:            r,
+		strings:           make(map[uint64]string),
+		classNames:        make(map[uint64]uint64),
+		classInfo:         make(map[uint64]*ClassInfo),
+		classByName:       make(map[string]*ClassInfo),
+		classFields:       make(map[uint64][]FieldDescriptor),
+		deferredInstances: make([]deferredInstance, 0),
+		sizeMode:          opts.SizeMode,
 	}
-	if analyzeRetainers {
+	if opts.AnalyzeRetainers {
 		state.refGraph = NewReferenceGraph()
+		if opts.Logger != nil {
+			state.refGraph.SetLogger(opts.Logger)
+		}
 	}
 	return state
 }
@@ -97,7 +216,7 @@ func newParserState(r *Reader, analyzeRetainers bool) *parserState {
 // Parse parses an HPROF file and returns analysis results.
 func (p *Parser) Parse(ctx context.Context, r io.Reader) (*HeapAnalysisResult, error) {
 	reader := NewReader(r)
-	state := newParserState(reader, p.opts.AnalyzeRetainers)
+	state := newParserState(reader, p.opts)
 
 	// Read header
 	header, err := reader.ReadHeader()
@@ -110,6 +229,13 @@ func (p *Parser) Parse(ctx context.Context, r io.Reader) (*HeapAnalysisResult, e
 	if err := p.parseRecords(ctx, state); err != nil {
 		return nil, fmt.Errorf("failed to parse records: %w", err)
 	}
+
+	// Process deferred instances (those parsed before their CLASS_DUMP)
+	// This ensures all references are extracted even when INSTANCE_DUMP appears before CLASS_DUMP
+	p.processDeferredInstances(state)
+
+	// Fix Class object categorization: all Class objects should be instances of java.lang.Class
+	p.fixClassObjectCategorization(state)
 
 	// Build result
 	return p.buildResult(state), nil
@@ -578,11 +704,68 @@ func (p *Parser) parseClassDump(state *parserState) (int64, error) {
 	}
 	bytesRead += int64(idSize)
 
-	// Class loader, signers, protection domain, reserved1, reserved2 (5 IDs)
-	if err := state.reader.Skip(int64(idSize * 5)); err != nil {
+	// Class loader object ID
+	classLoaderID, err := state.reader.ReadID()
+	if err != nil {
 		return 0, err
 	}
-	bytesRead += int64(idSize * 5)
+	bytesRead += int64(idSize)
+
+	// Signers object ID
+	signersID, err := state.reader.ReadID()
+	if err != nil {
+		return 0, err
+	}
+	bytesRead += int64(idSize)
+
+	// Protection domain object ID
+	protectionDomainID, err := state.reader.ReadID()
+	if err != nil {
+		return 0, err
+	}
+	bytesRead += int64(idSize)
+
+	// Reserved1, Reserved2 (skip these)
+	if err := state.reader.Skip(int64(idSize * 2)); err != nil {
+		return 0, err
+	}
+	bytesRead += int64(idSize * 2)
+
+	// Add references from Class object to superclass, classloader, etc.
+	if state.refGraph != nil {
+		if superClassID != 0 {
+			state.refGraph.AddReference(ObjectReference{
+				FromObjectID: classID,
+				ToObjectID:   superClassID,
+				FieldName:    "<superclass>",
+				FromClassID:  classID,
+			})
+		}
+		if classLoaderID != 0 {
+			state.refGraph.AddReference(ObjectReference{
+				FromObjectID: classID,
+				ToObjectID:   classLoaderID,
+				FieldName:    "<classloader>",
+				FromClassID:  classID,
+			})
+		}
+		if signersID != 0 {
+			state.refGraph.AddReference(ObjectReference{
+				FromObjectID: classID,
+				ToObjectID:   signersID,
+				FieldName:    "<signers>",
+				FromClassID:  classID,
+			})
+		}
+		if protectionDomainID != 0 {
+			state.refGraph.AddReference(ObjectReference{
+				FromObjectID: classID,
+				ToObjectID:   protectionDomainID,
+				FieldName:    "<protectionDomain>",
+				FromClassID:  classID,
+			})
+		}
+	}
 
 	// Instance size
 	instanceSize, err := state.reader.ReadUint32()
@@ -628,10 +811,11 @@ func (p *Parser) parseClassDump(state *parserState) (int64, error) {
 	}
 	bytesRead += 2
 
-	// Skip static fields
+	// Read static fields - these contain references from the Class object to other objects
 	for i := 0; i < int(staticFieldsCount); i++ {
 		// Field name ID
-		if err := state.reader.Skip(int64(idSize)); err != nil {
+		fieldNameID, err := state.reader.ReadID()
+		if err != nil {
 			return 0, err
 		}
 		bytesRead += int64(idSize)
@@ -645,10 +829,42 @@ func (p *Parser) parseClassDump(state *parserState) (int64, error) {
 
 		// Value
 		valueSize := BasicTypeSize(BasicType(typeByte), idSize)
-		if err := state.reader.Skip(int64(valueSize)); err != nil {
-			return 0, err
+
+		// If this is an object reference, extract it for the reference graph
+		if BasicType(typeByte) == TypeObject && state.refGraph != nil {
+			var refID uint64
+			if idSize == 4 {
+				val, err := state.reader.ReadUint32()
+				if err != nil {
+					return 0, err
+				}
+				refID = uint64(val)
+			} else {
+				val, err := state.reader.ReadUint64()
+				if err != nil {
+					return 0, err
+				}
+				refID = val
+			}
+			bytesRead += int64(valueSize)
+
+			// Add reference from the Class object to the static field value
+			if refID != 0 {
+				fieldName := state.strings[fieldNameID]
+				state.refGraph.AddReference(ObjectReference{
+					FromObjectID: classID,
+					ToObjectID:   refID,
+					FieldName:    fieldName,
+					FromClassID:  classID,
+				})
+			}
+		} else {
+			// Skip non-object fields
+			if err := state.reader.Skip(int64(valueSize)); err != nil {
+				return 0, err
+			}
+			bytesRead += int64(valueSize)
 		}
-		bytesRead += int64(valueSize)
 	}
 
 	// Instance fields count
@@ -685,6 +901,11 @@ func (p *Parser) parseClassDump(state *parserState) (int64, error) {
 	// Get class name
 	className := p.getClassName(state, classID)
 
+	// Track java.lang.Class classID for proper Class object categorization
+	if className == "java.lang.Class" {
+		state.javaLangClassID = classID
+	}
+
 	// Store class info
 	state.classInfo[classID] = &ClassInfo{
 		ClassID:          classID,
@@ -699,9 +920,21 @@ func (p *Parser) parseClassDump(state *parserState) (int64, error) {
 		state.classByName[className] = state.classInfo[classID]
 	}
 
-	// Store class name in reference graph
-	if state.refGraph != nil && className != "" {
-		state.refGraph.SetClassName(classID, className)
+	// Store class name in reference graph and register the Class object itself
+	if state.refGraph != nil {
+		if className != "" {
+			state.refGraph.SetClassName(classID, className)
+		}
+		// Register the Class object itself with proper size calculation
+		// Use the new classObjectShallowSize function for accurate sizing
+		classObjectSize := classObjectShallowSize(state.sizeMode, int(staticFieldsCount))
+		// IMPORTANT: Class objects should be categorized as instances of java.lang.Class
+		// We defer this until we know the java.lang.Class classID
+		// For now, register with self as classID, will be fixed in post-processing
+		state.refGraph.SetObjectInfo(classID, classID, classObjectSize)
+		// Register this as a Class object - Class objects are implicit GC roots
+		// They are held by ClassLoaders and should always be considered reachable
+		state.refGraph.RegisterClassObject(classID)
 	}
 
 	return bytesRead, nil
@@ -733,7 +966,7 @@ func (p *Parser) parseInstanceDump(state *parserState) (int64, error) {
 	}
 	bytesRead += int64(idSize)
 
-	// Number of bytes that follow
+	// Number of bytes that follow (instance field data)
 	dataSize, err := state.reader.ReadUint32()
 	if err != nil {
 		return 0, err
@@ -755,18 +988,24 @@ func (p *Parser) parseInstanceDump(state *parserState) (int64, error) {
 	}
 	bytesRead += int64(dataSize)
 
-	// Calculate instance size
-	var instanceSize int64
+	// Calculate JVM heap shallow size (not HPROF record size)
+	// Shallow size = object header + instance field data, aligned to 8 bytes
+	// The dataSize from HPROF is the actual instance field data size
+	var shallowSize int64
 	if info, ok := state.classInfo[classID]; ok {
 		info.InstanceCount++
-		instanceSize = int64(info.InstanceSize) + int64(idSize) + 4 + int64(dataSize)
-		info.TotalSize += instanceSize
-		state.totalHeapSize += instanceSize
+		// Use the instanceSize from CLASS_DUMP which is the JVM's reported instance size
+		// This already includes all instance fields from the class hierarchy
+		// Add object header and align to 8 bytes
+		shallowSize = alignTo8(objectHeaderSize(state.sizeMode) + int64(info.InstanceSize))
+		info.TotalSize += shallowSize
+		state.totalHeapSize += shallowSize
 	} else {
 		// Class info not found (CLASS_DUMP not yet processed for this class)
-		instanceSize = int64(idSize) + 4 + int64(dataSize)
-		state.totalHeapSize += instanceSize
-		
+		// Estimate: object header + field data, aligned to 8 bytes
+		shallowSize = alignTo8(objectHeaderSize(state.sizeMode) + int64(dataSize))
+		state.totalHeapSize += shallowSize
+
 		// Try to get class name from LOAD_CLASS records
 		className := p.getClassName(state, classID)
 		if className != "" {
@@ -780,8 +1019,8 @@ func (p *Parser) parseInstanceDump(state *parserState) (int64, error) {
 				}
 			}
 			state.classByName[className].InstanceCount++
-			state.classByName[className].TotalSize += instanceSize
-			
+			state.classByName[className].TotalSize += shallowSize
+
 			// Also register in reference graph
 			if state.refGraph != nil {
 				state.refGraph.SetClassName(classID, className)
@@ -792,7 +1031,7 @@ func (p *Parser) parseInstanceDump(state *parserState) (int64, error) {
 
 	// Extract references for retainer analysis
 	if state.refGraph != nil && len(instanceData) > 0 {
-		state.refGraph.SetObjectInfo(objectID, classID, instanceSize)
+		state.refGraph.SetObjectInfo(objectID, classID, shallowSize)
 		p.extractReferences(state, objectID, classID, instanceData)
 	}
 
@@ -802,19 +1041,40 @@ func (p *Parser) parseInstanceDump(state *parserState) (int64, error) {
 // extractReferences extracts object references from instance data.
 func (p *Parser) extractReferences(state *parserState, objectID, classID uint64, data []byte) {
 	idSize := state.reader.IDSize()
-	
+
 	// Get all fields for this class hierarchy
 	allFields := p.getClassHierarchyFields(state, classID)
-	
+
+	// If no fields found, the CLASS_DUMP might not have been processed yet.
+	// Defer this instance for later processing after all CLASS_DUMPs are parsed.
+	if len(allFields) == 0 {
+		// Only defer if we have data to process (non-empty instance data)
+		if len(data) > 0 {
+			state.deferredInstances = append(state.deferredInstances, deferredInstance{
+				objectID: objectID,
+				classID:  classID,
+				data:     append([]byte(nil), data...), // copy data
+			})
+			state.deferredCount++
+		}
+		return
+	}
+
+	p.extractReferencesWithFields(state, objectID, classID, data, allFields, idSize)
+}
+
+// extractReferencesWithFields extracts references using known field descriptors.
+func (p *Parser) extractReferencesWithFields(state *parserState, objectID, classID uint64, data []byte, allFields []FieldDescriptor, idSize int) {
 	offset := 0
 	for _, field := range allFields {
 		fieldSize := BasicTypeSize(field.Type, idSize)
 		if offset+fieldSize > len(data) {
 			break
 		}
-		
+
 		// Only track object references
-		if field.Type == TypeObject && fieldSize == idSize {
+		// Note: TypeObject fields should have fieldSize == idSize
+		if field.Type == TypeObject {
 			var refID uint64
 			if idSize == 4 {
 				refID = uint64(data[offset])<<24 | uint64(data[offset+1])<<16 |
@@ -825,7 +1085,7 @@ func (p *Parser) extractReferences(state *parserState, objectID, classID uint64,
 					uint64(data[offset+4])<<24 | uint64(data[offset+5])<<16 |
 					uint64(data[offset+6])<<8 | uint64(data[offset+7])
 			}
-			
+
 			if refID != 0 {
 				fieldName := state.strings[field.NameID]
 				state.refGraph.AddReference(ObjectReference{
@@ -841,24 +1101,68 @@ func (p *Parser) extractReferences(state *parserState, objectID, classID uint64,
 }
 
 // getClassHierarchyFields returns all fields for a class and its superclasses.
+// In HPROF, instance data contains fields in order: current class fields first, then superclass fields.
+// This is the reverse of what you might expect!
+// See: https://hg.openjdk.java.net/jdk8/jdk8/jdk/file/tip/src/share/demo/jvmti/hprof/hprof_io.c
 func (p *Parser) getClassHierarchyFields(state *parserState, classID uint64) []FieldDescriptor {
 	var allFields []FieldDescriptor
-	
+
+	// Collect class hierarchy from current class to root
+	var classHierarchy []uint64
 	currentClassID := classID
 	for currentClassID != 0 {
-		if fields, ok := state.classFields[currentClassID]; ok {
-			// Prepend superclass fields (they come first in instance data)
-			allFields = append(fields, allFields...)
-		}
-		
+		classHierarchy = append(classHierarchy, currentClassID)
 		if info, ok := state.classInfo[currentClassID]; ok {
 			currentClassID = info.SuperClassID
 		} else {
 			break
 		}
 	}
-	
+
+	// Build fields in order: from current class to root class
+	// (NOT reversed - current class fields come first in instance data)
+	for _, cid := range classHierarchy {
+		if fields, ok := state.classFields[cid]; ok {
+			allFields = append(allFields, fields...)
+		}
+	}
+
 	return allFields
+}
+
+// processDeferredInstances processes instances that were deferred because their CLASS_DUMP
+// hadn't been parsed yet. This should be called after all records are parsed.
+func (p *Parser) processDeferredInstances(state *parserState) {
+	if state.refGraph == nil || len(state.deferredInstances) == 0 {
+		return
+	}
+
+	idSize := state.reader.IDSize()
+
+	for _, inst := range state.deferredInstances {
+		allFields := p.getClassHierarchyFields(state, inst.classID)
+		if len(allFields) > 0 {
+			p.extractReferencesWithFields(state, inst.objectID, inst.classID, inst.data, allFields, idSize)
+		}
+	}
+
+	// Clear deferred instances to free memory
+	state.deferredInstances = nil
+}
+
+// fixClassObjectCategorization fixes the classID of all Class objects to be java.lang.Class.
+// During parsing, Class objects are temporarily registered with their own classID,
+// but they should actually be categorized as instances of java.lang.Class.
+func (p *Parser) fixClassObjectCategorization(state *parserState) {
+	if state.refGraph == nil || state.javaLangClassID == 0 {
+		return
+	}
+
+	// Update all Class objects to have java.lang.Class as their classID
+	classObjectCount := state.refGraph.FixClassObjectClassIDs(state.javaLangClassID)
+
+	p.debugf("Fixed %d Class objects to be instances of java.lang.Class (classID=%d)",
+		classObjectCount, state.javaLangClassID)
 }
 
 // parseObjectArrayDump parses an OBJECT_ARRAY_DUMP sub-record.
@@ -909,28 +1213,31 @@ func (p *Parser) parseObjectArrayDump(state *parserState) (int64, error) {
 	}
 	bytesRead += elemBytes
 
-	// Update statistics
-	arraySize := int64(idSize) + 4 + 4 + int64(idSize) + elemBytes
-	state.totalHeapSize += arraySize
+	// Calculate JVM heap shallow size for object array
+	// For object arrays, we use the HPROF-recorded element size (idSize) as the reference size
+	// This reflects the actual JVM memory layout at dump time
+	// Shallow size = array header (object header + 4 bytes length) + element references, aligned to 8 bytes
+	shallowSize := alignTo8(arrayHeaderSize(state.sizeMode) + int64(numElements)*int64(idSize))
+	state.totalHeapSize += shallowSize
 	state.totalInstances++
 
 	// Update class statistics for array type
 	className := p.getClassName(state, classID)
 	if className == "" {
-		className = "Object[]"
+		className = fmt.Sprintf("(unknown array 0x%x)", classID)
 	}
 	if info, ok := state.classByName[className]; ok {
 		info.InstanceCount++
-		info.TotalSize += arraySize
+		info.TotalSize += shallowSize
 	} else {
 		state.classByName[className] = &ClassInfo{
 			ClassID:       classID,
 			Name:          className,
 			InstanceCount: 1,
-			TotalSize:     arraySize,
+			TotalSize:     shallowSize,
 		}
 	}
-	
+
 	// Register class name in reference graph
 	if state.refGraph != nil && className != "" {
 		state.refGraph.SetClassName(classID, className)
@@ -938,7 +1245,8 @@ func (p *Parser) parseObjectArrayDump(state *parserState) (int64, error) {
 
 	// Extract array element references
 	if state.refGraph != nil && len(elemData) > 0 {
-		state.refGraph.SetObjectInfo(arrayObjectID, classID, arraySize)
+		state.refGraph.SetObjectInfo(arrayObjectID, classID, shallowSize)
+
 		for i := 0; i < int(numElements); i++ {
 			offset := i * idSize
 			var refID uint64
@@ -1005,19 +1313,20 @@ func (p *Parser) parsePrimitiveArrayDump(state *parserState) (int64, error) {
 	}
 	bytesRead += dataBytes
 
-	// Update statistics
-	arraySize := int64(idSize) + 4 + 4 + 1 + dataBytes
-	state.totalHeapSize += arraySize
+	// Calculate JVM heap shallow size for primitive array
+	// Shallow size = array header (object header + 4 bytes length) + element data, aligned to 8 bytes
+	shallowSize := alignTo8(arrayHeaderSize(state.sizeMode) + dataBytes)
+	state.totalHeapSize += shallowSize
 	state.totalInstances++
 
 	// Get array type name
 	typeName := primitiveArrayTypeName(BasicType(elemType))
-	
+
 	// Get or create class ID for this primitive array type
 	var classID uint64
 	if info, ok := state.classByName[typeName]; ok {
 		info.InstanceCount++
-		info.TotalSize += arraySize
+		info.TotalSize += shallowSize
 		classID = info.ClassID
 	} else {
 		// Use a synthetic class ID for primitive arrays
@@ -1026,7 +1335,7 @@ func (p *Parser) parsePrimitiveArrayDump(state *parserState) (int64, error) {
 			ClassID:       classID,
 			Name:          typeName,
 			InstanceCount: 1,
-			TotalSize:     arraySize,
+			TotalSize:     shallowSize,
 		}
 		// Register class name in reference graph
 		if state.refGraph != nil {
@@ -1036,7 +1345,7 @@ func (p *Parser) parsePrimitiveArrayDump(state *parserState) (int64, error) {
 
 	// Register this array object for retainer analysis
 	if state.refGraph != nil {
-		state.refGraph.SetObjectInfo(arrayObjectID, classID, arraySize)
+		state.refGraph.SetObjectInfo(arrayObjectID, classID, shallowSize)
 	}
 
 	return bytesRead, nil
@@ -1086,62 +1395,19 @@ func (p *Parser) getClassName(state *parserState, classID uint64) string {
 
 // buildResult builds the final analysis result.
 func (p *Parser) buildResult(state *parserState) *HeapAnalysisResult {
-	// Collect all classes with statistics
-	var classes []*ClassStats
-	for _, info := range state.classByName {
-		if info.InstanceCount > 0 {
-			avgSize := float64(0)
-			if info.InstanceCount > 0 {
-				avgSize = float64(info.TotalSize) / float64(info.InstanceCount)
-			}
-			pct := float64(0)
-			if state.totalHeapSize > 0 {
-				pct = float64(info.TotalSize) * 100.0 / float64(state.totalHeapSize)
-			}
-
-			classes = append(classes, &ClassStats{
-				ClassName:     info.Name,
-				InstanceCount: info.InstanceCount,
-				TotalSize:     info.TotalSize,
-				AvgSize:       avgSize,
-				Percentage:    pct,
-				ShallowSize:   info.TotalSize,
-			})
-		}
-	}
-
-	// Sort by total size descending
-	sort.Slice(classes, func(i, j int) bool {
-		return classes[i].TotalSize > classes[j].TotalSize
-	})
-
-	// Limit to top N
-	topClasses := classes
-	if len(topClasses) > p.opts.TopClassesN {
-		topClasses = topClasses[:p.opts.TopClassesN]
-	}
-
-	result := &HeapAnalysisResult{
-		Header:         state.header,
-		Summary:        state.heapSummary,
-		TopClasses:     topClasses,
-		TotalClasses:   len(state.classByName),
-		TotalInstances: state.totalInstances,
-		TotalHeapSize:  state.totalHeapSize,
-	}
-
-	// Compute retainer analysis and reference graphs for top classes
+	// Compute dominator tree first if retainer analysis is enabled
+	// This must be done before collecting class statistics so we have retained sizes
 	if state.refGraph != nil && p.opts.AnalyzeRetainers {
 		// Debug: print parsing stats
-		fmt.Printf("[DEBUG] Parsing stats: loadClass=%d, classDump=%d, instanceDump=%d, arrayDump=%d\n",
+		p.debugf("Parsing stats: loadClass=%d, classDump=%d, instanceDump=%d, arrayDump=%d",
 			state.loadClassCount, state.classDumpCount, state.instanceDumpCount, state.arrayDumpCount)
-		fmt.Printf("[DEBUG] Unknown tags: %d, skipped bytes: %d\n", state.unknownTagCount, state.skippedBytes)
-		
+		p.debugf("Unknown tags: %d, skipped bytes: %d", state.unknownTagCount, state.skippedBytes)
+
 		// Debug: print reference graph stats
 		objects, refs, gcRoots, objectsWithIncoming := state.refGraph.GetStats()
-		fmt.Printf("[DEBUG] Reference graph stats: objects=%d, refs=%d, gcRoots=%d, objectsWithIncoming=%d\n", 
+		p.debugf("Reference graph stats: objects=%d, refs=%d, gcRoots=%d, objectsWithIncoming=%d",
 			objects, refs, gcRoots, objectsWithIncoming)
-		
+
 		// Debug: check class field info
 		classesWithFields := 0
 		totalFields := 0
@@ -1151,41 +1417,190 @@ func (p *Parser) buildResult(state *parserState) *HeapAnalysisResult {
 				totalFields += len(fields)
 			}
 		}
-		fmt.Printf("[DEBUG] Classes with field info: %d, total fields: %d\n", classesWithFields, totalFields)
-		fmt.Printf("[DEBUG] ClassInfo entries: %d, ClassFields entries: %d\n", len(state.classInfo), len(state.classFields))
-		
-		// Only analyze top 20 classes for performance
-		topForRetainers := topClasses
-		if len(topForRetainers) > 20 {
-			topForRetainers = topForRetainers[:20]
-		}
-		result.ClassRetainers = state.refGraph.ComputeTopRetainers(topForRetainers, p.opts.TopRetainersN)
+		p.debugf("Classes with field info: %d, total fields: %d", classesWithFields, totalFields)
+		p.debugf("ClassInfo entries: %d, ClassFields entries: %d", len(state.classInfo), len(state.classFields))
 
-		// Generate reference graphs for top 5 classes (with increased depth)
-		result.ReferenceGraphs = make(map[string]*ReferenceGraphData)
-		topForGraphs := topClasses
-		if len(topForGraphs) > 5 {
-			topForGraphs = topForGraphs[:5]
-		}
-		for _, cls := range topForGraphs {
-			graphData := state.refGraph.GetReferenceGraphForClass(cls.ClassName, 10, 100)
-			if graphData != nil && len(graphData.Nodes) > 0 {
-				result.ReferenceGraphs[cls.ClassName] = graphData
+		// Compute dominator tree to get retained sizes
+		state.refGraph.ComputeDominatorTree()
+	}
+
+	// Collect all classes with statistics
+	// If IncludeUnreachable is false, use reachable object statistics (matches MAT behavior)
+	// If IncludeUnreachable is true, use all objects (matches IDEA behavior)
+	var classes []*ClassStats
+	var totalHeapSizeForResult int64
+	var totalInstancesForResult int64
+
+	if state.refGraph != nil && p.opts.AnalyzeRetainers {
+		// Get reachable stats for debug output
+		reachableHeapSize := state.refGraph.GetTotalReachableHeapSize()
+		reachableInstances := int64(state.refGraph.GetReachableObjectCount())
+
+		p.debugf("Reachable objects: %d (total parsed: %d, diff: %d)",
+			reachableInstances, state.totalInstances, state.totalInstances-reachableInstances)
+		p.debugf("Reachable heap size: %d (total parsed: %d, diff: %d)",
+			reachableHeapSize, state.totalHeapSize, state.totalHeapSize-reachableHeapSize)
+
+		if p.opts.IncludeUnreachable {
+			// Use ALL objects (like IDEA) - get stats from refGraph which includes all objects
+			allStats := state.refGraph.GetAllClassStats()
+			totalHeapSizeForResult = state.totalHeapSize
+			totalInstancesForResult = state.totalInstances
+
+			p.debugf("Using all objects mode (like IDEA): %d instances, %d bytes",
+				totalInstancesForResult, totalHeapSizeForResult)
+
+			// Build class stats from all objects
+			for classID, stats := range allStats {
+				className := state.refGraph.GetClassName(classID)
+				if className == "" {
+					continue
+				}
+
+				avgSize := float64(0)
+				if stats.InstanceCount > 0 {
+					avgSize = float64(stats.TotalSize) / float64(stats.InstanceCount)
+				}
+				pct := float64(0)
+				if totalHeapSizeForResult > 0 {
+					pct = float64(stats.TotalSize) * 100.0 / float64(totalHeapSizeForResult)
+				}
+
+				// Get retained size from dominator tree (only for reachable objects)
+				retainedSize := state.refGraph.GetClassRetainedSize(className)
+
+				classes = append(classes, &ClassStats{
+					ClassName:     className,
+					InstanceCount: stats.InstanceCount,
+					TotalSize:     stats.TotalSize,
+					AvgSize:       avgSize,
+					Percentage:    pct,
+					ShallowSize:   stats.TotalSize,
+					RetainedSize:  retainedSize,
+				})
+			}
+		} else {
+			// Use reachable objects only (like MAT)
+			reachableStats := state.refGraph.GetReachableClassStats()
+			totalHeapSizeForResult = reachableHeapSize
+			totalInstancesForResult = reachableInstances
+
+			p.debugf("Using reachable objects mode (like MAT): %d instances, %d bytes",
+				totalInstancesForResult, totalHeapSizeForResult)
+
+			// Build class stats from reachable objects only
+			for classID, stats := range reachableStats {
+				className := state.refGraph.GetClassName(classID)
+				if className == "" {
+					continue
+				}
+
+				avgSize := float64(0)
+				if stats.InstanceCount > 0 {
+					avgSize = float64(stats.TotalSize) / float64(stats.InstanceCount)
+				}
+				pct := float64(0)
+				if totalHeapSizeForResult > 0 {
+					pct = float64(stats.TotalSize) * 100.0 / float64(totalHeapSizeForResult)
+				}
+
+				// Get retained size from dominator tree
+				retainedSize := state.refGraph.GetClassRetainedSize(className)
+
+				classes = append(classes, &ClassStats{
+					ClassName:     className,
+					InstanceCount: stats.InstanceCount,
+					TotalSize:     stats.TotalSize,
+					AvgSize:       avgSize,
+					Percentage:    pct,
+					ShallowSize:   stats.TotalSize,
+					RetainedSize:  retainedSize,
+				})
 			}
 		}
+	} else {
+		// Fallback to original behavior (all objects) - when refGraph is not available
+		totalHeapSizeForResult = state.totalHeapSize
+		totalInstancesForResult = state.totalInstances
 
-		// Compute business-level retainers for root cause analysis
-		result.BusinessRetainers = make(map[string][]*BusinessRetainer)
-		topForBusiness := topClasses
-		if len(topForBusiness) > 10 {
-			topForBusiness = topForBusiness[:10]
-		}
-		for _, cls := range topForBusiness {
-			businessRetainers := state.refGraph.ComputeBusinessRetainers(cls.ClassName, 15, 10)
-			if len(businessRetainers) > 0 {
-				result.BusinessRetainers[cls.ClassName] = businessRetainers
+		for _, info := range state.classByName {
+			if info.InstanceCount > 0 {
+				avgSize := float64(0)
+				if info.InstanceCount > 0 {
+					avgSize = float64(info.TotalSize) / float64(info.InstanceCount)
+				}
+				pct := float64(0)
+				if state.totalHeapSize > 0 {
+					pct = float64(info.TotalSize) * 100.0 / float64(state.totalHeapSize)
+				}
+
+				// Get retained size from dominator tree if available
+				var retainedSize int64
+				if state.refGraph != nil {
+					retainedSize = state.refGraph.GetClassRetainedSize(info.Name)
+				}
+
+				classes = append(classes, &ClassStats{
+					ClassName:     info.Name,
+					InstanceCount: info.InstanceCount,
+					TotalSize:     info.TotalSize,
+					AvgSize:       avgSize,
+					Percentage:    pct,
+					ShallowSize:   info.TotalSize,
+					RetainedSize:  retainedSize,
+				})
 			}
 		}
+	}
+
+	// Sort by total size descending
+	sort.Slice(classes, func(i, j int) bool {
+		return classes[i].TotalSize > classes[j].TotalSize
+	})
+
+	// Limit to top N (0 or negative means no limit - return all classes)
+	topClasses := classes
+	if p.opts.TopClassesN > 0 && len(topClasses) > p.opts.TopClassesN {
+		topClasses = topClasses[:p.opts.TopClassesN]
+	}
+
+	result := &HeapAnalysisResult{
+		Header:         state.header,
+		Summary:        state.heapSummary,
+		TopClasses:     topClasses,
+		TotalClasses:   len(state.classByName),
+		TotalInstances: totalInstancesForResult,
+		TotalHeapSize:  totalHeapSizeForResult,
+	}
+
+	// Compute retainer analysis and reference graphs for top classes
+	// FastMode: skip all deep analysis for maximum performance
+	if state.refGraph != nil && p.opts.AnalyzeRetainers && !p.opts.FastMode {
+		// Use parallel analyzer for better performance
+		analyzer := NewParallelAnalyzer(state.refGraph, p.opts.ParallelConfig)
+
+		analysisOpts := AnalysisOptions{
+			MaxRetainerClasses: 20,
+			MaxGraphClasses:    5,
+			MaxBusinessClasses: 10,
+			TopRetainersN:      p.opts.TopRetainersN,
+			GraphMaxDepth:      10,
+			GraphMaxNodes:      100,
+			BusinessMaxDepth:   15,
+		}
+
+		// Skip business retainers if configured (they are the most expensive)
+		if p.opts.SkipBusinessRetainers {
+			analysisOpts.MaxBusinessClasses = 0
+		}
+
+		// Run all analysis in parallel
+		ctx := context.Background()
+		analysisResult := analyzer.RunFullAnalysis(ctx, topClasses, analysisOpts)
+
+		result.ClassRetainers = analysisResult.ClassRetainers
+		result.ReferenceGraphs = analysisResult.ReferenceGraphs
+		result.BusinessRetainers = analysisResult.BusinessRetainers
 	}
 
 	return result

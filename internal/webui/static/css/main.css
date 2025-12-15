@@ -4,14 +4,10 @@
  * Tab/Panel visibility now controlled by Alpine.js x-show
  */
 
-/* ===== Legacy Tab State (for backward compatibility) ===== */
-.tab.active {
+/* ===== Tab Active State ===== */
+.tab-active {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
     color: white !important;
-}
-
-.tab.hidden {
-    display: none !important;
 }
 
 /* ===== Legacy Panel State (for backward compatibility) ===== */
@@ -21,108 +17,6 @@
 
 .panel.active {
     display: block;
-}
-
-/* ===== Tables ===== */
-.top-funcs-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.top-funcs-table th,
-.top-funcs-table td {
-    padding: 12px;
-    text-align: left;
-    border-bottom: 1px solid #eee;
-    vertical-align: middle;
-}
-
-.top-funcs-table th {
-    background: #f9f9f9;
-    font-weight: 600;
-    font-size: 13px;
-    color: #666;
-}
-
-.top-funcs-table tr:hover {
-    background: #f5f7fa;
-}
-
-/* Function column */
-.top-funcs-table td:nth-child(2) {
-    word-break: break-all;
-}
-
-/* Actions column - keep buttons in one row */
-.top-funcs-table td:last-child {
-    white-space: nowrap;
-    text-align: center;
-}
-
-.func-name {
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 13px;
-    word-break: break-all;
-}
-
-.func-name-clickable {
-    cursor: pointer;
-    transition: color 0.2s;
-}
-
-.func-name-clickable:hover {
-    color: #667eea;
-    text-decoration: underline;
-}
-
-/* ===== Percentage Bar ===== */
-.percentage-bar {
-    width: 100px;
-    height: 8px;
-    background: #e0e0e0;
-    border-radius: 4px;
-    overflow: hidden;
-    display: inline-block;
-    margin-right: 10px;
-    vertical-align: middle;
-}
-
-.percentage-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    border-radius: 4px;
-}
-
-/* ===== Thread List ===== */
-.thread-item {
-    padding: 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.thread-name {
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 13px;
-    color: #333;
-}
-
-.thread-samples {
-    color: #666;
-    font-size: 13px;
-}
-
-/* ===== Loading Animation ===== */
-.loading::after {
-    content: '';
-    animation: dots 1.5s steps(4, end) infinite;
-}
-
-@keyframes dots {
-    0%, 20% { content: ''; }
-    40% { content: '.'; }
-    60% { content: '..'; }
-    80%, 100% { content: '...'; }
 }
 
 /* ===== Type Badges ===== */
@@ -136,12 +30,14 @@
     font-weight: 600;
 }
 
-.type-badge.java {
+.type-badge.java,
+.type-badge.java_heap {
     background: linear-gradient(135deg, #f89820 0%, #e76f00 100%);
     color: white;
 }
 
-.type-badge.generic {
+.type-badge.generic,
+.type-badge.cpu {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
 }
@@ -151,8 +47,9 @@
     color: white;
 }
 
-.type-badge.memory {
-    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+.type-badge.memory,
+.type-badge.heap {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
     color: white;
 }
 
@@ -167,42 +64,17 @@
     color: #555;
 }
 
-/* ===== Action Buttons ===== */
-.action-btn {
-    padding: 6px 10px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s;
-    display: inline-block;
-    vertical-align: middle;
+/* ===== Loading Animation ===== */
+.loading::after {
+    content: '';
+    animation: dots 1.5s steps(4, end) infinite;
 }
 
-.action-btn + .action-btn {
-    margin-left: 6px;
-}
-
-.action-btn:hover {
-    transform: scale(1.1);
-}
-
-.action-btn.flame {
-    background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
-    color: white;
-}
-
-.action-btn.flame:hover {
-    background: linear-gradient(135deg, #ff5722 0%, #ff9800 100%);
-}
-
-.action-btn.callgraph {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.action-btn.callgraph:hover {
-    background: linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%);
+@keyframes dots {
+    0%, 20% { content: ''; }
+    40% { content: '.'; }
+    60% { content: '..'; }
+    80%, 100% { content: '...'; }
 }
 
 /* ===== Filter Chip Active State ===== */
@@ -348,12 +220,6 @@
     text-align: center;
 }
 
-/* ===== Heap View Toggle ===== */
-.heap-view-btn.active {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    color: white !important;
-}
-
 /* ===== Call Graph Controls ===== */
 .controls {
     display: flex;
@@ -467,4 +333,31 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+}
+
+/* ===== Callgraph Stats ===== */
+.callgraph-stats {
+    display: flex;
+    gap: 20px;
+    padding: 10px 15px;
+    background: #f9f9f9;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.callgraph-stats .stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.callgraph-stats .stat-label {
+    color: #666;
+    font-size: 13px;
+}
+
+.callgraph-stats .stat-value {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
 }

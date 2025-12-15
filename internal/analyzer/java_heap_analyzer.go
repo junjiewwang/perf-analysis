@@ -36,9 +36,15 @@ func NewJavaHeapAnalyzer(config *BaseAnalyzerConfig, opts ...JavaHeapAnalyzerOpt
 		config = DefaultBaseAnalyzerConfig()
 	}
 
+	hprofOpts := hprof.DefaultParserOptions()
+	// Pass logger to hprof parser
+	if config.Logger != nil {
+		hprofOpts.Logger = config.Logger
+	}
+
 	a := &JavaHeapAnalyzer{
 		config:    config,
-		hprofOpts: hprof.DefaultParserOptions(),
+		hprofOpts: hprofOpts,
 	}
 
 	for _, opt := range opts {
@@ -227,23 +233,22 @@ type ClassHistogram struct {
 // buildTopClasses builds the top classes list from heap result.
 func (a *JavaHeapAnalyzer) buildTopClasses(result *hprof.HeapAnalysisResult) []model.HeapClassStats {
 	topClasses := make([]model.HeapClassStats, 0, len(result.TopClasses))
-	for i, cls := range result.TopClasses {
-		if i >= 50 {
-			break
-		}
-		
+	for _, cls := range result.TopClasses {
 		heapClass := model.HeapClassStats{
 			ClassName:     cls.ClassName,
 			InstanceCount: cls.InstanceCount,
 			TotalSize:     cls.TotalSize,
 			Percentage:    cls.Percentage,
+			RetainedSize:  cls.RetainedSize, // Use retained size from parser (computed via dominator tree)
 		}
 		
 		// Add retainer information if available
 		if result.ClassRetainers != nil {
 			if retainers, ok := result.ClassRetainers[cls.ClassName]; ok {
-				// Add retained size from dominator tree
-				heapClass.RetainedSize = retainers.RetainedSize
+				// Override retained size if available from retainer analysis
+				if retainers.RetainedSize > 0 {
+					heapClass.RetainedSize = retainers.RetainedSize
+				}
 				
 				// Add retainers with depth info
 				if len(retainers.Retainers) > 0 {

@@ -3,8 +3,8 @@
  * Class Histogram 表格模块：负责类直方图的展示和交互
  * 
  * 职责：
- * - 渲染 IDEA 风格的类直方图表格
- * - 处理排序、过滤、展开/折叠
+ * - 渲染类直方图表格（平铺显示，无展开）
+ * - 处理排序、过滤、分页
  * - 管理包视图模式
  */
 
@@ -19,6 +19,9 @@ const HeapHistogram = (function() {
     let sortField = 'shallow';
     let sortAsc = false;
     let viewMode = 'flat'; // 'flat' | 'package'
+    let currentPage = 1;
+    let pageSize = 100;
+    let totalPages = 1;
 
     // ============================================
     // 私有方法
@@ -62,75 +65,123 @@ const HeapHistogram = (function() {
     }
 
     /**
-     * 生成表格行 HTML
+     * 生成表格行 HTML（简化版，无展开功能）
      * @param {Object} cls - 类数据
      * @param {number} index - 索引
      * @param {number} maxShallow - 最大 shallow size
      * @param {number} maxRetained - 最大 retained size
+     * @param {number} globalIndex - 全局索引（用于显示序号）
      * @returns {string} HTML 字符串
      */
-    function generateRowHtml(cls, index, maxShallow, maxRetained) {
-        const businessRetainers = HeapCore.getState('businessRetainers');
-        
-        const hasRetainers = cls.retainers && cls.retainers.length > 0;
-        const hasGCPaths = cls.gc_root_paths && cls.gc_root_paths.length > 0;
-        const hasBusinessRetainers = businessRetainers[cls.name] && businessRetainers[cls.name].length > 0;
-        const canExpand = hasRetainers || hasGCPaths || hasBusinessRetainers;
-        
+    function generateRowHtml(cls, index, maxShallow, maxRetained, globalIndex) {
         // 计算进度条宽度
         const shallowBarWidth = maxShallow > 0 ? (cls.size / maxShallow) * 100 : 0;
         const retainedBarWidth = maxRetained > 0 ? ((cls.retained_size || 0) / maxRetained) * 100 : 0;
         
-        // 格式化类名
-        const formattedClassName = HeapCore.formatClassNameIDEA(cls.name);
-
-        // 生成 retainer 展开区域
-        let retainerSection = '';
-        if (hasRetainers || hasBusinessRetainers) {
-            const retainers = hasBusinessRetainers ? businessRetainers[cls.name] : cls.retainers;
-            retainerSection = `
-                <tr id="retainer-row-${index}" class="retainer-row" style="display: none;">
-                    <td colspan="5">
-                        <div class="retainer-tree">
-                            ${retainers.slice(0, 10).map((r, ri) => `
-                                <div class="retainer-tree-item" style="--depth: ${r.depth || 1}">
-                                    <span class="tree-icon">${ri === 0 ? '└─' : '├─'}</span>
-                                    <span class="retainer-class">
-                                        ${Utils.escapeHtml(r.retainer_class || r.class_name)}
-                                        ${r.field_name ? `<span class="retainer-field">.${Utils.escapeHtml(r.field_name)}</span>` : ''}
-                                        ${r.is_gc_root ? `<span style="color: #4ade80; margin-left: 8px;">[GC ROOT: ${r.gc_root_type || 'ROOT'}]</span>` : ''}
-                                    </span>
-                                    <span class="retainer-stats">
-                                        ${r.percentage ? `${r.percentage.toFixed(1)}%` : ''} · 
-                                        ${Utils.formatNumber(r.retained_count || 0)} refs · 
-                                        ${Utils.formatBytes(r.retained_size || 0)}
-                                    </span>
-                                </div>
-                            `).join('')}
-                            ${retainers.length > 10 ? `<div class="retainer-tree-item" style="--depth: 1; color: #808080;">... and ${retainers.length - 10} more</div>` : ''}
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }
+        // 格式化类名（IDEA 风格：包名灰色，类名高亮）
+        const formattedClassName = formatClassNameSimple(cls.name);
 
         return `
-            <tr id="class-row-${index}" class="${canExpand ? 'has-retainers' : ''}" ${canExpand ? `onclick="HeapHistogram.toggleRow(${index})"` : ''}>
-                <td>
-                    ${canExpand ? `<button class="expand-btn" id="expand-btn-${index}">▶</button>` : ''}
-                </td>
-                <td class="class-name">${formattedClassName}</td>
-                <td class="instance-count">${Utils.formatNumber(cls.instanceCount)}</td>
-                <td class="size-cell">
+            <tr class="hover:bg-gray-800/50 transition-colors">
+                <td class="text-center text-gray-500 text-xs w-12">${globalIndex}</td>
+                <td class="class-name font-mono text-sm">${formattedClassName}</td>
+                <td class="text-right text-gray-300 tabular-nums">${Utils.formatNumber(cls.instanceCount)}</td>
+                <td class="size-cell relative">
                     <div class="size-bar-bg" style="width: ${shallowBarWidth}%"></div>
                     <span class="size-value">${Utils.formatBytes(cls.size)}</span>
                 </td>
-                <td class="size-cell retained-cell">
+                <td class="size-cell retained-cell relative">
                     <div class="size-bar-bg" style="width: ${retainedBarWidth}%"></div>
                     <span class="size-value">${cls.retained_size ? Utils.formatBytes(cls.retained_size) : '-'}</span>
                 </td>
             </tr>
-            ${retainerSection}
+        `;
+    }
+
+    /**
+     * 简化的类名格式化
+     * @param {string} className - 完整类名
+     * @returns {string} 格式化后的 HTML
+     */
+    function formatClassNameSimple(className) {
+        if (!className) return '';
+        
+        // 处理数组类型
+        if (className.endsWith('[]')) {
+            const baseType = className.slice(0, -2);
+            const formatted = formatClassNameSimple(baseType);
+            return formatted + '<span class="text-gray-400">[]</span>';
+        }
+        
+        const lastDot = className.lastIndexOf('.');
+        if (lastDot === -1) {
+            // 没有包名，直接返回高亮的类名
+            return `<span class="text-yellow-400 font-semibold">${Utils.escapeHtml(className)}</span>`;
+        }
+        
+        const packageName = className.substring(0, lastDot + 1);
+        const simpleName = className.substring(lastDot + 1);
+        
+        return `<span class="text-green-600">${Utils.escapeHtml(packageName)}</span><span class="text-yellow-400 font-semibold">${Utils.escapeHtml(simpleName)}</span>`;
+    }
+
+    /**
+     * 渲染分页控件
+     * @param {number} total - 总数据量
+     */
+    function renderPagination(total) {
+        totalPages = Math.ceil(total / pageSize);
+        const container = document.getElementById('heapPagination');
+        if (!container) return;
+
+        if (totalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const startItem = (currentPage - 1) * pageSize + 1;
+        const endItem = Math.min(currentPage * pageSize, total);
+
+        container.innerHTML = `
+            <div class="flex items-center justify-between py-3 px-4 bg-gray-800 rounded-lg mt-4">
+                <div class="text-sm text-gray-400">
+                    显示 <span class="text-white font-medium">${startItem}-${endItem}</span> 
+                    共 <span class="text-white font-medium">${Utils.formatNumber(total)}</span> 个类
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="HeapHistogram.goToPage(1)" 
+                        class="px-3 py-1.5 rounded text-sm ${currentPage === 1 ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}"
+                        ${currentPage === 1 ? 'disabled' : ''}>
+                        首页
+                    </button>
+                    <button onclick="HeapHistogram.goToPage(${currentPage - 1})" 
+                        class="px-3 py-1.5 rounded text-sm ${currentPage === 1 ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}"
+                        ${currentPage === 1 ? 'disabled' : ''}>
+                        上一页
+                    </button>
+                    <span class="px-3 py-1.5 text-sm text-gray-300">
+                        第 <span class="text-white font-medium">${currentPage}</span> / ${totalPages} 页
+                    </span>
+                    <button onclick="HeapHistogram.goToPage(${currentPage + 1})" 
+                        class="px-3 py-1.5 rounded text-sm ${currentPage === totalPages ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}"
+                        ${currentPage === totalPages ? 'disabled' : ''}>
+                        下一页
+                    </button>
+                    <button onclick="HeapHistogram.goToPage(${totalPages})" 
+                        class="px-3 py-1.5 rounded text-sm ${currentPage === totalPages ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}"
+                        ${currentPage === totalPages ? 'disabled' : ''}>
+                        末页
+                    </button>
+                    <select onchange="HeapHistogram.setPageSize(this.value)" 
+                        class="ml-4 px-2 py-1.5 bg-gray-700 text-gray-300 rounded text-sm border border-gray-600">
+                        <option value="50" ${pageSize === 50 ? 'selected' : ''}>50条/页</option>
+                        <option value="100" ${pageSize === 100 ? 'selected' : ''}>100条/页</option>
+                        <option value="200" ${pageSize === 200 ? 'selected' : ''}>200条/页</option>
+                        <option value="500" ${pageSize === 500 ? 'selected' : ''}>500条/页</option>
+                        <option value="-1" ${pageSize === -1 ? 'selected' : ''}>全部</option>
+                    </select>
+                </div>
+            </div>
         `;
     }
 
@@ -144,12 +195,26 @@ const HeapHistogram = (function() {
 
         const sortedData = sortData(data, sortField, sortAsc);
         
+        // 分页处理
+        let displayData;
+        if (pageSize === -1) {
+            displayData = sortedData;
+        } else {
+            const startIdx = (currentPage - 1) * pageSize;
+            displayData = sortedData.slice(startIdx, startIdx + pageSize);
+        }
+        
         const maxShallow = sortedData.length > 0 ? Math.max(...sortedData.map(c => c.size)) : 1;
         const maxRetained = sortedData.length > 0 ? Math.max(...sortedData.map(c => c.retained_size || 0)) : 1;
 
-        tbody.innerHTML = sortedData.map((cls, i) => 
-            generateRowHtml(cls, i, maxShallow, maxRetained)
+        const startIndex = pageSize === -1 ? 0 : (currentPage - 1) * pageSize;
+        
+        tbody.innerHTML = displayData.map((cls, i) => 
+            generateRowHtml(cls, i, maxShallow, maxRetained, startIndex + i + 1)
         ).join('');
+
+        // 渲染分页
+        renderPagination(sortedData.length);
     }
 
     /**
@@ -168,38 +233,41 @@ const HeapHistogram = (function() {
             const classRows = pkg.classes.map((cls, i) => {
                 const shortName = cls.name.split('.').pop();
                 return `
-                    <tr>
-                        <td style="padding-left: 30px;">${i + 1}</td>
-                        <td class="class-name" title="${Utils.escapeHtml(cls.name)}">${Utils.escapeHtml(shortName)}</td>
-                        <td>${Utils.formatBytes(cls.size)}</td>
-                        <td>${Utils.formatNumber(cls.instanceCount)}</td>
-                        <td>${cls.percentage.toFixed(2)}%</td>
+                    <tr class="hover:bg-gray-700/50">
+                        <td class="text-center text-gray-500 text-xs pl-8">${i + 1}</td>
+                        <td class="font-mono text-sm text-yellow-400" title="${Utils.escapeHtml(cls.name)}">${Utils.escapeHtml(shortName)}</td>
+                        <td class="text-right text-gray-300">${Utils.formatBytes(cls.size)}</td>
+                        <td class="text-right text-gray-300">${Utils.formatNumber(cls.instanceCount)}</td>
+                        <td class="text-right text-gray-400">${cls.percentage.toFixed(2)}%</td>
                     </tr>
                 `;
             }).join('');
 
             return `
-                <div class="heap-package-group">
-                    <div class="heap-package-header" onclick="HeapHistogram.togglePackage(${idx})">
-                        <span>📦 ${Utils.escapeHtml(pkgName)}</span>
-                        <div class="heap-package-stats">
-                            <span>Size: ${Utils.formatBytes(pkg.totalSize)}</span>
-                            <span>Instances: ${Utils.formatNumber(pkg.totalInstances)}</span>
-                            <span>Classes: ${pkg.classes.length}</span>
+                <div class="mb-3 bg-gray-800 rounded-lg overflow-hidden">
+                    <div class="flex justify-between items-center px-4 py-3 bg-gray-700 cursor-pointer hover:bg-gray-600 transition-colors" onclick="HeapHistogram.togglePackage(${idx})">
+                        <span class="font-medium text-gray-200">
+                            <span class="text-lg mr-2">📦</span>
+                            ${Utils.escapeHtml(pkgName)}
+                            <span class="text-gray-400 text-sm ml-2">(${pkg.classes.length} classes)</span>
+                        </span>
+                        <div class="flex gap-6 text-sm text-gray-400">
+                            <span>Size: <span class="text-blue-400 font-medium">${Utils.formatBytes(pkg.totalSize)}</span></span>
+                            <span>Instances: <span class="text-green-400 font-medium">${Utils.formatNumber(pkg.totalInstances)}</span></span>
                         </div>
                     </div>
-                    <div class="heap-package-content" id="pkg-content-${idx}">
-                        <table class="heap-class-table">
+                    <div class="hidden" id="pkg-content-${idx}">
+                        <table class="w-full">
                             <thead>
-                                <tr>
-                                    <th style="width: 50px">#</th>
-                                    <th>Class</th>
-                                    <th style="width: 120px">Size</th>
-                                    <th style="width: 100px">Instances</th>
-                                    <th style="width: 80px">%</th>
+                                <tr class="bg-gray-750 text-gray-400 text-xs uppercase">
+                                    <th class="py-2 px-4 text-left w-12">#</th>
+                                    <th class="py-2 px-4 text-left">Class</th>
+                                    <th class="py-2 px-4 text-right w-28">Size</th>
+                                    <th class="py-2 px-4 text-right w-24">Instances</th>
+                                    <th class="py-2 px-4 text-right w-20">%</th>
                                 </tr>
                             </thead>
-                            <tbody>${classRows}</tbody>
+                            <tbody class="text-sm">${classRows}</tbody>
                         </table>
                     </div>
                 </div>
@@ -211,14 +279,15 @@ const HeapHistogram = (function() {
      * 更新排序指示器
      */
     function updateSortIndicators() {
-        document.querySelectorAll('.heap-class-table.idea-style th.sortable').forEach(th => {
+        document.querySelectorAll('#heapHistogramTable th.sortable').forEach(th => {
             th.classList.remove('active');
             const field = th.dataset.sort;
+            const arrow = th.querySelector('.sort-arrow');
             if (field === sortField) {
                 th.classList.add('active');
-                th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (sortAsc ? ' ▲' : ' ▼');
+                if (arrow) arrow.textContent = sortAsc ? '▲' : '▼';
             } else {
-                th.textContent = th.textContent.replace(/ [▲▼]$/, '');
+                if (arrow) arrow.textContent = '';
             }
         });
     }
@@ -234,17 +303,19 @@ const HeapHistogram = (function() {
         // 监听数据加载事件
         HeapCore.on('dataLoaded', function(data) {
             currentData = data.classData;
+            currentPage = 1;
             render(currentData);
         });
 
         // 监听搜索事件
         HeapCore.on('searchChanged', function(searchTerm) {
+            currentPage = 1;
             filter(searchTerm);
         });
 
         // 监听 retainer 数据更新
         HeapCore.on('retainerDataUpdated', function() {
-            // 重新渲染以显示更新的 retainer 信息
+            // 重新渲染
             render(currentData);
         });
     }
@@ -275,6 +346,7 @@ const HeapHistogram = (function() {
             sortAsc = false;
         }
         
+        currentPage = 1;
         updateSortIndicators();
         render(currentData);
     }
@@ -295,6 +367,7 @@ const HeapHistogram = (function() {
             );
         }
         
+        currentPage = 1;
         render(currentData);
     }
 
@@ -307,6 +380,7 @@ const HeapHistogram = (function() {
             searchInput.value = '';
         }
         currentData = HeapCore.getState('classData');
+        currentPage = 1;
         render(currentData);
     }
 
@@ -329,31 +403,40 @@ const HeapHistogram = (function() {
     }
 
     /**
-     * 切换行展开/折叠
-     * @param {number} idx - 行索引
-     */
-    function toggleRow(idx) {
-        const retainerRow = document.getElementById(`retainer-row-${idx}`);
-        const classRow = document.getElementById(`class-row-${idx}`);
-        const expandBtn = document.getElementById(`expand-btn-${idx}`);
-        
-        if (retainerRow) {
-            const isVisible = retainerRow.style.display !== 'none';
-            retainerRow.style.display = isVisible ? 'none' : 'table-row';
-            if (classRow) classRow.classList.toggle('expanded', !isVisible);
-            if (expandBtn) expandBtn.textContent = isVisible ? '▶' : '▼';
-        }
-    }
-
-    /**
      * 切换包展开/折叠
      * @param {number} idx - 包索引
      */
     function togglePackage(idx) {
         const content = document.getElementById(`pkg-content-${idx}`);
         if (content) {
-            content.classList.toggle('expanded');
+            content.classList.toggle('hidden');
         }
+    }
+
+    /**
+     * 跳转到指定页
+     * @param {number} page - 页码
+     */
+    function goToPage(page) {
+        if (page < 1 || page > totalPages) return;
+        currentPage = page;
+        render(currentData);
+        
+        // 滚动到表格顶部
+        const container = document.getElementById('heapHistogramContainer');
+        if (container) {
+            container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    /**
+     * 设置每页显示数量
+     * @param {string|number} size - 每页数量
+     */
+    function setPageSize(size) {
+        pageSize = parseInt(size);
+        currentPage = 1;
+        render(currentData);
     }
 
     /**
@@ -422,8 +505,9 @@ const HeapHistogram = (function() {
         filter,
         clearSearch,
         setViewMode,
-        toggleRow,
         togglePackage,
+        goToPage,
+        setPageSize,
         searchClass,
         getData
     };

@@ -121,12 +121,9 @@ func (f *HeapFormatter) FormatSummary(resp *model.AnalysisResponse) map[string]i
 			"live_objects":    heapData.LiveObjects,
 		}
 
-		// Create top_classes with retainer info for visualization
+		// Create top_classes with retainer info for visualization (include all classes)
 		topClassesData := make([]map[string]interface{}, 0, len(heapData.TopClasses))
 		for i, cls := range heapData.TopClasses {
-			if i >= 20 { // Only include top 20 in summary
-				break
-			}
 			classInfo := map[string]interface{}{
 				"class_name":     cls.ClassName,
 				"instance_count": cls.InstanceCount,
@@ -164,13 +161,8 @@ func (f *HeapFormatter) FormatSummary(resp *model.AnalysisResponse) map[string]i
 
 		summary["data"] = overview
 
-		// Create lightweight top_items (only top 15)
-		allItems := resp.Data.TopItems()
-		topItems := allItems
-		if len(allItems) > 15 {
-			topItems = allItems[:15]
-		}
-		summary["top_items"] = topItems
+		// Include all top_items for complete class histogram
+		summary["top_items"] = resp.Data.TopItems()
 
 		// Add file references for detailed data
 		summary["detail_files"] = map[string]string{
