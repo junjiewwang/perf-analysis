@@ -1,0 +1,139 @@
+syntax = "proto3";
+
+package hprof;
+
+option go_package = "github.com/perf-analysis/internal/parser/hprof/proto";
+
+// ReferenceGraphProto is the serializable representation of ReferenceGraph.
+// It stores the complete object reference graph for heap analysis.
+message ReferenceGraphProto {
+    // Version for format compatibility
+    uint32 version = 1;
+    
+    // Object information: objectID -> ObjectInfo
+    // Using repeated instead of map for better compression
+    repeated ObjectInfoProto objects = 2;
+    
+    // Class names: classID -> className
+    repeated ClassNameEntry class_names = 3;
+    
+    // Object references (edges in the graph)
+    repeated ObjectReferenceProto references = 4;
+    
+    // GC roots
+    repeated GCRootProto gc_roots = 5;
+    
+    // Dominator tree data (optional, can be recomputed)
+    DominatorDataProto dominator_data = 6;
+    
+    // Metadata
+    GraphMetadata metadata = 7;
+}
+
+// ObjectInfoProto stores object class and size.
+message ObjectInfoProto {
+    uint64 object_id = 1;
+    uint64 class_id = 2;
+    int64 size = 3;
+}
+
+// ClassNameEntry maps classID to className.
+message ClassNameEntry {
+    uint64 class_id = 1;
+    string class_name = 2;
+}
+
+// ObjectReferenceProto represents a reference from one object to another.
+message ObjectReferenceProto {
+    uint64 from_object_id = 1;
+    uint64 to_object_id = 2;
+    uint64 from_class_id = 3;
+    // Field name index (references string table for deduplication)
+    uint32 field_name_idx = 4;
+}
+
+// GCRootProto represents a garbage collection root.
+message GCRootProto {
+    uint64 object_id = 1;
+    GCRootTypeProto type = 2;
+    uint64 thread_id = 3;
+    int32 frame_index = 4;
+}
+
+// GCRootTypeProto enumerates GC root types.
+enum GCRootTypeProto {
+    GC_ROOT_UNKNOWN = 0;
+    GC_ROOT_JNI_GLOBAL = 1;
+    GC_ROOT_JNI_LOCAL = 2;
+    GC_ROOT_JAVA_FRAME = 3;
+    GC_ROOT_NATIVE_STACK = 4;
+    GC_ROOT_STICKY_CLASS = 5;
+    GC_ROOT_THREAD_BLOCK = 6;
+    GC_ROOT_MONITOR_USED = 7;
+    GC_ROOT_THREAD_OBJECT = 8;
+}
+
+// DominatorDataProto stores precomputed dominator tree data.
+message DominatorDataProto {
+    // Whether dominator tree has been computed
+    bool computed = 1;
+    
+    // Dominator relationships: objectID -> dominatorID
+    repeated DominatorEntry dominators = 2;
+    
+    // Retained sizes: objectID -> retainedSize
+    repeated RetainedSizeEntry retained_sizes = 3;
+    
+    // Class retained sizes (MAT top-level view)
+    repeated ClassRetainedSizeEntry class_retained_sizes = 4;
+    
+    // Class retained sizes (attributed, non-overlapping)
+    repeated ClassRetainedSizeEntry class_retained_sizes_attributed = 5;
+    
+    // Class object IDs (Class objects are implicit GC roots)
+    repeated uint64 class_object_ids = 6;
+}
+
+// DominatorEntry maps objectID to its immediate dominator.
+message DominatorEntry {
+    uint64 object_id = 1;
+    uint64 dominator_id = 2;
+}
+
+// RetainedSizeEntry maps objectID to retained size.
+message RetainedSizeEntry {
+    uint64 object_id = 1;
+    int64 retained_size = 2;
+}
+
+// ClassRetainedSizeEntry maps classID to retained size.
+message ClassRetainedSizeEntry {
+    uint64 class_id = 1;
+    int64 retained_size = 2;
+}
+
+// GraphMetadata stores metadata about the graph.
+message GraphMetadata {
+    // Total number of objects
+    int64 total_objects = 1;
+    
+    // Total number of references
+    int64 total_references = 2;
+    
+    // Total number of GC roots
+    int64 total_gc_roots = 3;
+    
+    // Total heap size
+    int64 total_heap_size = 4;
+    
+    // Creation timestamp (Unix milliseconds)
+    int64 created_at = 5;
+    
+    // Source file name (original hprof file)
+    string source_file = 6;
+}
+
+// StringTable for field name deduplication.
+message StringTable {
+    repeated string strings = 1;
+}

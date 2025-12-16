@@ -1634,6 +1634,8 @@ func (p *Parser) buildResult(state *parserState) *HeapAnalysisResult {
 		// Store class layouts and strings for later use (e.g., API queries)
 		result.ClassLayouts = state.classLayouts
 		result.Strings = state.strings
+		// Store reference graph for serialization and advanced analysis
+		result.RefGraph = state.refGraph
 	}
 
 	return result

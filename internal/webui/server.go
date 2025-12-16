@@ -27,18 +27,20 @@ var staticFS embed.FS
 
 // Server represents the web UI server
 type Server struct {
-	dataDir string
-	port    int
-	logger  utils.Logger
-	server  *http.Server
+	dataDir         string
+	port            int
+	logger          utils.Logger
+	server          *http.Server
+	refGraphService *RefGraphService
 }
 
 // NewServer creates a new web UI server
 func NewServer(dataDir string, port int, logger utils.Logger) *Server {
 	return &Server{
-		dataDir: dataDir,
-		port:    port,
-		logger:  logger,
+		dataDir:         dataDir,
+		port:            port,
+		logger:          logger,
+		refGraphService: NewRefGraphService(dataDir),
 	}
 }
 
@@ -63,6 +65,13 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/retainers", s.handleRetainers)
 	mux.HandleFunc("/api/biggest-objects", s.handleBiggestObjects)
 	mux.HandleFunc("/api/object-fields", s.handleObjectFields)
+	
+	// Enhanced heap analysis APIs (using ReferenceGraph)
+	mux.HandleFunc("/api/refgraph/fields", s.handleRefGraphFields)
+	mux.HandleFunc("/api/refgraph/info", s.handleRefGraphObjectInfo)
+	mux.HandleFunc("/api/refgraph/gc-roots", s.handleRefGraphGCRoots)
+	mux.HandleFunc("/api/refgraph/retainers", s.handleRefGraphRetainers)
+	mux.HandleFunc("/api/refgraph/biggest-by-class", s.handleRefGraphBiggestByClass)
 
 	// Page routes
 	mux.HandleFunc("/", s.handleIndex)
@@ -567,4 +576,222 @@ func (s *Server) handleObjectFields(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write([]byte("[]"))
+}
+
+// handleRefGraphFields returns the fields of a specific object using ReferenceGraph.
+// This enables deep object exploration beyond the initial biggest_objects.json data.
+func (s *Server) handleRefGraphFields(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	objectIDStr := r.URL.Query().Get("id")
+	if objectIDStr == "" {
+		http.Error(w, "Object ID is required", http.StatusBadRequest)
+		return
+	}
+
+	fields, err := s.refGraphService.GetObjectFields(taskID, objectIDStr)
+	if err != nil {
+		// Fall back to legacy method if refgraph not available
+		s.handleObjectFields(w, r)
+		return
+	}
+
+	// Convert to JSON-friendly format with string object IDs
+	type FieldResponse struct {
+		Name         string      `json:"name"`
+		Type         string      `json:"type"`
+		Value        interface{} `json:"value,omitempty"`
+		RefID        string      `json:"ref_id,omitempty"`
+		RefClass     string      `json:"ref_class,omitempty"`
+		ShallowSize  int64       `json:"shallow_size,omitempty"`
+		RetainedSize int64       `json:"retained_size,omitempty"`
+		HasChildren  bool        `json:"has_children"`
+	}
+
+	response := make([]FieldResponse, 0, len(fields))
+	for _, f := range fields {
+		fr := FieldResponse{
+			Name:         f.Name,
+			Type:         f.Type,
+			Value:        f.Value,
+			RefClass:     f.RefClass,
+			ShallowSize:  f.ShallowSize,
+			RetainedSize: f.RetainedSize,
+			HasChildren:  f.HasChildren,
+		}
+		if f.RefID != 0 {
+			fr.RefID = formatObjectID(f.RefID)
+		}
+		response = append(response, fr)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleRefGraphObjectInfo returns basic information about an object.
+func (s *Server) handleRefGraphObjectInfo(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	objectIDStr := r.URL.Query().Get("id")
+	if objectIDStr == "" {
+		http.Error(w, "Object ID is required", http.StatusBadRequest)
+		return
+	}
+
+	info, err := s.refGraphService.GetObjectInfo(taskID, objectIDStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	// Convert to JSON-friendly format
+	response := map[string]interface{}{
+		"object_id":     formatObjectID(info.RefID),
+		"class_name":    info.RefClass,
+		"shallow_size":  info.ShallowSize,
+		"retained_size": info.RetainedSize,
+		"has_children":  info.HasChildren,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleRefGraphGCRoots returns the GC root paths for a specific object.
+func (s *Server) handleRefGraphGCRoots(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	objectIDStr := r.URL.Query().Get("id")
+	if objectIDStr == "" {
+		http.Error(w, "Object ID is required", http.StatusBadRequest)
+		return
+	}
+
+	maxPaths := 3
+	if mp := r.URL.Query().Get("max_paths"); mp != "" {
+		if n, err := parseInt(mp); err == nil && n > 0 {
+			maxPaths = n
+		}
+	}
+
+	maxDepth := 15
+	if md := r.URL.Query().Get("max_depth"); md != "" {
+		if n, err := parseInt(md); err == nil && n > 0 {
+			maxDepth = n
+		}
+	}
+
+	paths, err := s.refGraphService.GetGCRootPaths(taskID, objectIDStr, maxPaths, maxDepth)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(paths)
+}
+
+// handleRefGraphRetainers returns the objects that retain a specific object.
+func (s *Server) handleRefGraphRetainers(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	objectIDStr := r.URL.Query().Get("id")
+	if objectIDStr == "" {
+		http.Error(w, "Object ID is required", http.StatusBadRequest)
+		return
+	}
+
+	maxRetainers := 20
+	if mr := r.URL.Query().Get("max"); mr != "" {
+		if n, err := parseInt(mr); err == nil && n > 0 {
+			maxRetainers = n
+		}
+	}
+
+	retainers, err := s.refGraphService.GetRetainers(taskID, objectIDStr, maxRetainers)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(retainers)
+}
+
+// handleRefGraphBiggestByClass returns the biggest objects for a specific class.
+func (s *Server) handleRefGraphBiggestByClass(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	className := r.URL.Query().Get("class")
+	if className == "" {
+		http.Error(w, "Class name is required", http.StatusBadRequest)
+		return
+	}
+
+	topN := 50
+	if tn := r.URL.Query().Get("top"); tn != "" {
+		if n, err := parseInt(tn); err == nil && n > 0 {
+			topN = n
+		}
+	}
+
+	sortBy := r.URL.Query().Get("sort")
+	if sortBy == "" {
+		sortBy = "retained"
+	}
+
+	objects, err := s.refGraphService.GetBiggestObjectsByClass(taskID, className, topN, sortBy)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	// Convert to JSON-friendly format
+	type ObjectResponse struct {
+		ObjectID     string `json:"object_id"`
+		ClassName    string `json:"class_name"`
+		ShallowSize  int64  `json:"shallow_size"`
+		RetainedSize int64  `json:"retained_size"`
+	}
+
+	response := make([]ObjectResponse, 0, len(objects))
+	for _, obj := range objects {
+		response = append(response, ObjectResponse{
+			ObjectID:     formatObjectID(obj.ObjectID),
+			ClassName:    obj.ClassName,
+			ShallowSize:  obj.ShallowSize,
+			RetainedSize: obj.RetainedSize,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(response)
+}
+
+// parseInt parses an integer from a string.
+func parseInt(s string) (int, error) {
+	var n int
+	_, err := fmt.Sscanf(s, "%d", &n)
+	return n, err
 }

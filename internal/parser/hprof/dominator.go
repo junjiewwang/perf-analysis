@@ -1984,6 +1984,27 @@ func formatObjectID(id uint64) string {
 	return "0x" + formatHex(id)
 }
 
+// GetIncomingRefs returns the incoming references for an object (who references this object).
+func (g *ReferenceGraph) GetIncomingRefs(objectID uint64) []ObjectReference {
+	return g.incomingRefs[objectID]
+}
+
+// GetOutgoingRefs returns the outgoing references for an object (what this object references).
+func (g *ReferenceGraph) GetOutgoingRefs(objectID uint64) []ObjectReference {
+	return g.outgoingRefs[objectID]
+}
+
+// GetObjectSize returns the shallow size of an object.
+func (g *ReferenceGraph) GetObjectSize(objectID uint64) int64 {
+	return g.objectSize[objectID]
+}
+
+// GetObjectClassID returns the class ID of an object.
+func (g *ReferenceGraph) GetObjectClassID(objectID uint64) (uint64, bool) {
+	classID, ok := g.objectClass[objectID]
+	return classID, ok
+}
+
 func formatHex(n uint64) string {
 	const hexDigits = "0123456789abcdef"
 	if n == 0 {

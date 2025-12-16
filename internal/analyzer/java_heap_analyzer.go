@@ -159,7 +159,23 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 		}
 	}
 
-	// Step 9: Build output files
+	// Step 9: Serialize ReferenceGraph for advanced analysis in serve mode
+	if heapResult.RefGraph != nil {
+		refGraphFile := filepath.Join(taskDir, "refgraph.bin")
+		opts := hprof.DefaultSerializeOptions()
+		opts.SourceFile = req.InputFile
+		stats, err := heapResult.RefGraph.SerializeToFile(refGraphFile, opts)
+		if err != nil {
+			if a.config.Logger != nil {
+				a.config.Logger.Warn("Failed to serialize reference graph: %v", err)
+			}
+		} else if a.config.Logger != nil {
+			a.config.Logger.Info("Reference graph serialized: %d objects, %d refs, %.2f KB (ratio: %.2fx)",
+				stats.Objects, stats.References, float64(stats.CompressedSize)/1024, stats.CompressionRatio)
+		}
+	}
+
+	// Step 10: Build output files
 	outputFiles := []model.OutputFile{
 		{
 			Name:        "Heap Report",
@@ -175,7 +191,7 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 		},
 	}
 
-	// Step 10: Build response
+	// Step 11: Build response
 	return &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
 		TaskType:     req.TaskType,

@@ -149,6 +149,8 @@ type HeapAnalysisResult struct {
 	ClassLayouts     map[uint64]*ClassFieldLayout  `json:"-"`
 	// Strings holds string table (used by BiggestObjectsBuilder)
 	Strings          map[uint64]string             `json:"-"`
+	// RefGraph holds the reference graph for advanced analysis (not serialized to JSON)
+	RefGraph         *ReferenceGraph               `json:"-"`
 }
 
 // ObjectInfo holds information about a specific object.

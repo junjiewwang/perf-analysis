@@ -196,6 +196,14 @@ const HeapBiggestObjects = (function() {
                         <div class="font-mono text-sm truncate" title="${escapeHtml(obj.class_name)}">${formatClassName(obj.class_name)}</div>
                         <div class="text-xs text-gray-400">ID: ${formatObjectId(obj.object_id)}</div>
                     </div>
+                    <div class="flex-shrink-0 flex items-center gap-1 mr-2">
+                        <button class="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors" onclick="event.stopPropagation(); HeapBiggestObjects.showGCRoots('${escapeHtml(nodeId)}')" title="Show GC Root Paths">
+                            GC Roots
+                        </button>
+                        <button class="px-2 py-1 text-xs bg-purple-50 text-purple-600 rounded hover:bg-purple-100 transition-colors" onclick="event.stopPropagation(); HeapBiggestObjects.showRetainers('${escapeHtml(nodeId)}')" title="Show Retainers">
+                            Retainers
+                        </button>
+                    </div>
                     <div class="flex-shrink-0 w-24 text-right px-2">
                         <div class="text-sm text-gray-600">${formatBytes(obj.shallow_size)}</div>
                         <div class="text-xs text-gray-400">Shallow</div>
@@ -362,9 +370,21 @@ const HeapBiggestObjects = (function() {
 
     /**
      * 加载对象字段（懒加载）
+     * 优先使用 ReferenceGraph API 进行深度展开，回退到静态数据
      */
     async function loadObjectFields(objectId) {
         try {
+            // 首先尝试使用 ReferenceGraph API（支持深度展开）
+            const refGraphResponse = await fetch(`/api/refgraph/fields?id=${encodeURIComponent(objectId)}`);
+            if (refGraphResponse.ok) {
+                const fields = await refGraphResponse.json();
+                if (Array.isArray(fields) && fields.length > 0) {
+                    console.log(`[HeapBiggestObjects] Loaded ${fields.length} fields from ReferenceGraph for ${objectId}`);
+                    return fields;
+                }
+            }
+            
+            // 回退到静态 API
             const response = await fetch(`/api/object-fields?id=${encodeURIComponent(objectId)}`);
             if (!response.ok) {
                 console.warn(`Failed to load fields for ${objectId}: ${response.status}`);
@@ -374,6 +394,38 @@ const HeapBiggestObjects = (function() {
             return Array.isArray(fields) ? fields : [];
         } catch (error) {
             console.error(`Error loading fields for ${objectId}:`, error);
+            return [];
+        }
+    }
+
+    /**
+     * 加载对象的 GC Root 路径
+     */
+    async function loadGCRootPaths(objectId, maxPaths = 3) {
+        try {
+            const response = await fetch(`/api/refgraph/gc-roots?id=${encodeURIComponent(objectId)}&max_paths=${maxPaths}`);
+            if (!response.ok) {
+                return [];
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`Error loading GC roots for ${objectId}:`, error);
+            return [];
+        }
+    }
+
+    /**
+     * 加载对象的 Retainers（谁持有这个对象）
+     */
+    async function loadRetainers(objectId, maxRetainers = 20) {
+        try {
+            const response = await fetch(`/api/refgraph/retainers?id=${encodeURIComponent(objectId)}&max=${maxRetainers}`);
+            if (!response.ok) {
+                return [];
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`Error loading retainers for ${objectId}:`, error);
             return [];
         }
     }
@@ -591,6 +643,159 @@ const HeapBiggestObjects = (function() {
         loadBiggestObjects(taskId);
     }
 
+    /**
+     * 显示 GC Root 路径弹窗
+     */
+    async function showGCRoots(objectId) {
+        const modal = createModal('GC Root Paths', 'Loading...');
+        document.body.appendChild(modal);
+        
+        try {
+            const paths = await loadGCRootPaths(objectId, 5);
+            
+            if (!paths || paths.length === 0) {
+                modal.querySelector('.modal-body').innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <p>No GC root paths found for this object.</p>
+                        <p class="text-sm mt-2">The object may be unreachable or the reference graph is not available.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = `<div class="space-y-4">`;
+            paths.forEach((path, idx) => {
+                html += `
+                    <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold">${idx + 1}</span>
+                            <span class="text-sm font-medium text-gray-700">Root Type: <span class="text-blue-600">${escapeHtml(path.root_type || 'Unknown')}</span></span>
+                            <span class="text-xs text-gray-400">Depth: ${path.depth || path.path?.length || 0}</span>
+                        </div>
+                        <div class="space-y-1 ml-4 border-l-2 border-blue-200 pl-4">`;
+                
+                if (path.path && path.path.length > 0) {
+                    path.path.forEach((node, nodeIdx) => {
+                        const isLast = nodeIdx === path.path.length - 1;
+                        html += `
+                            <div class="flex items-center gap-2 py-1 ${isLast ? 'font-semibold' : ''}">
+                                <span class="w-4 h-4 flex-shrink-0 ${isLast ? 'text-red-500' : 'text-gray-400'}">
+                                    ${isLast ? '●' : '○'}
+                                </span>
+                                <span class="font-mono text-sm ${isLast ? 'text-red-600' : 'text-gray-700'}">${formatClassName(node.class_name || node.className, false)}</span>
+                                ${node.field_name || node.fieldName ? `<span class="text-xs text-purple-500">.${escapeHtml(node.field_name || node.fieldName)}</span>` : ''}
+                                ${node.size ? `<span class="text-xs text-gray-400 ml-auto">${formatBytes(node.size)}</span>` : ''}
+                            </div>`;
+                    });
+                }
+                
+                html += `</div></div>`;
+            });
+            html += `</div>`;
+            
+            modal.querySelector('.modal-body').innerHTML = html;
+        } catch (error) {
+            modal.querySelector('.modal-body').innerHTML = `
+                <div class="text-center py-8 text-red-500">
+                    <p>Failed to load GC root paths</p>
+                    <p class="text-sm mt-2">${escapeHtml(error.message)}</p>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * 显示 Retainers 弹窗
+     */
+    async function showRetainers(objectId) {
+        const modal = createModal('Object Retainers', 'Loading...');
+        document.body.appendChild(modal);
+        
+        try {
+            const retainers = await loadRetainers(objectId, 30);
+            
+            if (!retainers || retainers.length === 0) {
+                modal.querySelector('.modal-body').innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <p>No retainers found for this object.</p>
+                        <p class="text-sm mt-2">This object may be a GC root or the reference graph is not available.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = `
+                <div class="text-sm text-gray-500 mb-4">
+                    Found ${retainers.length} object(s) that retain this object:
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-gray-600">#</th>
+                                <th class="px-3 py-2 text-left text-gray-600">Class</th>
+                                <th class="px-3 py-2 text-left text-gray-600">Field</th>
+                                <th class="px-3 py-2 text-right text-gray-600">Shallow</th>
+                                <th class="px-3 py-2 text-right text-gray-600">Retained</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+            
+            retainers.forEach((r, idx) => {
+                html += `
+                    <tr class="border-b border-gray-100 hover:bg-gray-50">
+                        <td class="px-3 py-2 text-gray-400">${idx + 1}</td>
+                        <td class="px-3 py-2 font-mono">${formatClassName(r.class_name)}</td>
+                        <td class="px-3 py-2 text-purple-600">${escapeHtml(r.field_name || '-')}</td>
+                        <td class="px-3 py-2 text-right text-gray-600">${formatBytes(r.shallow_size || 0)}</td>
+                        <td class="px-3 py-2 text-right font-semibold text-red-600">${formatBytes(r.retained_size || 0)}</td>
+                    </tr>`;
+            });
+            
+            html += `</tbody></table></div>`;
+            
+            modal.querySelector('.modal-body').innerHTML = html;
+        } catch (error) {
+            modal.querySelector('.modal-body').innerHTML = `
+                <div class="text-center py-8 text-red-500">
+                    <p>Failed to load retainers</p>
+                    <p class="text-sm mt-2">${escapeHtml(error.message)}</p>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * 创建模态框
+     */
+    function createModal(title, content) {
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        };
+        
+        modal.innerHTML = `
+            <div class="bg-white rounded-xl shadow-2xl max-w-3xl w-full mx-4 max-h-[80vh] flex flex-col" onclick="event.stopPropagation()">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-800">${escapeHtml(title)}</h3>
+                    <button class="text-gray-400 hover:text-gray-600 transition-colors" onclick="this.closest('.fixed').remove()">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body flex-1 overflow-auto px-6 py-4">
+                    ${content}
+                </div>
+            </div>
+        `;
+        
+        return modal;
+    }
+
     // ============================================
     // 模块注册
     // ============================================
@@ -604,7 +809,9 @@ const HeapBiggestObjects = (function() {
         sort,
         expandAll,
         collapseAll,
-        refresh
+        refresh,
+        showGCRoots,
+        showRetainers
     };
 
     // 自动注册到核心模块
