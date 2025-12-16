@@ -132,6 +132,7 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 		TotalHeapSize:     heapResult.TotalHeapSize,
 		HeapSizeHuman:     formatBytes(heapResult.TotalHeapSize),
 		TopClasses:        topClasses,
+		BiggestObjects:    a.buildBiggestObjects(heapResult),
 		ReferenceGraphs:   a.buildReferenceGraphs(heapResult),
 		BusinessRetainers: a.buildBusinessRetainers(heapResult),
 	}
@@ -147,7 +148,18 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 		heapData.LiveObjects = heapResult.Summary.TotalLiveObjects
 	}
 
-	// Step 8: Build output files
+	// Step 8: Write biggest objects file
+	if len(heapData.BiggestObjects) > 0 {
+		biggestObjectsFile := filepath.Join(taskDir, "biggest_objects.json")
+		if err := a.writeBiggestObjects(heapData.BiggestObjects, biggestObjectsFile); err != nil {
+			// Log error but don't fail the analysis
+			if a.config.Logger != nil {
+				a.config.Logger.Warn("Failed to write biggest objects file: %v", err)
+			}
+		}
+	}
+
+	// Step 9: Build output files
 	outputFiles := []model.OutputFile{
 		{
 			Name:        "Heap Report",
@@ -163,7 +175,7 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 		},
 	}
 
-	// Step 9: Build response
+	// Step 10: Build response
 	return &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
 		TaskType:     req.TaskType,
@@ -355,6 +367,78 @@ func (a *JavaHeapAnalyzer) buildBusinessRetainers(result *hprof.HeapAnalysisResu
 	}
 	
 	return retainers
+}
+
+// buildBiggestObjects builds the biggest objects list from heap result.
+func (a *JavaHeapAnalyzer) buildBiggestObjects(result *hprof.HeapAnalysisResult) []model.HeapBiggestObject {
+	if result.BiggestObjects == nil {
+		return nil
+	}
+	
+	biggestObjects := make([]model.HeapBiggestObject, 0, len(result.BiggestObjects))
+	for _, obj := range result.BiggestObjects {
+		bigObj := model.HeapBiggestObject{
+			ObjectID:     formatObjectID(obj.ObjectID),
+			ClassName:    obj.ClassName,
+			ShallowSize:  obj.ShallowSize,
+			RetainedSize: obj.RetainedSize,
+		}
+		
+		// Convert fields
+		if len(obj.Fields) > 0 {
+			for _, f := range obj.Fields {
+				field := model.HeapObjectField{
+					Name:     f.Name,
+					Type:     f.Type,
+					Value:    f.Value,
+					IsStatic: f.IsStatic,
+				}
+				if f.RefID != 0 {
+					field.RefID = formatObjectID(f.RefID)
+					field.RefClass = f.RefClass
+				}
+				bigObj.Fields = append(bigObj.Fields, field)
+			}
+		}
+		
+		// Convert GC root path
+		if obj.GCRootPath != nil {
+			gcPath := &model.HeapGCRootPath{
+				RootType: string(obj.GCRootPath.RootType),
+				Depth:    obj.GCRootPath.Depth,
+			}
+			for _, node := range obj.GCRootPath.Path {
+				gcPath.Path = append(gcPath.Path, model.HeapGCRootPathNode{
+					ClassName: node.ClassName,
+					FieldName: node.FieldName,
+					Size:      node.Size,
+				})
+			}
+			bigObj.GCRootPath = gcPath
+		}
+		
+		biggestObjects = append(biggestObjects, bigObj)
+	}
+	
+	return biggestObjects
+}
+
+// writeBiggestObjects writes the biggest objects to a JSON file.
+func (a *JavaHeapAnalyzer) writeBiggestObjects(objects []model.HeapBiggestObject, outputPath string) error {
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(objects)
+}
+
+// formatObjectID formats an object ID as a hex string.
+func formatObjectID(id uint64) string {
+	return fmt.Sprintf("0x%x", id)
 }
 
 // generateSuggestions generates heap-specific suggestions.

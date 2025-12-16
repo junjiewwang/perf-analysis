@@ -113,6 +113,8 @@ type parserState struct {
 	// Reference tracking for retainer analysis
 	refGraph    *ReferenceGraph
 	classFields map[uint64][]FieldDescriptor // classID -> field descriptors
+	// Class layouts for BiggestObjects feature
+	classLayouts map[uint64]*ClassFieldLayout // classID -> field layout
 	// Deferred reference extraction for instances parsed before their CLASS_DUMP
 	deferredInstances []deferredInstance
 	// Size calculation mode
@@ -201,6 +203,7 @@ func newParserState(r *Reader, opts *ParserOptions) *parserState {
 		classInfo:         make(map[uint64]*ClassInfo),
 		classByName:       make(map[string]*ClassInfo),
 		classFields:       make(map[uint64][]FieldDescriptor),
+		classLayouts:      make(map[uint64]*ClassFieldLayout),
 		deferredInstances: make([]deferredInstance, 0),
 		sizeMode:          opts.SizeMode,
 	}
@@ -920,6 +923,27 @@ func (p *Parser) parseClassDump(state *parserState) (int64, error) {
 		state.classByName[className] = state.classInfo[classID]
 	}
 
+	// Build ClassFieldLayout for BiggestObjects feature
+	layout := &ClassFieldLayout{
+		ClassID:      classID,
+		ClassName:    className,
+		SuperClassID: superClassID,
+		InstanceSize: int(instanceSize),
+	}
+	// Convert FieldDescriptors to FieldInfo with names
+	offset := 0
+	for _, fd := range fields {
+		fieldName := state.strings[fd.NameID]
+		layout.InstanceFields = append(layout.InstanceFields, FieldInfo{
+			NameID: fd.NameID,
+			Name:   fieldName,
+			Type:   fd.Type,
+			Offset: offset,
+		})
+		offset += BasicTypeSize(fd.Type, idSize)
+	}
+	state.classLayouts[classID] = layout
+
 	// Store class name in reference graph and register the Class object itself
 	if state.refGraph != nil {
 		if className != "" {
@@ -1601,6 +1625,15 @@ func (p *Parser) buildResult(state *parserState) *HeapAnalysisResult {
 		result.ClassRetainers = analysisResult.ClassRetainers
 		result.ReferenceGraphs = analysisResult.ReferenceGraphs
 		result.BusinessRetainers = analysisResult.BusinessRetainers
+	}
+
+	// Build BiggestObjects if retainer analysis is enabled
+	if state.refGraph != nil && p.opts.AnalyzeRetainers {
+		builder := NewBiggestObjectsBuilder(state.refGraph, state.classLayouts, state.strings)
+		result.BiggestObjects = builder.GetBiggestObjectsByRetainedSize(p.opts.MaxLargestObjects)
+		// Store class layouts and strings for later use (e.g., API queries)
+		result.ClassLayouts = state.classLayouts
+		result.Strings = state.strings
 	}
 
 	return result

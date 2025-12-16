@@ -199,6 +199,40 @@ type HeapBusinessRetainer struct {
 	GCRootType    string   `json:"gc_root_type,omitempty"`
 }
 
+// HeapBiggestObject represents a large object with its details.
+type HeapBiggestObject struct {
+	ObjectID     string              `json:"object_id"`
+	ClassName    string              `json:"class_name"`
+	ShallowSize  int64               `json:"shallow_size"`
+	RetainedSize int64               `json:"retained_size"`
+	Fields       []HeapObjectField   `json:"fields,omitempty"`
+	GCRootPath   *HeapGCRootPath     `json:"gc_root_path,omitempty"`
+}
+
+// HeapObjectField represents a field value in an object.
+type HeapObjectField struct {
+	Name     string      `json:"name"`
+	Type     string      `json:"type"`
+	Value    interface{} `json:"value,omitempty"`
+	RefID    string      `json:"ref_id,omitempty"`
+	RefClass string      `json:"ref_class,omitempty"`
+	IsStatic bool        `json:"is_static,omitempty"`
+}
+
+// HeapGCRootPath represents a path from GC Root to an object.
+type HeapGCRootPath struct {
+	RootType string               `json:"root_type"`
+	Path     []HeapGCRootPathNode `json:"path"`
+	Depth    int                  `json:"depth"`
+}
+
+// HeapGCRootPathNode represents a node in a GC root path.
+type HeapGCRootPathNode struct {
+	ClassName string `json:"class_name"`
+	FieldName string `json:"field_name,omitempty"`
+	Size      int64  `json:"size"`
+}
+
 // HeapAnalysisData holds Java heap dump analysis data.
 type HeapAnalysisData struct {
 	HeapReportFile    string                           `json:"heap_report_file"`
@@ -213,6 +247,7 @@ type HeapAnalysisData struct {
 	LiveBytes         int64                            `json:"live_bytes,omitempty"`
 	LiveObjects       int64                            `json:"live_objects,omitempty"`
 	TopClasses        []HeapClassStats                 `json:"top_classes"`
+	BiggestObjects    []HeapBiggestObject              `json:"biggest_objects,omitempty"`
 	ReferenceGraphs   map[string]*HeapReferenceGraph   `json:"reference_graphs,omitempty"`
 	BusinessRetainers map[string][]HeapBusinessRetainer `json:"business_retainers,omitempty"`
 }

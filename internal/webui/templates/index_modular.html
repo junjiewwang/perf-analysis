@@ -429,30 +429,63 @@
 
         <!-- Heap Biggest Objects Panel: Alpine.js 控制显示 -->
         <div x-show="activePanel === 'heaptreemap'" x-cloak class="bg-white rounded-xl shadow-md p-5">
-            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🗺️ Biggest Objects</h2>
-            <p class="text-xs text-gray-400 mb-4 space-x-4">
-                <span>💡 Click on a block to zoom in, right-click to zoom out</span>
-                <span>📊 Block size represents memory usage</span>
-            </p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5" id="heapStatsGrid">
-                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
-                    <div class="text-2xl font-bold text-primary" id="heapTotalSize">-</div>
-                    <div class="text-sm text-gray-500 mt-1">Total Heap Size</div>
-                </div>
-                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
-                    <div class="text-2xl font-bold text-primary" id="heapTotalClasses">-</div>
-                    <div class="text-sm text-gray-500 mt-1">Total Classes</div>
-                </div>
-                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
-                    <div class="text-2xl font-bold text-primary" id="heapTotalInstances">-</div>
-                    <div class="text-sm text-gray-500 mt-1">Total Instances</div>
-                </div>
-                <div class="bg-gradient-to-br from-gray-50 to-gray-200 rounded-xl p-5 text-center">
-                    <div class="text-2xl font-bold text-primary" id="heapFormat">-</div>
-                    <div class="text-sm text-gray-500 mt-1">Heap Format</div>
+            <div class="flex items-center justify-between mb-4 pb-2.5 border-b-2 border-primary">
+                <h2 class="text-lg font-semibold text-gray-800">📦 Biggest Objects</h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="HeapBiggestObjects.expandAll()" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        Expand All
+                    </button>
+                    <button onclick="HeapBiggestObjects.collapseAll()" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        Collapse All
+                    </button>
+                    <button onclick="HeapBiggestObjects.refresh()" class="px-3 py-1.5 text-xs bg-primary text-white hover:bg-primary/90 rounded-lg transition-colors">
+                        🔄 Refresh
+                    </button>
                 </div>
             </div>
-            <div id="heapTreemap"></div>
+            <p class="text-xs text-gray-400 mb-4 space-x-4">
+                <span>💡 Objects with largest retained memory - click to see field details</span>
+                <span>📊 Retained size = object size + all objects it keeps alive</span>
+            </p>
+            
+            <!-- 统计摘要 -->
+            <div id="biggestObjectsSummary" class="mb-5"></div>
+            
+            <!-- 搜索和排序工具栏 -->
+            <div class="flex flex-wrap items-center gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
+                <div class="flex-1 min-w-[200px]">
+                    <input type="text" id="biggestObjectsSearch" placeholder="Search by class name or object ID..."
+                        onkeyup="HeapBiggestObjects.filter(this.value)"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500">Sort by:</span>
+                    <button onclick="HeapBiggestObjects.sort('retained')" data-sort="retained" 
+                        class="sort-btn px-3 py-1.5 text-xs rounded-lg transition-colors bg-primary text-white">
+                        Retained <span class="sort-arrow">↓</span>
+                    </button>
+                    <button onclick="HeapBiggestObjects.sort('shallow')" data-sort="shallow"
+                        class="sort-btn px-3 py-1.5 text-xs rounded-lg transition-colors bg-gray-100 text-gray-700">
+                        Shallow <span class="sort-arrow">↓</span>
+                    </button>
+                    <button onclick="HeapBiggestObjects.sort('class')" data-sort="class"
+                        class="sort-btn px-3 py-1.5 text-xs rounded-lg transition-colors bg-gray-100 text-gray-700">
+                        Class <span class="sort-arrow">↓</span>
+                    </button>
+                    <button onclick="HeapBiggestObjects.sort('fields')" data-sort="fields"
+                        class="sort-btn px-3 py-1.5 text-xs rounded-lg transition-colors bg-gray-100 text-gray-700">
+                        Fields <span class="sort-arrow">↓</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 对象列表 -->
+            <div id="biggestObjectsList" class="max-h-[600px] overflow-y-auto">
+                <div class="text-center py-12 text-gray-500">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent"></div>
+                    <p class="mt-4">Loading biggest objects...</p>
+                </div>
+            </div>
         </div>
 
         <!-- Heap GC Roots Panel: Alpine.js 控制显示 -->
@@ -868,9 +901,14 @@
                     } else if (panelId === 'heapdiagnosis' && this.summaryData) {
                         HeapAnalysis.renderDiagnosis(this.summaryData);
                     } else if (panelId === 'heaptreemap') {
-                        // 等待 Alpine.js 更新 DOM 后再渲染 treemap
+                        // 等待 Alpine.js 更新 DOM 后再渲染 biggest objects
                         this.$nextTick(() => {
-                            requestAnimationFrame(() => HeapAnalysis.resizeTreemap());
+                            requestAnimationFrame(() => {
+                                // 加载 Biggest Objects 数据
+                                if (typeof HeapBiggestObjects !== 'undefined') {
+                                    HeapBiggestObjects.loadBiggestObjects(this.currentTask);
+                                }
+                            });
                         });
                     } else if (panelId === 'heaprootcause' && this.summaryData) {
                         HeapAnalysis.renderRootCauseAnalysis(this.summaryData);
@@ -947,6 +985,7 @@
     <script src="/static/js/heap-core.js"></script>
     <script src="/static/js/heap-diagnosis.js"></script>
     <script src="/static/js/heap-treemap.js"></script>
+    <script src="/static/js/heap-biggest-objects.js"></script>
     <script src="/static/js/heap-histogram.js"></script>
     <script src="/static/js/heap-gcroots.js"></script>
     <script src="/static/js/heap-merged-paths.js"></script>

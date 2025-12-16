@@ -61,6 +61,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/callgraph", s.handleCallGraph)
 	mux.HandleFunc("/api/tasks", s.handleListTasks)
 	mux.HandleFunc("/api/retainers", s.handleRetainers)
+	mux.HandleFunc("/api/biggest-objects", s.handleBiggestObjects)
+	mux.HandleFunc("/api/object-fields", s.handleObjectFields)
 
 	// Page routes
 	mux.HandleFunc("/", s.handleIndex)
@@ -372,4 +374,197 @@ func (s *Server) handleRetainers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write(data)
+}
+
+// handleBiggestObjects returns the biggest objects data for heap analysis
+func (s *Server) handleBiggestObjects(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	taskDir := filepath.Join(s.dataDir, taskID)
+	if taskID == "" {
+		taskDir = s.dataDir
+	}
+
+	// Query parameters
+	className := r.URL.Query().Get("class")
+	sortBy := r.URL.Query().Get("sort")
+	if sortBy == "" {
+		sortBy = "retained"
+	}
+
+	var data []byte
+	var err error
+
+	// Try to read from biggest_objects.json file first
+	biggestObjectsFile := filepath.Join(taskDir, "biggest_objects.json")
+	data, err = os.ReadFile(biggestObjectsFile)
+	if err != nil {
+		// Fall back to extracting from summary.json
+		summaryFile := filepath.Join(taskDir, "summary.json")
+		summaryData, summaryErr := os.ReadFile(summaryFile)
+		if summaryErr != nil {
+			http.Error(w, "Biggest objects data not found", http.StatusNotFound)
+			return
+		}
+
+		// Parse summary and extract biggest_objects
+		var summary map[string]interface{}
+		if jsonErr := json.Unmarshal(summaryData, &summary); jsonErr != nil {
+			http.Error(w, "Failed to parse summary", http.StatusInternalServerError)
+			return
+		}
+
+		// Extract biggest_objects from data section
+		if dataSection, ok := summary["data"].(map[string]interface{}); ok {
+			if biggestObjects, ok := dataSection["biggest_objects"]; ok {
+				// Filter by class if specified
+				if className != "" {
+					if objects, ok := biggestObjects.([]interface{}); ok {
+						var filtered []interface{}
+						for _, obj := range objects {
+							if objMap, ok := obj.(map[string]interface{}); ok {
+								if objClassName, ok := objMap["class_name"].(string); ok {
+									if objClassName == className {
+										filtered = append(filtered, obj)
+									}
+								}
+							}
+						}
+						biggestObjects = filtered
+					}
+				}
+
+				data, err = json.Marshal(biggestObjects)
+				if err != nil {
+					http.Error(w, "Failed to marshal biggest objects", http.StatusInternalServerError)
+					return
+				}
+			} else {
+				http.Error(w, "Biggest objects not found in summary", http.StatusNotFound)
+				return
+			}
+		} else {
+			http.Error(w, "Data section not found in summary", http.StatusNotFound)
+			return
+		}
+	} else if className != "" {
+		// Filter the loaded data by class name
+		var objects []interface{}
+		if jsonErr := json.Unmarshal(data, &objects); jsonErr == nil {
+			var filtered []interface{}
+			for _, obj := range objects {
+				if objMap, ok := obj.(map[string]interface{}); ok {
+					if objClassName, ok := objMap["class_name"].(string); ok {
+						if objClassName == className {
+							filtered = append(filtered, obj)
+						}
+					}
+				}
+			}
+			data, _ = json.Marshal(filtered)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Write(data)
+}
+
+// handleObjectFields returns the fields of a specific object for tree expansion
+func (s *Server) handleObjectFields(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	objectIDStr := r.URL.Query().Get("id")
+	if objectIDStr == "" {
+		http.Error(w, "Object ID is required", http.StatusBadRequest)
+		return
+	}
+
+	taskDir := filepath.Join(s.dataDir, taskID)
+	if taskID == "" {
+		taskDir = s.dataDir
+	}
+
+	// Try to read from object_fields cache file
+	// Format: object_fields_<objectID>.json
+	cacheFile := filepath.Join(taskDir, "object_fields_"+objectIDStr+".json")
+	data, err := os.ReadFile(cacheFile)
+	if err == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write(data)
+		return
+	}
+
+	// If cache doesn't exist, try to get from summary.json biggest_objects
+	summaryFile := filepath.Join(taskDir, "summary.json")
+	summaryData, err := os.ReadFile(summaryFile)
+	if err != nil {
+		http.Error(w, "Summary data not found", http.StatusNotFound)
+		return
+	}
+
+	var summary map[string]interface{}
+	if err := json.Unmarshal(summaryData, &summary); err != nil {
+		http.Error(w, "Failed to parse summary", http.StatusInternalServerError)
+		return
+	}
+
+	// Look for the object in biggest_objects
+	if dataSection, ok := summary["data"].(map[string]interface{}); ok {
+		if biggestObjects, ok := dataSection["biggest_objects"].([]interface{}); ok {
+			for _, obj := range biggestObjects {
+				if objMap, ok := obj.(map[string]interface{}); ok {
+					if objID, ok := objMap["object_id"].(string); ok && objID == objectIDStr {
+						// Found the object, return its fields
+						if fields, ok := objMap["fields"]; ok {
+							// Enhance fields with has_children info
+							if fieldsList, ok := fields.([]interface{}); ok {
+								for _, f := range fieldsList {
+									if fieldMap, ok := f.(map[string]interface{}); ok {
+										// If it has ref_id, it potentially has children
+										if _, hasRef := fieldMap["ref_id"]; hasRef {
+											fieldMap["has_children"] = true
+										}
+									}
+								}
+							}
+							data, _ = json.Marshal(fields)
+							w.Header().Set("Content-Type", "application/json")
+							w.Header().Set("Access-Control-Allow-Origin", "*")
+							w.Write(data)
+							return
+						}
+					}
+					// Also check nested fields for the object
+					if fields, ok := objMap["fields"].([]interface{}); ok {
+						for _, f := range fields {
+							if fieldMap, ok := f.(map[string]interface{}); ok {
+								if refID, ok := fieldMap["ref_id"].(string); ok && refID == objectIDStr {
+									// This is a child object, return empty fields for now
+									// In production, we'd need to look up this object's fields
+									data = []byte("[]")
+									w.Header().Set("Content-Type", "application/json")
+									w.Header().Set("Access-Control-Allow-Origin", "*")
+									w.Write(data)
+									return
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Object not found - return empty array instead of error for better UX
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Write([]byte("[]"))
 }

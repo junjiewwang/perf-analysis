@@ -139,11 +139,16 @@ type HeapAnalysisResult struct {
 	TotalInstances   int64                         `json:"total_instances"`
 	TotalHeapSize    int64                         `json:"total_heap_size"`
 	LargestObjects   []*ObjectInfo                 `json:"largest_objects,omitempty"`
+	BiggestObjects   []*BiggestObject              `json:"biggest_objects,omitempty"`
 	StringStats      *StringStats                  `json:"string_stats,omitempty"`
 	ArrayStats       *ArrayStats                   `json:"array_stats,omitempty"`
 	ClassRetainers   map[string]*ClassRetainers    `json:"class_retainers,omitempty"`
 	ReferenceGraphs  map[string]*ReferenceGraphData `json:"reference_graphs,omitempty"`
 	BusinessRetainers map[string][]*BusinessRetainer `json:"business_retainers,omitempty"`
+	// ClassLayouts holds field layout information for classes (used by BiggestObjectsBuilder)
+	ClassLayouts     map[uint64]*ClassFieldLayout  `json:"-"`
+	// Strings holds string table (used by BiggestObjectsBuilder)
+	Strings          map[uint64]string             `json:"-"`
 }
 
 // ObjectInfo holds information about a specific object.
@@ -171,4 +176,65 @@ type ArrayStats struct {
 	EmptyArrays      int64            `json:"empty_arrays"`
 	EmptyArraysWaste int64            `json:"empty_arrays_waste"`
 	ByType           map[string]int64 `json:"by_type"`
+}
+
+// BiggestObject represents a large object with its field values.
+type BiggestObject struct {
+	ObjectID     uint64         `json:"object_id"`
+	ClassName    string         `json:"class_name"`
+	ShallowSize  int64          `json:"shallow_size"`
+	RetainedSize int64          `json:"retained_size"`
+	Fields       []*ObjectField `json:"fields,omitempty"`
+	GCRootPath   *GCRootPath    `json:"gc_root_path,omitempty"`
+}
+
+// ObjectField represents a field value in an object.
+type ObjectField struct {
+	Name      string      `json:"name"`
+	Type      string      `json:"type"`
+	Value     interface{} `json:"value,omitempty"`
+	RefID     uint64      `json:"ref_id,omitempty"`
+	RefClass  string      `json:"ref_class,omitempty"`
+	IsStatic  bool        `json:"is_static,omitempty"`
+}
+
+// ObjectFieldDetail represents a field with detailed information for tree expansion.
+// This is used for lazy loading of child objects in the Biggest Objects tree view.
+type ObjectFieldDetail struct {
+	Name         string      `json:"name"`
+	Type         string      `json:"type"`
+	Value        interface{} `json:"value,omitempty"`
+	RefID        uint64      `json:"ref_id,omitempty"`
+	RefClass     string      `json:"ref_class,omitempty"`
+	ShallowSize  int64       `json:"shallow_size,omitempty"`
+	RetainedSize int64       `json:"retained_size,omitempty"`
+	HasChildren  bool        `json:"has_children"`
+	IsStatic     bool        `json:"is_static,omitempty"`
+}
+
+// ClassFieldLayout describes the field layout of a class for field value extraction.
+type ClassFieldLayout struct {
+	ClassID       uint64
+	ClassName     string
+	SuperClassID  uint64
+	InstanceSize  int
+	InstanceFields []FieldInfo
+	StaticFields   []StaticFieldInfo
+}
+
+// FieldInfo describes an instance field.
+type FieldInfo struct {
+	NameID uint64
+	Name   string
+	Type   BasicType
+	Offset int // Offset in instance data
+}
+
+// StaticFieldInfo describes a static field with its value.
+type StaticFieldInfo struct {
+	NameID uint64
+	Name   string
+	Type   BasicType
+	Value  interface{}
+	RefID  uint64 // For object references
 }

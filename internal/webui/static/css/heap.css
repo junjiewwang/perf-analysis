@@ -801,3 +801,130 @@
         opacity: 1;
     }
 }
+
+/* ============================================
+   Biggest Objects Panel
+   ============================================ */
+.biggest-object-row {
+    transition: all 0.2s ease;
+}
+
+.biggest-object-row:hover {
+    border-color: #667eea;
+}
+
+.biggest-object-row .rotate-90 {
+    transform: rotate(90deg);
+}
+
+/* Sort buttons */
+.sort-btn {
+    transition: all 0.2s ease;
+}
+
+.sort-btn:hover {
+    transform: translateY(-1px);
+}
+
+.sort-btn.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+/* Object details animation */
+.biggest-object-row > div:last-child {
+    animation: expandIn 0.2s ease;
+}
+
+@keyframes expandIn {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 1000px;
+    }
+}
+
+/* Field value styles */
+.biggest-object-row .field-value-ref {
+    color: #2563eb;
+    cursor: pointer;
+}
+
+.biggest-object-row .field-value-ref:hover {
+    text-decoration: underline;
+}
+
+.biggest-object-row .field-value-string {
+    color: #059669;
+}
+
+.biggest-object-row .field-value-number {
+    color: #7c3aed;
+}
+
+.biggest-object-row .field-value-null {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+/* GC Root path visualization */
+.gc-path-node {
+    position: relative;
+    padding-left: 24px;
+}
+
+.gc-path-node::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, #667eea, #764ba2);
+}
+
+.gc-path-node:last-child::before {
+    height: 50%;
+}
+
+.gc-path-node::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    width: 12px;
+    height: 2px;
+    background: linear-gradient(to right, #667eea, #764ba2);
+}
+
+/* Summary cards hover effect */
+#biggestObjectsSummary > div > div {
+    transition: all 0.2s ease;
+}
+
+#biggestObjectsSummary > div > div:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Custom scrollbar for object list */
+#biggestObjectsList::-webkit-scrollbar {
+    width: 8px;
+}
+
+#biggestObjectsList::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+#biggestObjectsList::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+}
+
+#biggestObjectsList::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%);
+}

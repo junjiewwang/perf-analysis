@@ -6,6 +6,7 @@
  * - HeapCore: 核心模块，状态管理和事件系统
  * - HeapDiagnosis: 问题诊断概览（首页展示）
  * - HeapTreemap: Treemap 可视化
+ * - HeapBiggestObjects: 最大对象分析
  * - HeapHistogram: Class Histogram 表格
  * - HeapGCRoots: GC Roots 分析
  * - HeapMergedPaths: Merged Paths 分析（IDEA 风格）
@@ -33,7 +34,7 @@ const HeapAnalysis = (function() {
         
         // 子模块会在加载时自动注册到核心模块
         console.log('[HeapAnalysis] Initialized with modules:', 
-            Array.from(['diagnosis', 'treemap', 'histogram', 'gcroots', 'mergedPaths', 'rootcause'])
+            Array.from(['diagnosis', 'treemap', 'biggestObjects', 'histogram', 'gcroots', 'mergedPaths', 'rootcause'])
                 .filter(name => HeapCore.getModule(name))
                 .join(', ')
         );
@@ -232,6 +233,31 @@ const HeapAnalysis = (function() {
     }
 
     // ============================================
+    // 委托方法 - Biggest Objects
+    // ============================================
+    
+    function loadBiggestObjects(taskId) {
+        const biggestObjectsModule = HeapCore.getModule('biggestObjects');
+        if (biggestObjectsModule) {
+            biggestObjectsModule.loadBiggestObjects(taskId);
+        }
+    }
+
+    function filterBiggestObjects(searchTerm) {
+        const biggestObjectsModule = HeapCore.getModule('biggestObjects');
+        if (biggestObjectsModule) {
+            biggestObjectsModule.filter(searchTerm);
+        }
+    }
+
+    function sortBiggestObjects(field) {
+        const biggestObjectsModule = HeapCore.getModule('biggestObjects');
+        if (biggestObjectsModule) {
+            biggestObjectsModule.sort(field);
+        }
+    }
+
+    // ============================================
     // 兼容性方法（保持向后兼容）
     // ============================================
     
@@ -316,6 +342,11 @@ const HeapAnalysis = (function() {
         // Treemap
         resizeTreemap,
         renderTreemap,
+        
+        // Biggest Objects
+        loadBiggestObjects,
+        filterBiggestObjects,
+        sortBiggestObjects,
         
         // 工具方法
         getClassData,

@@ -17,15 +17,15 @@ func TestNewParser(t *testing.T) {
 		parser := NewParser(nil)
 		assert.NotNil(t, parser)
 		assert.NotNil(t, parser.opts)
-		assert.Equal(t, 0, parser.opts.TopClassesN) // 0 means no limit
+		assert.Equal(t, 50, parser.opts.TopClassesN) // Default is 50
 	})
 
 	t.Run("with custom options", func(t *testing.T) {
 		opts := &ParserOptions{
-			TopClassesN: 50,
+			TopClassesN: 100,
 		}
 		parser := NewParser(opts)
-		assert.Equal(t, 50, parser.opts.TopClassesN)
+		assert.Equal(t, 100, parser.opts.TopClassesN)
 	})
 }
 
