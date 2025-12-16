@@ -26,30 +26,39 @@
    Class Histogram Table (Tailwind-compatible)
    ============================================ */
 #heapHistogramTable {
-    background: #1f2937;
+    background: #ffffff;
     border-radius: 8px;
     overflow: hidden;
+    border: 1px solid #e5e7eb;
 }
 
 #heapHistogramTable th {
     font-weight: 500;
     font-size: 11px;
     letter-spacing: 0.05em;
+    background: #f9fafb;
+    color: #6b7280;
 }
 
 #heapHistogramTable th.sortable.active {
-    color: #60a5fa;
-    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+    background: rgba(37, 99, 235, 0.08);
 }
 
 #heapHistogramTable td {
     padding: 10px 12px;
-    border-bottom: 1px solid #374151;
+    border-bottom: 1px solid #e5e7eb;
     font-size: 13px;
+    color: #374151;
 }
 
 #heapHistogramTable tbody tr {
-    border-bottom: 1px solid #374151;
+    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
+}
+
+#heapHistogramTable tbody tr:hover {
+    background: #f9fafb;
 }
 
 #heapHistogramTable tbody tr:last-child {
@@ -67,7 +76,7 @@
     left: 0;
     top: 0;
     bottom: 0;
-    background: rgba(59, 130, 246, 0.15);
+    background: rgba(59, 130, 246, 0.12);
     z-index: 0;
     transition: width 0.3s ease;
 }
@@ -79,10 +88,11 @@
     display: block;
     font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
     font-size: 12px;
+    color: #374151;
 }
 
 #heapHistogramTable .retained-cell .size-bar-bg {
-    background: rgba(168, 85, 247, 0.15);
+    background: rgba(34, 197, 94, 0.12);
 }
 
 /* Class name styling */
@@ -100,8 +110,13 @@
 
 #heapViewFlat:not(.active),
 #heapViewPackage:not(.active) {
-    background: #374151 !important;
-    color: #9ca3af !important;
+    background: #e5e7eb !important;
+    color: #374151 !important;
+}
+
+#heapViewFlat:not(.active):hover,
+#heapViewPackage:not(.active):hover {
+    background: #d1d5db !important;
 }
 
 /* ============================================

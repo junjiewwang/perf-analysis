@@ -102,6 +102,7 @@ const HeapAnalysis = (function() {
      * @param {Object} data - 分析数据
      */
     function renderAnalysis(data) {
+        console.log('[HeapAnalysis] renderAnalysis called');
         const heapData = data.data || {};
 
         // 渲染统计信息
@@ -111,6 +112,7 @@ const HeapAnalysis = (function() {
         document.getElementById('heapFormat').textContent = heapData.format || 'Unknown';
 
         // 加载数据到核心模块（触发各子模块渲染）
+        console.log('[HeapAnalysis] Calling HeapCore.loadAnalysisData');
         HeapCore.loadAnalysisData(data);
 
         // 渲染问题诊断概览（首页）

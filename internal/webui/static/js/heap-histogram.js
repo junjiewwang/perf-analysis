@@ -35,13 +35,17 @@ const HeapHistogram = (function() {
      * @returns {Array} 排序后的数据
      */
     function sortData(data, field, ascending) {
+        if (!data || !Array.isArray(data)) {
+            console.warn('[HeapHistogram] sortData: invalid data', data);
+            return [];
+        }
         return [...data].sort((a, b) => {
             let aVal, bVal;
             
             switch (field) {
                 case 'name':
-                    aVal = a.name.toLowerCase();
-                    bVal = b.name.toLowerCase();
+                    aVal = (a.name || '').toLowerCase();
+                    bVal = (b.name || '').toLowerCase();
                     return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
                 case 'count':
                     aVal = a.instanceCount || 0;
@@ -82,17 +86,17 @@ const HeapHistogram = (function() {
         const formattedClassName = formatClassNameSimple(cls.name);
 
         return `
-            <tr class="hover:bg-gray-800/50 transition-colors">
-                <td class="text-center text-gray-500 text-xs w-12">${globalIndex}</td>
-                <td class="class-name font-mono text-sm">${formattedClassName}</td>
-                <td class="text-right text-gray-300 tabular-nums">${Utils.formatNumber(cls.instanceCount)}</td>
-                <td class="size-cell relative">
-                    <div class="size-bar-bg" style="width: ${shallowBarWidth}%"></div>
-                    <span class="size-value">${Utils.formatBytes(cls.size)}</span>
+            <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-4 py-3 text-center text-gray-400 text-sm w-12">${globalIndex}</td>
+                <td class="px-4 py-3 font-mono text-sm">${formattedClassName}</td>
+                <td class="px-4 py-3 text-right text-gray-600 tabular-nums text-sm">${Utils.formatNumber(cls.instanceCount)}</td>
+                <td class="px-4 py-3 text-right relative">
+                    <div class="absolute inset-y-1 left-1 bg-blue-100 rounded" style="width: ${shallowBarWidth * 0.95}%"></div>
+                    <span class="relative text-sm font-medium text-gray-700">${Utils.formatBytes(cls.size)}</span>
                 </td>
-                <td class="size-cell retained-cell relative">
-                    <div class="size-bar-bg" style="width: ${retainedBarWidth}%"></div>
-                    <span class="size-value">${cls.retained_size ? Utils.formatBytes(cls.retained_size) : '-'}</span>
+                <td class="px-4 py-3 text-right relative">
+                    <div class="absolute inset-y-1 left-1 bg-green-100 rounded" style="width: ${retainedBarWidth * 0.95}%"></div>
+                    <span class="relative text-sm font-medium text-gray-700">${cls.retained_size ? Utils.formatBytes(cls.retained_size) : '-'}</span>
                 </td>
             </tr>
         `;
@@ -116,13 +120,13 @@ const HeapHistogram = (function() {
         const lastDot = className.lastIndexOf('.');
         if (lastDot === -1) {
             // 没有包名，直接返回高亮的类名
-            return `<span class="text-yellow-400 font-semibold">${Utils.escapeHtml(className)}</span>`;
+            return `<span class="text-gray-900 font-semibold">${Utils.escapeHtml(className)}</span>`;
         }
         
         const packageName = className.substring(0, lastDot + 1);
         const simpleName = className.substring(lastDot + 1);
         
-        return `<span class="text-green-600">${Utils.escapeHtml(packageName)}</span><span class="text-yellow-400 font-semibold">${Utils.escapeHtml(simpleName)}</span>`;
+        return `<span class="text-gray-400">${Utils.escapeHtml(packageName)}</span><span class="text-gray-900 font-semibold">${Utils.escapeHtml(simpleName)}</span>`;
     }
 
     /**
@@ -143,37 +147,37 @@ const HeapHistogram = (function() {
         const endItem = Math.min(currentPage * pageSize, total);
 
         container.innerHTML = `
-            <div class="flex items-center justify-between py-3 px-4 bg-gray-800 rounded-lg mt-4">
-                <div class="text-sm text-gray-400">
-                    显示 <span class="text-white font-medium">${startItem}-${endItem}</span> 
-                    共 <span class="text-white font-medium">${Utils.formatNumber(total)}</span> 个类
+            <div class="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-lg mt-4 border border-gray-200">
+                <div class="text-sm text-gray-500">
+                    显示 <span class="text-gray-700 font-medium">${startItem}-${endItem}</span> 
+                    共 <span class="text-gray-700 font-medium">${Utils.formatNumber(total)}</span> 个类
                 </div>
                 <div class="flex items-center gap-2">
                     <button onclick="HeapHistogram.goToPage(1)" 
-                        class="px-3 py-1.5 rounded text-sm ${currentPage === 1 ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}"
+                        class="px-3 py-1.5 rounded text-sm ${currentPage === 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}"
                         ${currentPage === 1 ? 'disabled' : ''}>
                         首页
                     </button>
                     <button onclick="HeapHistogram.goToPage(${currentPage - 1})" 
-                        class="px-3 py-1.5 rounded text-sm ${currentPage === 1 ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}"
+                        class="px-3 py-1.5 rounded text-sm ${currentPage === 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}"
                         ${currentPage === 1 ? 'disabled' : ''}>
                         上一页
                     </button>
-                    <span class="px-3 py-1.5 text-sm text-gray-300">
-                        第 <span class="text-white font-medium">${currentPage}</span> / ${totalPages} 页
+                    <span class="px-3 py-1.5 text-sm text-gray-600">
+                        第 <span class="text-gray-800 font-medium">${currentPage}</span> / ${totalPages} 页
                     </span>
                     <button onclick="HeapHistogram.goToPage(${currentPage + 1})" 
-                        class="px-3 py-1.5 rounded text-sm ${currentPage === totalPages ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}"
+                        class="px-3 py-1.5 rounded text-sm ${currentPage === totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}"
                         ${currentPage === totalPages ? 'disabled' : ''}>
                         下一页
                     </button>
                     <button onclick="HeapHistogram.goToPage(${totalPages})" 
-                        class="px-3 py-1.5 rounded text-sm ${currentPage === totalPages ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}"
+                        class="px-3 py-1.5 rounded text-sm ${currentPage === totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'}"
                         ${currentPage === totalPages ? 'disabled' : ''}>
                         末页
                     </button>
                     <select onchange="HeapHistogram.setPageSize(this.value)" 
-                        class="ml-4 px-2 py-1.5 bg-gray-700 text-gray-300 rounded text-sm border border-gray-600">
+                        class="ml-4 px-2 py-1.5 bg-white text-gray-600 rounded text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50">
                         <option value="50" ${pageSize === 50 ? 'selected' : ''}>50条/页</option>
                         <option value="100" ${pageSize === 100 ? 'selected' : ''}>100条/页</option>
                         <option value="200" ${pageSize === 200 ? 'selected' : ''}>200条/页</option>
@@ -190,9 +194,21 @@ const HeapHistogram = (function() {
      * @param {Array} data - 类数据
      */
     function renderFlatView(data) {
+        console.log('[HeapHistogram] renderFlatView called with', data ? data.length : 0, 'items');
         const tbody = document.getElementById('heapClassTableBody');
-        if (!tbody) return;
+        console.log('[HeapHistogram] tbody element:', tbody ? 'found' : 'NOT FOUND');
+        if (!tbody) {
+            console.warn('[HeapHistogram] heapClassTableBody not found in DOM');
+            return;
+        }
 
+        if (!data || data.length === 0) {
+            console.warn('[HeapHistogram] No data to render');
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-500">No data available</td></tr>';
+            return;
+        }
+
+        console.log('[HeapHistogram] Rendering', data.length, 'items, first item:', data[0]);
         const sortedData = sortData(data, sortField, sortAsc);
         
         // 分页处理
@@ -233,33 +249,33 @@ const HeapHistogram = (function() {
             const classRows = pkg.classes.map((cls, i) => {
                 const shortName = cls.name.split('.').pop();
                 return `
-                    <tr class="hover:bg-gray-700/50">
-                        <td class="text-center text-gray-500 text-xs pl-8">${i + 1}</td>
-                        <td class="font-mono text-sm text-yellow-400" title="${Utils.escapeHtml(cls.name)}">${Utils.escapeHtml(shortName)}</td>
-                        <td class="text-right text-gray-300">${Utils.formatBytes(cls.size)}</td>
-                        <td class="text-right text-gray-300">${Utils.formatNumber(cls.instanceCount)}</td>
-                        <td class="text-right text-gray-400">${cls.percentage.toFixed(2)}%</td>
+                    <tr class="hover:bg-gray-50 border-b border-gray-100">
+                        <td class="text-center text-gray-400 text-sm py-2 pl-8">${i + 1}</td>
+                        <td class="font-mono text-sm text-gray-900 font-semibold py-2" title="${Utils.escapeHtml(cls.name)}">${Utils.escapeHtml(shortName)}</td>
+                        <td class="text-right text-gray-600 py-2 text-sm">${Utils.formatBytes(cls.size)}</td>
+                        <td class="text-right text-gray-600 py-2 text-sm">${Utils.formatNumber(cls.instanceCount)}</td>
+                        <td class="text-right text-gray-500 py-2 text-sm">${cls.percentage.toFixed(2)}%</td>
                     </tr>
                 `;
             }).join('');
 
             return `
-                <div class="mb-3 bg-gray-800 rounded-lg overflow-hidden">
-                    <div class="flex justify-between items-center px-4 py-3 bg-gray-700 cursor-pointer hover:bg-gray-600 transition-colors" onclick="HeapHistogram.togglePackage(${idx})">
-                        <span class="font-medium text-gray-200">
+                <div class="mb-3 bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    <div class="flex justify-between items-center px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors" onclick="HeapHistogram.togglePackage(${idx})">
+                        <span class="font-medium text-gray-700">
                             <span class="text-lg mr-2">📦</span>
                             ${Utils.escapeHtml(pkgName)}
                             <span class="text-gray-400 text-sm ml-2">(${pkg.classes.length} classes)</span>
                         </span>
-                        <div class="flex gap-6 text-sm text-gray-400">
-                            <span>Size: <span class="text-blue-400 font-medium">${Utils.formatBytes(pkg.totalSize)}</span></span>
-                            <span>Instances: <span class="text-green-400 font-medium">${Utils.formatNumber(pkg.totalInstances)}</span></span>
+                        <div class="flex gap-6 text-sm text-gray-500">
+                            <span>Size: <span class="text-blue-600 font-medium">${Utils.formatBytes(pkg.totalSize)}</span></span>
+                            <span>Instances: <span class="text-green-600 font-medium">${Utils.formatNumber(pkg.totalInstances)}</span></span>
                         </div>
                     </div>
                     <div class="hidden" id="pkg-content-${idx}">
                         <table class="w-full">
                             <thead>
-                                <tr class="bg-gray-750 text-gray-400 text-xs uppercase">
+                                <tr class="bg-gray-50 text-gray-500 text-xs uppercase">
                                     <th class="py-2 px-4 text-left w-12">#</th>
                                     <th class="py-2 px-4 text-left">Class</th>
                                     <th class="py-2 px-4 text-right w-28">Size</th>
@@ -300,11 +316,20 @@ const HeapHistogram = (function() {
      * 初始化模块
      */
     function init() {
+        console.log('[HeapHistogram] init called');
         // 监听数据加载事件
         HeapCore.on('dataLoaded', function(data) {
-            currentData = data.classData;
+            console.log('[HeapHistogram] dataLoaded event received, classData:', data.classData ? data.classData.length : 0, 'items');
+            currentData = data.classData || [];
             currentPage = 1;
-            render(currentData);
+            // 只有当 heapClassTableBody 存在时才渲染
+            // 否则等待 showPanel 时再渲染
+            const tbody = document.getElementById('heapClassTableBody');
+            if (tbody && currentData.length > 0) {
+                render(currentData);
+            } else {
+                console.log('[HeapHistogram] Skipping render - tbody not found or no data, will render when panel is shown');
+            }
         });
 
         // 监听搜索事件
@@ -325,6 +350,7 @@ const HeapHistogram = (function() {
      * @param {Array} data - 类数据
      */
     function render(data) {
+        console.log('[HeapHistogram] render called with', data ? data.length : 0, 'items, viewMode:', viewMode);
         currentData = data || currentData;
         
         if (viewMode === 'flat') {
@@ -391,13 +417,30 @@ const HeapHistogram = (function() {
     function setViewMode(mode) {
         viewMode = mode;
         
-        // 更新按钮状态
-        document.getElementById('heapViewFlat')?.classList.toggle('active', mode === 'flat');
-        document.getElementById('heapViewPackage')?.classList.toggle('active', mode === 'package');
+        // 更新按钮状态 - 白色背景风格
+        const flatBtn = document.getElementById('heapViewFlat');
+        const pkgBtn = document.getElementById('heapViewPackage');
+        
+        if (flatBtn) {
+            if (mode === 'flat') {
+                flatBtn.className = 'px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium';
+            } else {
+                flatBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300';
+            }
+        }
+        if (pkgBtn) {
+            if (mode === 'package') {
+                pkgBtn.className = 'px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium';
+            } else {
+                pkgBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300';
+            }
+        }
         
         // 切换视图容器
-        document.getElementById('heapFlatView').style.display = mode === 'flat' ? 'block' : 'none';
-        document.getElementById('heapPackageView').style.display = mode === 'package' ? 'block' : 'none';
+        const flatView = document.getElementById('heapFlatView');
+        const packageView = document.getElementById('heapPackageView');
+        if (flatView) flatView.style.display = mode === 'flat' ? 'block' : 'none';
+        if (packageView) packageView.style.display = mode === 'package' ? 'block' : 'none';
 
         render(currentData);
     }

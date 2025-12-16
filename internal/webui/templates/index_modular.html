@@ -98,15 +98,15 @@
                 🧵 Threads
             </button>
             <!-- Heap Tabs -->
-            <button @click="showPanel('heapdiagnosis')" x-show="analysisType === 'heap'"
-                :class="{'tab-active': activePanel === 'heapdiagnosis'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
-                🩺 问题诊断
-            </button>
             <button @click="showPanel('heaptreemap')" x-show="analysisType === 'heap'"
                 :class="{'tab-active': activePanel === 'heaptreemap'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 🗺️ Biggest Objects
+            </button>
+            <button @click="showPanel('heapdiagnosis')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heapdiagnosis'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                🩺 问题诊断
             </button>
             <button @click="showPanel('heapgcroots')" x-show="analysisType === 'heap'"
                 :class="{'tab-active': activePanel === 'heapgcroots'}"
@@ -549,10 +549,10 @@
         </div>
 
         <!-- Heap Histogram Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'heaphistogram'" x-cloak class="bg-gray-900 rounded-xl shadow-md p-5">
-            <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-700">
-                <h2 class="text-lg font-semibold text-gray-100">📊 Class Histogram</h2>
-                <div class="text-sm text-gray-400" id="heapHistogramStats"></div>
+        <div x-show="activePanel === 'heaphistogram'" x-cloak class="bg-white rounded-xl shadow-md p-5">
+            <div class="flex items-center justify-between mb-4 pb-2.5 border-b-2 border-primary">
+                <h2 class="text-lg font-semibold text-gray-800">📊 Class Histogram</h2>
+                <div class="text-sm text-gray-500" id="heapHistogramStats"></div>
             </div>
             
             <!-- 搜索和视图切换 -->
@@ -560,22 +560,22 @@
                 <div class="flex items-center gap-2">
                     <input type="text" id="heapClassSearch" placeholder="搜索类名 (如 HashMap, byte[], String)..." 
                         onkeyup="if(event.key==='Enter') HeapHistogram.filter(this.value)"
-                        class="w-80 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        class="w-80 px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
                     <button onclick="HeapHistogram.filter(document.getElementById('heapClassSearch').value)" 
-                        class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                        class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
                         🔍 搜索
                     </button>
                     <button onclick="HeapHistogram.clearSearch()" 
-                        class="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">
+                        class="px-5 py-2.5 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">
                         清除
                     </button>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium" id="heapViewFlat" 
+                    <button class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium" id="heapViewFlat" 
                         onclick="HeapHistogram.setViewMode('flat')">
                         📋 平铺视图
                     </button>
-                    <button class="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-600" id="heapViewPackage" 
+                    <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300" id="heapViewPackage" 
                         onclick="HeapHistogram.setViewMode('package')">
                         📦 包视图
                     </button>
@@ -585,29 +585,29 @@
             <!-- 表格容器 -->
             <div id="heapHistogramContainer" class="overflow-x-auto">
                 <div id="heapFlatView">
-                    <table class="w-full border-collapse" id="heapHistogramTable">
-                        <thead class="sticky top-0 z-10">
-                            <tr class="bg-gray-800 text-gray-400 text-xs uppercase tracking-wider">
-                                <th class="py-3 px-3 text-center w-12">#</th>
-                                <th class="py-3 px-3 text-left sortable cursor-pointer hover:bg-gray-700 transition-colors" 
+                    <table class="w-full" id="heapHistogramTable">
+                        <thead>
+                            <tr class="bg-gray-50 text-left">
+                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center w-12">#</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider sortable cursor-pointer hover:bg-gray-100 transition-colors" 
                                     data-sort="name" onclick="HeapHistogram.sort('name')">
                                     Class <span class="sort-arrow ml-1"></span>
                                 </th>
-                                <th class="py-3 px-3 text-right w-28 sortable cursor-pointer hover:bg-gray-700 transition-colors" 
+                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-28 sortable cursor-pointer hover:bg-gray-100 transition-colors" 
                                     data-sort="count" onclick="HeapHistogram.sort('count')">
                                     Count <span class="sort-arrow ml-1"></span>
                                 </th>
-                                <th class="py-3 px-3 text-right w-36 sortable cursor-pointer hover:bg-gray-700 transition-colors active" 
+                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-40 sortable cursor-pointer hover:bg-gray-100 transition-colors active" 
                                     data-sort="shallow" onclick="HeapHistogram.sort('shallow')">
-                                    Shallow <span class="sort-arrow ml-1">▼</span>
+                                    Shallow Size <span class="sort-arrow ml-1">▼</span>
                                 </th>
-                                <th class="py-3 px-3 text-right w-36 sortable cursor-pointer hover:bg-gray-700 transition-colors" 
+                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-40 sortable cursor-pointer hover:bg-gray-100 transition-colors" 
                                     data-sort="retained" onclick="HeapHistogram.sort('retained')">
-                                    Retained <span class="sort-arrow ml-1"></span>
+                                    Retained Size <span class="sort-arrow ml-1"></span>
                                 </th>
                             </tr>
                         </thead>
-                        <tbody id="heapClassTableBody" class="text-gray-300"></tbody>
+                        <tbody id="heapClassTableBody" class="divide-y divide-gray-100"></tbody>
                     </table>
                     <!-- 分页控件 -->
                     <div id="heapPagination"></div>
@@ -900,6 +900,53 @@
                         });
                     } else if (panelId === 'heapdiagnosis' && this.summaryData) {
                         HeapAnalysis.renderDiagnosis(this.summaryData);
+                    } else if (panelId === 'heaphistogram') {
+                        // 等待 Alpine.js 更新 DOM 后再渲染 Class Histogram
+                        const self = this;
+                        this.$nextTick(() => {
+                            requestAnimationFrame(() => {
+                                if (typeof HeapHistogram !== 'undefined') {
+                                    // 首先尝试从 HeapHistogram 模块获取数据（可能已通过 dataLoaded 事件加载）
+                                    let classData = HeapHistogram.getData();
+                                    console.log('[showPanel] heaphistogram - HeapHistogram.getData():', classData ? classData.length : 0, 'items');
+                                    
+                                    // 如果模块内部没有数据，尝试从 HeapCore 获取
+                                    if (!classData || classData.length === 0) {
+                                        classData = HeapCore.getState('classData');
+                                        console.log('[showPanel] heaphistogram - HeapCore.getState(classData):', classData ? classData.length : 0, 'items');
+                                    }
+                                    
+                                    // 如果还是没有数据，尝试重新加载
+                                    if ((!classData || classData.length === 0) && self.summaryData) {
+                                        console.log('[showPanel] heaphistogram - reloading data from summaryData');
+                                        HeapCore.loadAnalysisData(self.summaryData);
+                                        classData = HeapCore.getState('classData');
+                                        console.log('[showPanel] heaphistogram - after reload, classData:', classData ? classData.length : 0, 'items');
+                                    }
+                                    
+                                    if (classData && classData.length > 0) {
+                                        HeapHistogram.render(classData);
+                                    } else {
+                                        console.warn('[showPanel] No classData available, summaryData:', self.summaryData ? 'present' : 'null');
+                                        if (self.summaryData) {
+                                            console.log('[showPanel] summaryData keys:', Object.keys(self.summaryData));
+                                            console.log('[showPanel] summaryData.top_items:', self.summaryData.top_items ? self.summaryData.top_items.length : 0);
+                                            console.log('[showPanel] summaryData.data:', self.summaryData.data ? 'present' : 'null');
+                                            if (self.summaryData.data) {
+                                                console.log('[showPanel] summaryData.data.top_classes:', self.summaryData.data.top_classes ? self.summaryData.data.top_classes.length : 0);
+                                            }
+                                        }
+                                        // 显示空状态提示
+                                        const tbody = document.getElementById('heapClassTableBody');
+                                        if (tbody) {
+                                            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-500">No class data available. Please check if the heap dump was parsed correctly.</td></tr>';
+                                        }
+                                    }
+                                } else {
+                                    console.warn('[showPanel] HeapHistogram module not defined');
+                                }
+                            });
+                        });
                     } else if (panelId === 'heaptreemap') {
                         // 等待 Alpine.js 更新 DOM 后再渲染 biggest objects
                         this.$nextTick(() => {

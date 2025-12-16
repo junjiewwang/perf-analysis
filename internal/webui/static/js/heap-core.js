@@ -173,9 +173,24 @@ const HeapCore = (function() {
      * @param {Object} data - 原始分析数据
      */
     function loadAnalysisData(data) {
+        console.log('[HeapCore] loadAnalysisData called with data:', data ? 'present' : 'null');
+        if (!data) {
+            console.error('[HeapCore] loadAnalysisData: data is null or undefined');
+            return;
+        }
+        console.log('[HeapCore] loadAnalysisData: data keys:', Object.keys(data));
+        
         const topItems = data.top_items || [];
         const heapData = data.data || {};
         const topClasses = heapData.top_classes || [];
+        
+        console.log('[HeapCore] topItems:', topItems.length, 'topClasses:', topClasses.length);
+        if (topItems.length > 0) {
+            console.log('[HeapCore] First topItem:', topItems[0]);
+        }
+        if (topClasses.length > 0) {
+            console.log('[HeapCore] First topClass:', topClasses[0]);
+        }
 
         // 构建 retainer 映射和 GC root paths 映射
         const retainerMap = {};
@@ -252,7 +267,7 @@ const HeapCore = (function() {
         console.log('[HeapCore] Loaded data:', {
             classCount: allClassData.length,
             classesWithPaths: Object.keys(gcRootPathsMap).length,
-            gcRootPathsMap: gcRootPathsMap
+            firstClass: allClassData.length > 0 ? allClassData[0] : null
         });
 
         // 批量更新状态
