@@ -211,12 +211,15 @@ type HeapBiggestObject struct {
 
 // HeapObjectField represents a field value in an object.
 type HeapObjectField struct {
-	Name     string      `json:"name"`
-	Type     string      `json:"type"`
-	Value    interface{} `json:"value,omitempty"`
-	RefID    string      `json:"ref_id,omitempty"`
-	RefClass string      `json:"ref_class,omitempty"`
-	IsStatic bool        `json:"is_static,omitempty"`
+	Name         string      `json:"name"`
+	Type         string      `json:"type"`
+	Value        interface{} `json:"value,omitempty"`
+	RefID        string      `json:"ref_id,omitempty"`
+	RefClass     string      `json:"ref_class,omitempty"`
+	ShallowSize  int64       `json:"shallow_size,omitempty"`
+	RetainedSize int64       `json:"retained_size,omitempty"`
+	HasChildren  bool        `json:"has_children,omitempty"`
+	IsStatic     bool        `json:"is_static,omitempty"`
 }
 
 // HeapGCRootPath represents a path from GC Root to an object.

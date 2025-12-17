@@ -96,8 +96,10 @@ type ReferenceGraph struct {
 	classObjectIDs map[uint64]bool
 	// dominators maps objectID -> immediate dominator objectID
 	dominators map[uint64]uint64
-	// retainedSizes maps objectID -> retained size (computed via dominator tree)
+	// retainedSizes maps objectID -> retained size (computed via dominator tree, standard calculation)
 	retainedSizes map[uint64]int64
+	// computedRetainedSizes maps objectID -> retained size computed by the active strategy
+	computedRetainedSizes map[uint64]int64
 	// classRetainedSizes maps classID -> total retained size for all instances (MAT top-level style)
 	classRetainedSizes map[uint64]int64
 	// classRetainedSizesAttributed maps classID -> attributed retained size (non-overlapping, by nearest dominator class)
@@ -114,6 +116,10 @@ type ReferenceGraph struct {
 	classToObjectsOnce sync.Once
 	// logger is used for debug logging. If nil, debug logs are suppressed.
 	logger utils.Logger
+
+	// Retained size calculation strategy (pluggable)
+	retainedSizeCalculatorRegistry *RetainedSizeCalculatorRegistry
+	activeRetainedSizeStrategy     RetainedSizeStrategy
 }
 
 // SetLogger sets the logger for debug output.
@@ -148,19 +154,22 @@ func NewReferenceGraphWithCapacity(estimatedObjects int) *ReferenceGraph {
 	}
 	
 	return &ReferenceGraph{
-		incomingRefs:                 make(map[uint64][]ObjectReference, estimatedRefs),
-		outgoingRefs:                 make(map[uint64][]ObjectReference, estimatedRefs),
-		objectClass:                  make(map[uint64]uint64, estimatedObjects),
-		objectSize:                   make(map[uint64]int64, estimatedObjects),
-		classNames:                   make(map[uint64]string, estimatedClasses),
-		gcRoots:                      make([]*GCRoot, 0, 10000),
-		gcRootSet:                    make(map[uint64]GCRootType, 10000),
-		classObjectIDs:               make(map[uint64]bool, estimatedClasses),
-		dominators:                   make(map[uint64]uint64, estimatedObjects),
-		retainedSizes:                make(map[uint64]int64, estimatedObjects),
-		classRetainedSizes:           make(map[uint64]int64, estimatedClasses),
-		classRetainedSizesAttributed: make(map[uint64]int64, estimatedClasses),
-		reachableObjects:             make(map[uint64]bool, estimatedObjects),
+		incomingRefs:                   make(map[uint64][]ObjectReference, estimatedRefs),
+		outgoingRefs:                   make(map[uint64][]ObjectReference, estimatedRefs),
+		objectClass:                    make(map[uint64]uint64, estimatedObjects),
+		objectSize:                     make(map[uint64]int64, estimatedObjects),
+		classNames:                     make(map[uint64]string, estimatedClasses),
+		gcRoots:                        make([]*GCRoot, 0, 10000),
+		gcRootSet:                      make(map[uint64]GCRootType, 10000),
+		classObjectIDs:                 make(map[uint64]bool, estimatedClasses),
+		dominators:                     make(map[uint64]uint64, estimatedObjects),
+		retainedSizes:                  make(map[uint64]int64, estimatedObjects),
+		computedRetainedSizes:          make(map[uint64]int64, estimatedObjects),
+		classRetainedSizes:             make(map[uint64]int64, estimatedClasses),
+		classRetainedSizesAttributed:   make(map[uint64]int64, estimatedClasses),
+		reachableObjects:               make(map[uint64]bool, estimatedObjects),
+		retainedSizeCalculatorRegistry: NewRetainedSizeCalculatorRegistry(),
+		activeRetainedSizeStrategy:     RetainedSizeStrategyIDEA, // Default to IDEA style
 	}
 }
 
@@ -813,8 +822,22 @@ func (g *ReferenceGraph) computeLengauerTarjan() {
 		}
 	}
 
-	// Also treat all Class objects as implicit GC roots
-	// Class objects are held by ClassLoaders and should be considered reachable
+	// Treat all Class objects as implicit GC roots.
+	// This matches IDEA's behavior where Class objects are NOT dominated by their ClassLoader.
+	// 
+	// Evidence from IDEA's Biggest Objects data:
+	// - ArthasClassloader retained size = 1.49 MB (in IDEA)
+	// - Without this fix, ArthasClassloader retained size = 9.63 MB (includes all loaded classes)
+	// 
+	// The key insight is that Class objects are held by the JVM's class metadata system,
+	// not just by ClassLoaders. They are reachable from multiple paths:
+	// 1. ClassLoader -> Class (via loaded classes list)
+	// 2. Static fields of the class
+	// 3. Method area / metaspace references
+	// 
+	// By treating Class objects as implicit GC roots, we ensure:
+	// - ClassLoader's retained size does NOT include loaded classes
+	// - This matches IDEA's behavior
 	classObjectsAdded := 0
 	for classObjID := range g.classObjectIDs {
 		if rootIdx, ok := state.objToIdx[classObjID]; ok {
@@ -825,6 +848,7 @@ func (g *ReferenceGraph) computeLengauerTarjan() {
 			}
 		}
 	}
+	g.debugf("Class objects count: %d, added as implicit GC roots: %d", len(g.classObjectIDs), classObjectsAdded)
 
 	// Note: We intentionally do NOT treat objects with no incoming refs as roots.
 	// These are likely unreachable garbage objects.
@@ -853,6 +877,10 @@ func (g *ReferenceGraph) computeLengauerTarjan() {
 		}
 	}
 	
+	// Debug: count references to ClassLoader objects
+	classLoaderRefsFound := 0
+	classLoaderRefsMissing := 0
+	
 	for objID := range g.objectClass {
 		fromIdx := state.objToIdx[objID]
 		fromClassID := g.objectClass[objID]
@@ -870,12 +898,24 @@ func (g *ReferenceGraph) computeLengauerTarjan() {
 							arrayListToObjectArrayRefs++
 						}
 					}
+					
+					// Debug: count ClassLoader references
+					if ref.FieldName == "<classloader>" {
+						classLoaderRefsFound++
+					}
+				}
+			} else {
+				// Target object not in objectClass - reference will be ignored
+				if ref.FieldName == "<classloader>" {
+					classLoaderRefsMissing++
+					g.debugf("DEBUG: ClassLoader reference missing target: fromObjID=%d, toObjID=%d", objID, ref.ToObjectID)
 				}
 			}
 		}
 	}
 	g.debugf("ArrayList -> Object[] references: %d (ArrayList classID=%d, Object[] classID=%d)", 
 		arrayListToObjectArrayRefs, arrayListClassID, objectArrayClassID)
+	g.debugf("DEBUG: ClassLoader references: found=%d, missing=%d", classLoaderRefsFound, classLoaderRefsMissing)
 
 	// Build predecessors list (reverse edges)
 	predecessors := make([][]int, totalNodes)
@@ -928,7 +968,7 @@ func (g *ReferenceGraph) computeLengauerTarjan() {
 
 	g.debugf("DFS visited %d nodes out of %d total (%.1f%%)", 
 		state.n, totalNodes, float64(state.n)*100.0/float64(totalNodes))
-	g.debugf("GC roots: %d explicit + %d class = %d total (found=%d, notFound=%d)", 
+	g.debugf("GC roots: %d explicit + %d class objects = %d total (found=%d, notFound=%d)", 
 		len(g.gcRoots), classObjectsAdded, len(gcRootSet), gcRootsFound, gcRootsNotFound)
 	
 	// Debug: count objects with outgoing references
@@ -1045,13 +1085,22 @@ func (g *ReferenceGraph) computeLengauerTarjan() {
 	// Handle unreachable objects (not visited by DFS)
 	// These are garbage objects that should not be counted in statistics
 	unreachableCount := 0
+	unreachableClassLoaders := 0
 	for objID := range g.objectClass {
 		if _, hasDom := g.dominators[objID]; !hasDom {
 			g.dominators[objID] = superRootID
 			unreachableCount++
+			// Check if this is a ClassLoader-related object
+			classID := g.objectClass[objID]
+			className := g.GetClassName(classID)
+			classNameLower := strings.ToLower(className)
+			if strings.Contains(classNameLower, "classloader") {
+				unreachableClassLoaders++
+				g.debugf("DEBUG: Unreachable ClassLoader: %s (objID=%d, classID=%d)", className, objID, classID)
+			}
 		}
 	}
-	g.debugf("Unreachable objects (garbage): %d", unreachableCount)
+	g.debugf("Unreachable objects (garbage): %d (ClassLoaders: %d)", unreachableCount, unreachableClassLoaders)
 
 	// Compute retained sizes
 	g.computeRetainedSizes()
@@ -1191,6 +1240,9 @@ func (g *ReferenceGraph) computeRetainedSizes() {
 
 	// Pre-compute class-level retained sizes for fast lookup
 	g.computeClassRetainedSizes()
+
+	// Compute retained sizes using the active strategy
+	g.computeStrategyRetainedSizes()
 }
 
 // computeClassRetainedSizes pre-computes two views of class retained size:
@@ -1243,8 +1295,115 @@ func (g *ReferenceGraph) computeClassRetainedSizes() {
 	}
 }
 
-// GetRetainedSize returns the retained size for an object.
+// computeStrategyRetainedSizes computes retained sizes using the active strategy.
+// This is the pluggable retained size calculation that uses the strategy pattern.
+func (g *ReferenceGraph) computeStrategyRetainedSizes() {
+	if g.retainedSizeCalculatorRegistry == nil {
+		g.retainedSizeCalculatorRegistry = NewRetainedSizeCalculatorRegistry()
+	}
+
+	// Get the active calculator
+	calc, ok := g.retainedSizeCalculatorRegistry.Get(g.activeRetainedSizeStrategy)
+	if !ok {
+		calc = g.retainedSizeCalculatorRegistry.GetDefault()
+	}
+
+	// Build the context for the calculator
+	ctx := g.buildRetainedSizeContext()
+
+	// Compute retained sizes using the strategy
+	g.computedRetainedSizes = calc.ComputeRetainedSizes(g.retainedSizes, ctx)
+
+	g.debugf("Computed retained sizes using strategy: %s", calc.Name())
+}
+
+// buildRetainedSizeContext creates a RetainedSizeContext from the current graph state.
+func (g *ReferenceGraph) buildRetainedSizeContext() *RetainedSizeContext {
+	return &RetainedSizeContext{
+		GetObjectSize: func(objectID uint64) int64 {
+			return g.objectSize[objectID]
+		},
+		GetObjectClassID: func(objectID uint64) (uint64, bool) {
+			classID, ok := g.objectClass[objectID]
+			return classID, ok
+		},
+		GetClassName: func(classID uint64) string {
+			return g.classNames[classID]
+		},
+		GetDominator: func(objectID uint64) uint64 {
+			return g.dominators[objectID]
+		},
+		GetOutgoingRefs: func(objectID uint64) []ObjectReference {
+			return g.outgoingRefs[objectID]
+		},
+		GetIncomingRefs: func(objectID uint64) []ObjectReference {
+			return g.incomingRefs[objectID]
+		},
+		ForEachObject: func(fn func(objectID uint64)) {
+			for objID := range g.objectClass {
+				fn(objID)
+			}
+		},
+		SuperRootID: superRootID,
+		Debugf:      g.debugf,
+	}
+}
+
+// SetRetainedSizeStrategy sets the retained size calculation strategy.
+// This will trigger recomputation of retained sizes if the dominator tree is already computed.
+func (g *ReferenceGraph) SetRetainedSizeStrategy(strategy RetainedSizeStrategy) {
+	if g.activeRetainedSizeStrategy == strategy {
+		return
+	}
+
+	g.activeRetainedSizeStrategy = strategy
+
+	// Recompute if dominator tree is already computed
+	if g.dominatorComputed {
+		g.computeStrategyRetainedSizes()
+	}
+}
+
+// GetRetainedSizeStrategy returns the current retained size calculation strategy.
+func (g *ReferenceGraph) GetRetainedSizeStrategy() RetainedSizeStrategy {
+	return g.activeRetainedSizeStrategy
+}
+
+// GetAvailableStrategies returns all available retained size calculation strategies.
+func (g *ReferenceGraph) GetAvailableStrategies() []RetainedSizeStrategy {
+	if g.retainedSizeCalculatorRegistry == nil {
+		g.retainedSizeCalculatorRegistry = NewRetainedSizeCalculatorRegistry()
+	}
+	return g.retainedSizeCalculatorRegistry.ListStrategies()
+}
+
+// RegisterRetainedSizeCalculator registers a custom retained size calculator.
+// This allows extending the system with new calculation strategies.
+func (g *ReferenceGraph) RegisterRetainedSizeCalculator(calc RetainedSizeCalculator) {
+	if g.retainedSizeCalculatorRegistry == nil {
+		g.retainedSizeCalculatorRegistry = NewRetainedSizeCalculatorRegistry()
+	}
+	g.retainedSizeCalculatorRegistry.Register(calc)
+}
+
+// GetRetainedSize returns the retained size for an object using the active strategy.
+// By default, this uses IDEA-style calculation which includes logically owned objects.
+// Use GetStandardRetainedSize for the strict dominator-tree based calculation.
 func (g *ReferenceGraph) GetRetainedSize(objectID uint64) int64 {
+	if !g.dominatorComputed {
+		g.ComputeDominatorTree()
+	}
+	// Return computed retained size (using active strategy)
+	if size, exists := g.computedRetainedSizes[objectID]; exists {
+		return size
+	}
+	// Fallback to standard retained size
+	return g.retainedSizes[objectID]
+}
+
+// GetStandardRetainedSize returns the strict dominator-tree based retained size.
+// This is the traditional retained size calculation used by Eclipse MAT.
+func (g *ReferenceGraph) GetStandardRetainedSize(objectID uint64) int64 {
 	if !g.dominatorComputed {
 		g.ComputeDominatorTree()
 	}
@@ -1892,7 +2051,7 @@ func (g *ReferenceGraph) GetReferenceGraphForClass(targetClassName string, maxDe
 			ID:           formatObjectID(objID),
 			ClassName:    g.classNames[g.objectClass[objID]],
 			Size:         g.objectSize[objID],
-			RetainedSize: g.retainedSizes[objID],
+			RetainedSize: g.GetRetainedSize(objID),
 			IsGCRoot:     g.IsGCRoot(objID),
 			GCRootType:   string(g.GetGCRootType(objID)),
 		}

@@ -192,12 +192,15 @@ type BiggestObject struct {
 
 // ObjectField represents a field value in an object.
 type ObjectField struct {
-	Name      string      `json:"name"`
-	Type      string      `json:"type"`
-	Value     interface{} `json:"value,omitempty"`
-	RefID     uint64      `json:"ref_id,omitempty"`
-	RefClass  string      `json:"ref_class,omitempty"`
-	IsStatic  bool        `json:"is_static,omitempty"`
+	Name         string      `json:"name"`
+	Type         string      `json:"type"`
+	Value        interface{} `json:"value,omitempty"`
+	RefID        uint64      `json:"ref_id,omitempty"`
+	RefClass     string      `json:"ref_class,omitempty"`
+	ShallowSize  int64       `json:"shallow_size,omitempty"`
+	RetainedSize int64       `json:"retained_size,omitempty"`
+	HasChildren  bool        `json:"has_children,omitempty"`
+	IsStatic     bool        `json:"is_static,omitempty"`
 }
 
 // ObjectFieldDetail represents a field with detailed information for tree expansion.

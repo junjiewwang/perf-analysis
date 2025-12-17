@@ -115,7 +115,7 @@ const HeapBiggestObjects = (function() {
     }
 
     /**
-     * 渲染树节点行（IDEA 风格）
+     * 渲染树节点行（紧凑版 IDEA 风格）
      */
     function renderTreeRow(node, depth = 0, parentId = null) {
         const nodeId = node.object_id || node.ref_id;
@@ -124,7 +124,7 @@ const HeapBiggestObjects = (function() {
         const hasChildren = node.has_children || (node.fields && node.fields.length > 0);
         const isExpanded = state.expanded;
         
-        const indent = depth * 20;
+        const indent = depth * 16;
         const shallowSize = node.shallow_size || 0;
         const retainedSize = node.retained_size || 0;
         
@@ -144,12 +144,12 @@ const HeapBiggestObjects = (function() {
         }
 
         let html = `
-            <div class="tree-row hover:bg-gray-50 border-b border-gray-100" data-node-id="${escapeHtml(nodeKey)}" data-depth="${depth}">
-                <div class="flex items-center py-2 px-3 cursor-pointer" style="padding-left: ${indent + 12}px" onclick="HeapBiggestObjects.toggleNode('${escapeHtml(nodeKey)}', '${escapeHtml(nodeId)}')">
+            <div class="tree-row hover:bg-gray-100 border-b border-gray-100" data-node-id="${escapeHtml(nodeKey)}" data-depth="${depth}">
+                <div class="flex items-center py-1 px-3 cursor-pointer" style="padding-left: ${indent + 10}px" onclick="HeapBiggestObjects.toggleNode('${escapeHtml(nodeKey)}', '${escapeHtml(nodeId)}')">
                     <span class="flex-shrink-0 mr-1">${renderExpandIcon(hasChildren, isExpanded)}</span>
-                    <span class="flex-1 font-mono text-sm truncate" title="${escapeHtml(node.class_name || node.ref_class || '')}">${displayName}</span>
-                    <span class="flex-shrink-0 w-24 text-right text-xs text-gray-500">${formatBytes(shallowSize)}</span>
-                    <span class="flex-shrink-0 w-28 text-right text-sm font-semibold ${retainedSize > 1024*1024 ? 'text-red-600' : 'text-gray-700'}">${formatBytes(retainedSize)}</span>
+                    <span class="flex-1 font-mono text-[11px] truncate" title="${escapeHtml(node.class_name || node.ref_class || '')}">${displayName}</span>
+                    <span class="flex-shrink-0 w-16 text-right text-[10px] text-gray-500">${formatBytes(shallowSize)}</span>
+                    <span class="flex-shrink-0 w-20 text-right text-[11px] font-semibold ${retainedSize > 1024*1024 ? 'text-red-600' : 'text-gray-700'}">${formatBytes(retainedSize)}</span>
                 </div>
             </div>`;
 
@@ -161,9 +161,9 @@ const HeapBiggestObjects = (function() {
         } else if (isExpanded && !state.loaded) {
             // Show loading indicator
             html += `
-                <div class="tree-row" style="padding-left: ${indent + 32}px">
-                    <div class="flex items-center py-2 px-3 text-gray-400 text-sm">
-                        <div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-primary mr-2"></div>
+                <div class="tree-row" style="padding-left: ${indent + 28}px">
+                    <div class="flex items-center py-1 px-3 text-gray-400 text-xs">
+                        <div class="animate-spin rounded-full h-3 w-3 border-2 border-gray-300 border-t-primary mr-2"></div>
                         Loading...
                     </div>
                 </div>`;
@@ -173,7 +173,7 @@ const HeapBiggestObjects = (function() {
     }
 
     /**
-     * 渲染单个顶层对象
+     * 渲染单个顶层对象（紧凑版）
      */
     function renderTopLevelObject(obj, index) {
         const nodeId = obj.object_id;
@@ -186,36 +186,32 @@ const HeapBiggestObjects = (function() {
             : 0;
 
         let html = `
-            <div class="biggest-object-item bg-white border border-gray-200 rounded-lg mb-2 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                <div class="tree-header flex items-center py-3 px-4 cursor-pointer hover:bg-gray-50" onclick="HeapBiggestObjects.toggleNode('${escapeHtml(nodeId)}', '${escapeHtml(nodeId)}')">
-                    <span class="flex-shrink-0 w-6 text-center mr-2">
-                        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary text-white text-xs font-bold">${index + 1}</span>
+            <div class="biggest-object-item bg-white border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                <div class="tree-header flex items-center py-1.5 px-3 cursor-pointer gap-2" onclick="HeapBiggestObjects.toggleNode('${escapeHtml(nodeId)}', '${escapeHtml(nodeId)}')">
+                    <span class="flex-shrink-0 w-5 text-center">
+                        <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary text-white text-[10px] font-bold">${index + 1}</span>
                     </span>
-                    <span class="flex-shrink-0 mr-2">${renderExpandIcon(hasChildren, isExpanded)}</span>
-                    <div class="flex-1 min-w-0">
-                        <div class="font-mono text-sm truncate" title="${escapeHtml(obj.class_name)}">${formatClassName(obj.class_name)}</div>
-                        <div class="text-xs text-gray-400">ID: ${formatObjectId(obj.object_id)}</div>
+                    <span class="flex-shrink-0">${renderExpandIcon(hasChildren, isExpanded)}</span>
+                    <div class="flex-1 min-w-0 flex items-center gap-2">
+                        <span class="font-mono text-xs truncate" title="${escapeHtml(obj.class_name)}">${formatClassName(obj.class_name)}</span>
+                        <span class="text-[10px] text-gray-400 flex-shrink-0">@${formatObjectId(obj.object_id).substring(0, 8)}</span>
                     </div>
-                    <div class="flex-shrink-0 flex items-center gap-1 mr-2">
-                        <button class="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors" onclick="event.stopPropagation(); HeapBiggestObjects.showGCRoots('${escapeHtml(nodeId)}')" title="Show GC Root Paths">
+                    <div class="flex-shrink-0 flex items-center gap-1">
+                        <button class="px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors" onclick="event.stopPropagation(); HeapBiggestObjects.showGCRoots('${escapeHtml(nodeId)}')" title="GC Root Paths">
                             GC Roots
                         </button>
-                        <button class="px-2 py-1 text-xs bg-purple-50 text-purple-600 rounded hover:bg-purple-100 transition-colors" onclick="event.stopPropagation(); HeapBiggestObjects.showRetainers('${escapeHtml(nodeId)}')" title="Show Retainers">
+                        <button class="px-1.5 py-0.5 text-[10px] bg-purple-50 text-purple-600 rounded hover:bg-purple-100 transition-colors" onclick="event.stopPropagation(); HeapBiggestObjects.showRetainers('${escapeHtml(nodeId)}')" title="Retainers">
                             Retainers
                         </button>
                     </div>
-                    <div class="flex-shrink-0 w-24 text-right px-2">
-                        <div class="text-sm text-gray-600">${formatBytes(obj.shallow_size)}</div>
-                        <div class="text-xs text-gray-400">Shallow</div>
+                    <div class="flex-shrink-0 w-16 text-right">
+                        <span class="text-[11px] text-gray-500">${formatBytes(obj.shallow_size)}</span>
                     </div>
-                    <div class="flex-shrink-0 w-36 px-2">
-                        <div class="flex items-center gap-2">
-                            <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div class="h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full" style="width: ${Math.min(retainedPercent, 100)}%"></div>
-                            </div>
-                            <span class="text-sm font-bold text-red-600 w-20 text-right">${formatBytes(obj.retained_size)}</span>
+                    <div class="flex-shrink-0 w-28 flex items-center gap-1">
+                        <div class="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                            <div class="h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full" style="width: ${Math.min(retainedPercent, 100)}%"></div>
                         </div>
-                        <div class="text-xs text-gray-400 text-right">Retained</div>
+                        <span class="text-xs font-semibold text-red-600 w-16 text-right">${formatBytes(obj.retained_size)}</span>
                     </div>
                 </div>`;
 
@@ -225,10 +221,10 @@ const HeapBiggestObjects = (function() {
             
             // Header row
             html += `
-                <div class="flex items-center py-1 px-4 bg-gray-100 border-b border-gray-200 text-xs text-gray-500 font-medium">
+                <div class="flex items-center py-0.5 px-3 bg-gray-100 border-b border-gray-200 text-[10px] text-gray-500 font-medium">
                     <span class="flex-1 pl-6">Item</span>
-                    <span class="w-24 text-right">Shallow</span>
-                    <span class="w-28 text-right">Retained</span>
+                    <span class="w-16 text-right">Shallow</span>
+                    <span class="w-20 text-right">Retained</span>
                 </div>`;
 
             if (state.children && state.children.length > 0) {
@@ -237,13 +233,13 @@ const HeapBiggestObjects = (function() {
                 }
             } else if (!state.loaded) {
                 html += `
-                    <div class="flex items-center justify-center py-4 text-gray-400 text-sm">
-                        <div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-primary mr-2"></div>
+                    <div class="flex items-center justify-center py-2 text-gray-400 text-xs">
+                        <div class="animate-spin rounded-full h-3 w-3 border-2 border-gray-300 border-t-primary mr-2"></div>
                         Loading fields...
                     </div>`;
             } else {
                 html += `
-                    <div class="text-center py-4 text-gray-400 text-sm">
+                    <div class="text-center py-2 text-gray-400 text-xs">
                         No fields available
                     </div>`;
             }
@@ -256,7 +252,7 @@ const HeapBiggestObjects = (function() {
     }
 
     /**
-     * 渲染统计摘要
+     * 渲染统计摘要（紧凑版）
      */
     function renderSummary() {
         const container = document.getElementById('biggestObjectsSummary');
@@ -267,33 +263,33 @@ const HeapBiggestObjects = (function() {
         const uniqueClasses = new Set(biggestObjects.map(obj => obj.class_name)).size;
         
         container.innerHTML = `
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 text-center border border-purple-200">
-                    <div class="text-2xl font-bold text-purple-600">${biggestObjects.length}</div>
-                    <div class="text-xs text-purple-500 mt-1">Total Objects</div>
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+                <div class="flex items-center gap-2 px-3 py-1.5 bg-purple-50 rounded-lg border border-purple-200">
+                    <span class="text-lg font-bold text-purple-600">${biggestObjects.length}</span>
+                    <span class="text-xs text-purple-500">Total Objects</span>
                 </div>
-                <div class="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 text-center border border-red-200">
-                    <div class="text-2xl font-bold text-red-600">${formatBytes(totalRetained)}</div>
-                    <div class="text-xs text-red-500 mt-1">Total Retained</div>
+                <div class="flex items-center gap-2 px-3 py-1.5 bg-red-50 rounded-lg border border-red-200">
+                    <span class="text-lg font-bold text-red-600">${formatBytes(totalRetained)}</span>
+                    <span class="text-xs text-red-500">Total Retained</span>
                 </div>
-                <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 text-center border border-blue-200">
-                    <div class="text-2xl font-bold text-blue-600">${formatBytes(totalShallow)}</div>
-                    <div class="text-xs text-blue-500 mt-1">Total Shallow</div>
+                <div class="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-200">
+                    <span class="text-lg font-bold text-blue-600">${formatBytes(totalShallow)}</span>
+                    <span class="text-xs text-blue-500">Total Shallow</span>
                 </div>
-                <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 text-center border border-green-200">
-                    <div class="text-2xl font-bold text-green-600">${uniqueClasses}</div>
-                    <div class="text-xs text-green-500 mt-1">Unique Classes</div>
+                <div class="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-lg border border-green-200">
+                    <span class="text-lg font-bold text-green-600">${uniqueClasses}</span>
+                    <span class="text-xs text-green-500">Unique Classes</span>
                 </div>
             </div>
-            <div class="mt-3 text-xs text-gray-500 flex items-center gap-2">
-                <span class="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+            <div class="text-xs text-gray-500 flex items-center gap-2">
+                <span class="inline-block w-1.5 h-1.5 bg-green-500 rounded-full"></span>
                 <span>Filtered: Basic types (byte[], Object[], ArrayList, HashMap, etc.) are hidden. Click to expand object fields.</span>
             </div>
         `;
     }
 
     /**
-     * 渲染对象列表
+     * 渲染对象列表（紧凑版带表头）
      */
     function renderList() {
         const container = document.getElementById('biggestObjectsList');
@@ -301,18 +297,34 @@ const HeapBiggestObjects = (function() {
         
         if (filteredObjects.length === 0) {
             container.innerHTML = `
-                <div class="text-center py-12 text-gray-500">
-                    <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="text-center py-8 text-gray-500">
+                    <svg class="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    <p class="text-lg font-medium">No objects found</p>
-                    <p class="text-sm mt-1">Try adjusting your search or filter criteria</p>
+                    <p class="text-sm font-medium">No objects found</p>
+                    <p class="text-xs mt-1">Try adjusting your search or filter criteria</p>
                 </div>
             `;
             return;
         }
         
-        container.innerHTML = filteredObjects.map((obj, i) => renderTopLevelObject(obj, i)).join('');
+        // Table header
+        let html = `
+            <div class="sticky top-0 z-10 bg-gray-100 border-b border-gray-300 flex items-center py-1.5 px-3 text-[10px] text-gray-600 font-semibold uppercase tracking-wide">
+                <span class="w-5 text-center">#</span>
+                <span class="w-5"></span>
+                <span class="flex-1 pl-2">Class Name</span>
+                <span class="w-20 text-center">Actions</span>
+                <span class="w-16 text-right">Shallow</span>
+                <span class="w-28 text-right pr-1">Retained</span>
+            </div>
+            <div class="divide-y divide-gray-100">
+        `;
+        
+        html += filteredObjects.map((obj, i) => renderTopLevelObject(obj, i)).join('');
+        html += '</div>';
+        
+        container.innerHTML = html;
     }
 
     /**
@@ -545,7 +557,8 @@ const HeapBiggestObjects = (function() {
                 if (topObj && topObj.fields && topObj.fields.length > 0) {
                     state.children = topObj.fields.map(f => ({
                         ...f,
-                        has_children: f.ref_id ? true : false
+                        // Use has_children from backend if available, otherwise infer from ref_id
+                        has_children: f.has_children !== undefined ? f.has_children : (f.ref_id ? true : false)
                     }));
                     state.loaded = true;
                 } else {
@@ -616,7 +629,7 @@ const HeapBiggestObjects = (function() {
                 if (!state.loaded && obj.fields) {
                     state.children = obj.fields.map(f => ({
                         ...f,
-                        has_children: f.ref_id ? true : false
+                        has_children: f.has_children !== undefined ? f.has_children : (f.ref_id ? true : false)
                     }));
                     state.loaded = true;
                 }

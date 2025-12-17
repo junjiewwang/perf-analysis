@@ -55,15 +55,18 @@ type ParserOptions struct {
 	// IncludeUnreachable includes unreachable objects in the histogram (like IDEA).
 	// Default is false (only show reachable objects, like MAT).
 	IncludeUnreachable bool
+	// Verbose enables verbose debug output including detailed retained size analysis.
+	// This is typically enabled via the -v command line flag.
+	Verbose bool
 }
 
 // DefaultParserOptions returns default parser options.
 func DefaultParserOptions() *ParserOptions {
 	return &ParserOptions{
-		TopClassesN:        50, // 0 means no limit - return all classes
+		TopClassesN:        50,  // 0 means no limit - return all classes
 		AnalyzeStrings:     true,
 		AnalyzeArrays:      true,
-		MaxLargestObjects:  50,
+		MaxLargestObjects:  100, // Increased to show more objects in Biggest Objects view
 		AnalyzeRetainers:   true,
 		TopRetainersN:      10,
 		ParallelConfig:     DefaultParallelConfig(),
@@ -218,6 +221,9 @@ func newParserState(r *Reader, opts *ParserOptions) *parserState {
 
 // Parse parses an HPROF file and returns analysis results.
 func (p *Parser) Parse(ctx context.Context, r io.Reader) (*HeapAnalysisResult, error) {
+	// Create timer for performance tracking (uses dependency injection via Logger)
+	timer := utils.NewTimer("HPROF Parse", utils.WithLogger(p.opts.Logger), utils.WithEnabled(p.opts.Logger != nil))
+
 	reader := NewReader(r)
 	state := newParserState(reader, p.opts)
 
@@ -228,20 +234,32 @@ func (p *Parser) Parse(ctx context.Context, r io.Reader) (*HeapAnalysisResult, e
 	}
 	state.header = header
 
-	// Parse all records
+	// Phase 1: Parse all records
+	pt := timer.Start("Parse HPROF records")
 	if err := p.parseRecords(ctx, state); err != nil {
 		return nil, fmt.Errorf("failed to parse records: %w", err)
 	}
+	pt.Stop()
 
 	// Process deferred instances (those parsed before their CLASS_DUMP)
 	// This ensures all references are extracted even when INSTANCE_DUMP appears before CLASS_DUMP
-	p.processDeferredInstances(state)
+	timer.TimeFunc("Process deferred instances", func() {
+		p.processDeferredInstances(state)
+	})
 
 	// Fix Class object categorization: all Class objects should be instances of java.lang.Class
 	p.fixClassObjectCategorization(state)
 
-	// Build result
-	return p.buildResult(state), nil
+	// Phase 2: Build result (includes dominator tree computation and analysis)
+	var result *HeapAnalysisResult
+	timer.TimeFunc("Build result", func() {
+		result = p.buildResult(state, timer)
+	})
+
+	// Print timing summary
+	timer.PrintSummary()
+
+	return result, nil
 }
 
 // parseRecords parses all records in the HPROF file.
@@ -745,12 +763,33 @@ func (p *Parser) parseClassDump(state *parserState) (int64, error) {
 			})
 		}
 		if classLoaderID != 0 {
+			// Reference from Class to its ClassLoader (Class.classLoader field)
 			state.refGraph.AddReference(ObjectReference{
 				FromObjectID: classID,
 				ToObjectID:   classLoaderID,
 				FieldName:    "<classloader>",
 				FromClassID:  classID,
 			})
+			// Also add reverse reference: ClassLoader -> Class
+			// This models the fact that ClassLoader holds references to all classes it loaded.
+			// This is important for correct dominator tree calculation:
+			// Classes should be dominated by their ClassLoader, not by super root.
+			state.refGraph.AddReference(ObjectReference{
+				FromObjectID: classLoaderID,
+				ToObjectID:   classID,
+				FieldName:    "<loaded_class>",
+				FromClassID:  0, // ClassLoader's classID is unknown at this point
+			})
+			// IMPORTANT: Register the ClassLoader object if not already registered.
+			// This ensures ClassLoader objects are included in the object graph even if
+			// their INSTANCE_DUMP hasn't been processed yet.
+			// Without this, ClassLoader objects might be missing from objectClass,
+			// causing Class -> ClassLoader references to be ignored in dominator tree.
+			if _, exists := state.refGraph.GetObjectClassID(classLoaderID); !exists {
+				// Register with placeholder size (will be updated when INSTANCE_DUMP is processed)
+				// Use 0 as classID temporarily (will be corrected when INSTANCE_DUMP is processed)
+				state.refGraph.SetObjectInfo(classLoaderID, 0, 0)
+			}
 		}
 		if signersID != 0 {
 			state.refGraph.AddReference(ObjectReference{
@@ -1053,10 +1092,16 @@ func (p *Parser) parseInstanceDump(state *parserState) (int64, error) {
 	}
 	state.totalInstances++
 
-	// Extract references for retainer analysis
-	if state.refGraph != nil && len(instanceData) > 0 {
+	// Register object info and extract references for retainer analysis
+	if state.refGraph != nil {
+		// Always register object info, even if no instance data
+		// This ensures all objects appear in Biggest Objects list
 		state.refGraph.SetObjectInfo(objectID, classID, shallowSize)
-		p.extractReferences(state, objectID, classID, instanceData)
+		
+		// Extract references if there's instance data
+		if len(instanceData) > 0 {
+			p.extractReferences(state, objectID, classID, instanceData)
+		}
 	}
 
 	return bytesRead, nil
@@ -1418,7 +1463,7 @@ func (p *Parser) getClassName(state *parserState, classID uint64) string {
 }
 
 // buildResult builds the final analysis result.
-func (p *Parser) buildResult(state *parserState) *HeapAnalysisResult {
+func (p *Parser) buildResult(state *parserState, timer *utils.Timer) *HeapAnalysisResult {
 	// Compute dominator tree first if retainer analysis is enabled
 	// This must be done before collecting class statistics so we have retained sizes
 	if state.refGraph != nil && p.opts.AnalyzeRetainers {
@@ -1445,7 +1490,9 @@ func (p *Parser) buildResult(state *parserState) *HeapAnalysisResult {
 		p.debugf("ClassInfo entries: %d, ClassFields entries: %d", len(state.classInfo), len(state.classFields))
 
 		// Compute dominator tree to get retained sizes
-		state.refGraph.ComputeDominatorTree()
+		timer.TimeFunc("Dominator tree computation", func() {
+			state.refGraph.ComputeDominatorTree()
+		})
 	}
 
 	// Collect all classes with statistics
@@ -1455,131 +1502,133 @@ func (p *Parser) buildResult(state *parserState) *HeapAnalysisResult {
 	var totalHeapSizeForResult int64
 	var totalInstancesForResult int64
 
-	if state.refGraph != nil && p.opts.AnalyzeRetainers {
-		// Get reachable stats for debug output
-		reachableHeapSize := state.refGraph.GetTotalReachableHeapSize()
-		reachableInstances := int64(state.refGraph.GetReachableObjectCount())
+	timer.TimeFunc("Class statistics collection", func() {
+		if state.refGraph != nil && p.opts.AnalyzeRetainers {
+			// Get reachable stats for debug output
+			reachableHeapSize := state.refGraph.GetTotalReachableHeapSize()
+			reachableInstances := int64(state.refGraph.GetReachableObjectCount())
 
-		p.debugf("Reachable objects: %d (total parsed: %d, diff: %d)",
-			reachableInstances, state.totalInstances, state.totalInstances-reachableInstances)
-		p.debugf("Reachable heap size: %d (total parsed: %d, diff: %d)",
-			reachableHeapSize, state.totalHeapSize, state.totalHeapSize-reachableHeapSize)
+			p.debugf("Reachable objects: %d (total parsed: %d, diff: %d)",
+				reachableInstances, state.totalInstances, state.totalInstances-reachableInstances)
+			p.debugf("Reachable heap size: %d (total parsed: %d, diff: %d)",
+				reachableHeapSize, state.totalHeapSize, state.totalHeapSize-reachableHeapSize)
 
-		if p.opts.IncludeUnreachable {
-			// Use ALL objects (like IDEA) - get stats from refGraph which includes all objects
-			allStats := state.refGraph.GetAllClassStats()
+			if p.opts.IncludeUnreachable {
+				// Use ALL objects (like IDEA) - get stats from refGraph which includes all objects
+				allStats := state.refGraph.GetAllClassStats()
+				totalHeapSizeForResult = state.totalHeapSize
+				totalInstancesForResult = state.totalInstances
+
+				p.debugf("Using all objects mode (like IDEA): %d instances, %d bytes",
+					totalInstancesForResult, totalHeapSizeForResult)
+
+				// Build class stats from all objects
+				for classID, stats := range allStats {
+					className := state.refGraph.GetClassName(classID)
+					if className == "" {
+						continue
+					}
+
+					avgSize := float64(0)
+					if stats.InstanceCount > 0 {
+						avgSize = float64(stats.TotalSize) / float64(stats.InstanceCount)
+					}
+					pct := float64(0)
+					if totalHeapSizeForResult > 0 {
+						pct = float64(stats.TotalSize) * 100.0 / float64(totalHeapSizeForResult)
+					}
+
+					// Get retained size from dominator tree (only for reachable objects)
+					retainedSize := state.refGraph.GetClassRetainedSize(className)
+
+					classes = append(classes, &ClassStats{
+						ClassName:     className,
+						InstanceCount: stats.InstanceCount,
+						TotalSize:     stats.TotalSize,
+						AvgSize:       avgSize,
+						Percentage:    pct,
+						ShallowSize:   stats.TotalSize,
+						RetainedSize:  retainedSize,
+					})
+				}
+			} else {
+				// Use reachable objects only (like MAT)
+				reachableStats := state.refGraph.GetReachableClassStats()
+				totalHeapSizeForResult = reachableHeapSize
+				totalInstancesForResult = reachableInstances
+
+				p.debugf("Using reachable objects mode (like MAT): %d instances, %d bytes",
+					totalInstancesForResult, totalHeapSizeForResult)
+
+				// Build class stats from reachable objects only
+				for classID, stats := range reachableStats {
+					className := state.refGraph.GetClassName(classID)
+					if className == "" {
+						continue
+					}
+
+					avgSize := float64(0)
+					if stats.InstanceCount > 0 {
+						avgSize = float64(stats.TotalSize) / float64(stats.InstanceCount)
+					}
+					pct := float64(0)
+					if totalHeapSizeForResult > 0 {
+						pct = float64(stats.TotalSize) * 100.0 / float64(totalHeapSizeForResult)
+					}
+
+					// Get retained size from dominator tree
+					retainedSize := state.refGraph.GetClassRetainedSize(className)
+
+					classes = append(classes, &ClassStats{
+						ClassName:     className,
+						InstanceCount: stats.InstanceCount,
+						TotalSize:     stats.TotalSize,
+						AvgSize:       avgSize,
+						Percentage:    pct,
+						ShallowSize:   stats.TotalSize,
+						RetainedSize:  retainedSize,
+					})
+				}
+			}
+		} else {
+			// Fallback to original behavior (all objects) - when refGraph is not available
 			totalHeapSizeForResult = state.totalHeapSize
 			totalInstancesForResult = state.totalInstances
 
-			p.debugf("Using all objects mode (like IDEA): %d instances, %d bytes",
-				totalInstancesForResult, totalHeapSizeForResult)
-
-			// Build class stats from all objects
-			for classID, stats := range allStats {
-				className := state.refGraph.GetClassName(classID)
-				if className == "" {
-					continue
-				}
-
-				avgSize := float64(0)
-				if stats.InstanceCount > 0 {
-					avgSize = float64(stats.TotalSize) / float64(stats.InstanceCount)
-				}
-				pct := float64(0)
-				if totalHeapSizeForResult > 0 {
-					pct = float64(stats.TotalSize) * 100.0 / float64(totalHeapSizeForResult)
-				}
-
-				// Get retained size from dominator tree (only for reachable objects)
-				retainedSize := state.refGraph.GetClassRetainedSize(className)
-
-				classes = append(classes, &ClassStats{
-					ClassName:     className,
-					InstanceCount: stats.InstanceCount,
-					TotalSize:     stats.TotalSize,
-					AvgSize:       avgSize,
-					Percentage:    pct,
-					ShallowSize:   stats.TotalSize,
-					RetainedSize:  retainedSize,
-				})
-			}
-		} else {
-			// Use reachable objects only (like MAT)
-			reachableStats := state.refGraph.GetReachableClassStats()
-			totalHeapSizeForResult = reachableHeapSize
-			totalInstancesForResult = reachableInstances
-
-			p.debugf("Using reachable objects mode (like MAT): %d instances, %d bytes",
-				totalInstancesForResult, totalHeapSizeForResult)
-
-			// Build class stats from reachable objects only
-			for classID, stats := range reachableStats {
-				className := state.refGraph.GetClassName(classID)
-				if className == "" {
-					continue
-				}
-
-				avgSize := float64(0)
-				if stats.InstanceCount > 0 {
-					avgSize = float64(stats.TotalSize) / float64(stats.InstanceCount)
-				}
-				pct := float64(0)
-				if totalHeapSizeForResult > 0 {
-					pct = float64(stats.TotalSize) * 100.0 / float64(totalHeapSizeForResult)
-				}
-
-				// Get retained size from dominator tree
-				retainedSize := state.refGraph.GetClassRetainedSize(className)
-
-				classes = append(classes, &ClassStats{
-					ClassName:     className,
-					InstanceCount: stats.InstanceCount,
-					TotalSize:     stats.TotalSize,
-					AvgSize:       avgSize,
-					Percentage:    pct,
-					ShallowSize:   stats.TotalSize,
-					RetainedSize:  retainedSize,
-				})
-			}
-		}
-	} else {
-		// Fallback to original behavior (all objects) - when refGraph is not available
-		totalHeapSizeForResult = state.totalHeapSize
-		totalInstancesForResult = state.totalInstances
-
-		for _, info := range state.classByName {
-			if info.InstanceCount > 0 {
-				avgSize := float64(0)
+			for _, info := range state.classByName {
 				if info.InstanceCount > 0 {
-					avgSize = float64(info.TotalSize) / float64(info.InstanceCount)
-				}
-				pct := float64(0)
-				if state.totalHeapSize > 0 {
-					pct = float64(info.TotalSize) * 100.0 / float64(state.totalHeapSize)
-				}
+					avgSize := float64(0)
+					if info.InstanceCount > 0 {
+						avgSize = float64(info.TotalSize) / float64(info.InstanceCount)
+					}
+					pct := float64(0)
+					if state.totalHeapSize > 0 {
+						pct = float64(info.TotalSize) * 100.0 / float64(state.totalHeapSize)
+					}
 
-				// Get retained size from dominator tree if available
-				var retainedSize int64
-				if state.refGraph != nil {
-					retainedSize = state.refGraph.GetClassRetainedSize(info.Name)
-				}
+					// Get retained size from dominator tree if available
+					var retainedSize int64
+					if state.refGraph != nil {
+						retainedSize = state.refGraph.GetClassRetainedSize(info.Name)
+					}
 
-				classes = append(classes, &ClassStats{
-					ClassName:     info.Name,
-					InstanceCount: info.InstanceCount,
-					TotalSize:     info.TotalSize,
-					AvgSize:       avgSize,
-					Percentage:    pct,
-					ShallowSize:   info.TotalSize,
-					RetainedSize:  retainedSize,
-				})
+					classes = append(classes, &ClassStats{
+						ClassName:     info.Name,
+						InstanceCount: info.InstanceCount,
+						TotalSize:     info.TotalSize,
+						AvgSize:       avgSize,
+						Percentage:    pct,
+						ShallowSize:   info.TotalSize,
+						RetainedSize:  retainedSize,
+					})
+				}
 			}
 		}
-	}
 
-	// Sort by total size descending
-	sort.Slice(classes, func(i, j int) bool {
-		return classes[i].TotalSize > classes[j].TotalSize
+		// Sort by total size descending
+		sort.Slice(classes, func(i, j int) bool {
+			return classes[i].TotalSize > classes[j].TotalSize
+		})
 	})
 
 	// Limit to top N (0 or negative means no limit - return all classes)
@@ -1600,42 +1649,52 @@ func (p *Parser) buildResult(state *parserState) *HeapAnalysisResult {
 	// Compute retainer analysis and reference graphs for top classes
 	// FastMode: skip all deep analysis for maximum performance
 	if state.refGraph != nil && p.opts.AnalyzeRetainers && !p.opts.FastMode {
-		// Use parallel analyzer for better performance
-		analyzer := NewParallelAnalyzer(state.refGraph, p.opts.ParallelConfig)
+		timer.TimeFunc("Parallel analysis (retainers/graphs/business)", func() {
+			// Use parallel analyzer for better performance
+			analyzer := NewParallelAnalyzer(state.refGraph, p.opts.ParallelConfig)
 
-		analysisOpts := AnalysisOptions{
-			MaxRetainerClasses: 20,
-			MaxGraphClasses:    5,
-			MaxBusinessClasses: 10,
-			TopRetainersN:      p.opts.TopRetainersN,
-			GraphMaxDepth:      10,
-			GraphMaxNodes:      100,
-			BusinessMaxDepth:   15,
-		}
+			analysisOpts := AnalysisOptions{
+				MaxRetainerClasses: 20,
+				MaxGraphClasses:    5,
+				MaxBusinessClasses: 10,
+				TopRetainersN:      p.opts.TopRetainersN,
+				GraphMaxDepth:      10,
+				GraphMaxNodes:      100,
+				BusinessMaxDepth:   15,
+			}
 
-		// Skip business retainers if configured (they are the most expensive)
-		if p.opts.SkipBusinessRetainers {
-			analysisOpts.MaxBusinessClasses = 0
-		}
+			// Skip business retainers if configured (they are the most expensive)
+			if p.opts.SkipBusinessRetainers {
+				analysisOpts.MaxBusinessClasses = 0
+			}
 
-		// Run all analysis in parallel
-		ctx := context.Background()
-		analysisResult := analyzer.RunFullAnalysis(ctx, topClasses, analysisOpts)
+			// Run all analysis in parallel
+			ctx := context.Background()
+			analysisResult := analyzer.RunFullAnalysis(ctx, topClasses, analysisOpts)
 
-		result.ClassRetainers = analysisResult.ClassRetainers
-		result.ReferenceGraphs = analysisResult.ReferenceGraphs
-		result.BusinessRetainers = analysisResult.BusinessRetainers
+			result.ClassRetainers = analysisResult.ClassRetainers
+			result.ReferenceGraphs = analysisResult.ReferenceGraphs
+			result.BusinessRetainers = analysisResult.BusinessRetainers
+		})
 	}
 
 	// Build BiggestObjects if retainer analysis is enabled
 	if state.refGraph != nil && p.opts.AnalyzeRetainers {
-		builder := NewBiggestObjectsBuilder(state.refGraph, state.classLayouts, state.strings)
-		result.BiggestObjects = builder.GetBiggestObjectsByRetainedSize(p.opts.MaxLargestObjects)
-		// Store class layouts and strings for later use (e.g., API queries)
-		result.ClassLayouts = state.classLayouts
-		result.Strings = state.strings
-		// Store reference graph for serialization and advanced analysis
-		result.RefGraph = state.refGraph
+		timer.TimeFunc("Biggest objects analysis", func() {
+			builder := NewBiggestObjectsBuilder(state.refGraph, state.classLayouts, state.strings)
+			result.BiggestObjects = builder.GetBiggestObjectsByRetainedSize(p.opts.MaxLargestObjects)
+			// Store class layouts and strings for later use (e.g., API queries)
+			result.ClassLayouts = state.classLayouts
+			result.Strings = state.strings
+			// Store reference graph for serialization and advanced analysis
+			result.RefGraph = state.refGraph
+
+			// Debug: Analyze ClassLoader retained size differences (only in verbose mode)
+			// This helps understand why our retained size differs from IDEA
+			if p.opts.Verbose {
+				builder.DebugClassLoaderRetainedSize("com.taobao.arthas.agent.ArthasClassloader")
+			}
+		})
 	}
 
 	return result

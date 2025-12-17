@@ -41,6 +41,8 @@ func NewJavaHeapAnalyzer(config *BaseAnalyzerConfig, opts ...JavaHeapAnalyzerOpt
 	if config.Logger != nil {
 		hprofOpts.Logger = config.Logger
 	}
+	// Pass verbose flag to hprof parser (dependency injection)
+	hprofOpts.Verbose = config.Verbose
 
 	a := &JavaHeapAnalyzer{
 		config:    config,
@@ -400,14 +402,17 @@ func (a *JavaHeapAnalyzer) buildBiggestObjects(result *hprof.HeapAnalysisResult)
 			RetainedSize: obj.RetainedSize,
 		}
 		
-		// Convert fields
+		// Convert fields with size information
 		if len(obj.Fields) > 0 {
 			for _, f := range obj.Fields {
 				field := model.HeapObjectField{
-					Name:     f.Name,
-					Type:     f.Type,
-					Value:    f.Value,
-					IsStatic: f.IsStatic,
+					Name:         f.Name,
+					Type:         f.Type,
+					Value:        f.Value,
+					ShallowSize:  f.ShallowSize,
+					RetainedSize: f.RetainedSize,
+					HasChildren:  f.HasChildren,
+					IsStatic:     f.IsStatic,
 				}
 				if f.RefID != 0 {
 					field.RefID = formatObjectID(f.RefID)

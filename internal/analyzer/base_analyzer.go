@@ -35,6 +35,10 @@ type BaseAnalyzerConfig struct {
 
 	// Logger is used for debug logging. If nil, debug logs are suppressed.
 	Logger utils.Logger
+
+	// Verbose enables verbose debug output including detailed analysis.
+	// This is typically enabled via the -v command line flag.
+	Verbose bool
 }
 
 // DefaultBaseAnalyzerConfig returns default configuration.
