@@ -2,7 +2,10 @@
 package hprof
 
 import (
+	"container/heap"
 	"sort"
+
+	"github.com/perf-analysis/pkg/filter"
 )
 
 // BiggestObjectsBuilder builds the list of biggest objects from the reference graph.
@@ -12,127 +15,11 @@ type BiggestObjectsBuilder struct {
 	strings      map[uint64]string
 }
 
-// filteredTopLevelClasses defines classes that should be filtered from top-level Biggest Objects view.
-// These are basic types and collection classes that are typically not the root cause of memory issues.
-// This matches IDEA's Biggest Objects view which filters out container/infrastructure classes.
-var filteredTopLevelClasses = map[string]bool{
-	// Primitive arrays
-	"byte[]":    true,
-	"char[]":    true,
-	"int[]":     true,
-	"long[]":    true,
-	"short[]":   true,
-	"boolean[]": true,
-	"float[]":   true,
-	"double[]":  true,
-	// Basic wrapper arrays
-	"java.lang.Object[]": true,
-	"java.lang.String[]": true,
-	// JVM internal classes (class metadata, not real memory issues)
-	"java.lang.Class": true,
-	// HashMap/HashSet internal nodes (these are always children of their parent collections)
-	"java.util.HashMap$Node":     true,
-	"java.util.HashMap$Node[]":   true,
-	"java.util.HashMap$TreeNode": true,
-	"java.util.HashSet$Node":     true,
-	// ConcurrentHashMap internal nodes
-	"java.util.concurrent.ConcurrentHashMap$Node":   true,
-	"java.util.concurrent.ConcurrentHashMap$Node[]": true,
-	// Collection classes - these are containers, not root causes
-	"java.util.ArrayList":                       true,
-	"java.util.LinkedList":                      true,
-	"java.util.HashMap":                         true,
-	"java.util.LinkedHashMap":                   true,
-	"java.util.TreeMap":                         true,
-	"java.util.HashSet":                         true,
-	"java.util.LinkedHashSet":                   true,
-	"java.util.TreeSet":                         true,
-	"java.util.concurrent.ConcurrentHashMap":    true,
-	"java.util.concurrent.CopyOnWriteArrayList": true,
-}
-
-// filteredTopLevelPrefixes defines class name prefixes that should be filtered.
-var filteredTopLevelPrefixes = []string{
-	// JDK proxy classes
-	"jdk.proxy",
-	"com.sun.proxy",
-}
-
-// filteredTopLevelSuffixes defines class name suffixes that should be filtered.
-var filteredTopLevelSuffixes = []string{
-	// Allocator classes - these manage memory but don't hold the actual data
-	"Allocator",
-	"ByteBufAllocator",
-}
-
-// filteredTopLevelContains defines substrings that should be filtered if found anywhere in class name.
-var filteredTopLevelContains = []string{
-	// Lambda expressions (appear as $$Lambda$ in class names)
-	"$$Lambda",
-}
-
 // shouldFilterTopLevelClass checks if a class should be filtered from top-level Biggest Objects.
 // This matches IDEA's behavior of filtering out container classes, proxies, lambdas, and allocators.
+// Deprecated: Use filter.ShouldFilterTopLevel instead.
 func shouldFilterTopLevelClass(className string) bool {
-	// Direct match
-	if filteredTopLevelClasses[className] {
-		return true
-	}
-	
-	// Check prefixes
-	for _, prefix := range filteredTopLevelPrefixes {
-		if len(className) >= len(prefix) && className[:len(prefix)] == prefix {
-			return true
-		}
-	}
-	
-	// Check suffixes
-	for _, suffix := range filteredTopLevelSuffixes {
-		if len(className) >= len(suffix) && className[len(className)-len(suffix):] == suffix {
-			return true
-		}
-	}
-	
-	// Check contains (for patterns that can appear anywhere in class name)
-	for _, substr := range filteredTopLevelContains {
-		for i := 0; i <= len(className)-len(substr); i++ {
-			if className[i:i+len(substr)] == substr {
-				return true
-			}
-		}
-	}
-	
-	return false
-}
-
-// containsSubstring checks if s contains substr (case-insensitive).
-func containsSubstring(s, substr string) bool {
-	if len(substr) > len(s) {
-		return false
-	}
-	// Simple case-insensitive contains
-	sLower := toLower(s)
-	substrLower := toLower(substr)
-	for i := 0; i <= len(sLower)-len(substrLower); i++ {
-		if sLower[i:i+len(substrLower)] == substrLower {
-			return true
-		}
-	}
-	return false
-}
-
-// toLower converts a string to lowercase (ASCII only).
-func toLower(s string) string {
-	b := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			b[i] = c + 32
-		} else {
-			b[i] = c
-		}
-	}
-	return string(b)
+	return filter.ShouldFilterTopLevel(className)
 }
 
 // NewBiggestObjectsBuilder creates a new BiggestObjectsBuilder.
@@ -151,6 +38,56 @@ type objectWithSize struct {
 	retainedSize int64
 }
 
+// objectHeap implements a min-heap for top-N selection.
+// We use a min-heap so we can efficiently remove the smallest element
+// when the heap exceeds the desired size.
+type objectHeap struct {
+	items    []objectWithSize
+	sortBy   string // "retained" or "shallow"
+}
+
+func (h objectHeap) Len() int { return len(h.items) }
+
+func (h objectHeap) Less(i, j int) bool {
+	// Min-heap: smaller values have higher priority (will be popped first)
+	if h.sortBy == "shallow" {
+		return h.items[i].shallowSize < h.items[j].shallowSize
+	}
+	return h.items[i].retainedSize < h.items[j].retainedSize
+}
+
+func (h objectHeap) Swap(i, j int) {
+	h.items[i], h.items[j] = h.items[j], h.items[i]
+}
+
+func (h *objectHeap) Push(x interface{}) {
+	h.items = append(h.items, x.(objectWithSize))
+}
+
+func (h *objectHeap) Pop() interface{} {
+	old := h.items
+	n := len(old)
+	x := old[n-1]
+	h.items = old[0 : n-1]
+	return x
+}
+
+// getSize returns the size used for comparison based on sortBy.
+func (h *objectHeap) getSize(obj objectWithSize) int64 {
+	if h.sortBy == "shallow" {
+		return obj.shallowSize
+	}
+	return obj.retainedSize
+}
+
+// minSize returns the minimum size in the heap (the root element).
+func (h *objectHeap) minSize() int64 {
+	if len(h.items) == 0 {
+		return 0
+	}
+	return h.getSize(h.items[0])
+}
+
 // BuildBiggestObjects builds the list of biggest objects sorted by retained size.
 // topN specifies the maximum number of objects to return.
 // sortBy can be "retained" (default) or "shallow".
@@ -163,6 +100,7 @@ func (b *BiggestObjectsBuilder) BuildBiggestObjects(topN int, sortBy string) []*
 // This matches IDEA's Biggest Objects view: shows all objects sorted by retained size,
 // with basic types (primitive arrays, Object[], etc.) filtered out.
 // filterBasicTypes: if true, filters out basic types like primitive arrays.
+// OPTIMIZATION: Uses a min-heap for O(n log k) top-N selection instead of O(n log n) full sort.
 func (b *BiggestObjectsBuilder) BuildBiggestObjectsFiltered(topN int, sortBy string, filterBasicTypes bool) []*BiggestObject {
 	if b.refGraph == nil {
 		return nil
@@ -175,15 +113,21 @@ func (b *BiggestObjectsBuilder) BuildBiggestObjectsFiltered(topN int, sortBy str
 	// Ensure dominator tree is computed for retained sizes
 	b.refGraph.ComputeDominatorTree()
 
-	// Collect all reachable objects (not just dominator tree roots).
-	// This matches IDEA's Biggest Objects behavior which shows all objects by retained size.
-	objects := make([]objectWithSize, 0, len(b.refGraph.objectClass)/10)
+	// Use a min-heap for efficient top-N selection
+	// This is O(n log k) instead of O(n log n) for full sort
+	h := &objectHeap{
+		items:  make([]objectWithSize, 0, topN+1),
+		sortBy: sortBy,
+	}
+	heap.Init(h)
+
+	// Iterate through all objects and maintain top-N in heap
 	for objID := range b.refGraph.objectClass {
 		// Only include reachable objects
 		if !b.refGraph.IsObjectReachable(objID) {
 			continue
 		}
-		
+
 		// Filter basic types if requested
 		if filterBasicTypes {
 			classID := b.refGraph.objectClass[objID]
@@ -192,15 +136,30 @@ func (b *BiggestObjectsBuilder) BuildBiggestObjectsFiltered(topN int, sortBy str
 				continue
 			}
 		}
-		
-		objects = append(objects, objectWithSize{
+
+		obj := objectWithSize{
 			objectID:     objID,
 			shallowSize:  b.refGraph.objectSize[objID],
 			retainedSize: b.refGraph.GetRetainedSize(objID),
-		})
+		}
+
+		// If heap is not full, just add the object
+		if h.Len() < topN {
+			heap.Push(h, obj)
+		} else if h.getSize(obj) > h.minSize() {
+			// If this object is larger than the smallest in heap, replace it
+			heap.Pop(h)
+			heap.Push(h, obj)
+		}
 	}
 
-	// Sort by retained size (default) or shallow size
+	// Extract objects from heap and sort in descending order
+	objects := make([]objectWithSize, h.Len())
+	for i := len(objects) - 1; i >= 0; i-- {
+		objects[i] = heap.Pop(h).(objectWithSize)
+	}
+
+	// Sort in descending order (largest first)
 	if sortBy == "shallow" {
 		sort.Slice(objects, func(i, j int) bool {
 			return objects[i].shallowSize > objects[j].shallowSize
@@ -209,11 +168,6 @@ func (b *BiggestObjectsBuilder) BuildBiggestObjectsFiltered(topN int, sortBy str
 		sort.Slice(objects, func(i, j int) bool {
 			return objects[i].retainedSize > objects[j].retainedSize
 		})
-	}
-
-	// Take top N
-	if len(objects) > topN {
-		objects = objects[:topN]
 	}
 
 	// Build result with field information
@@ -229,6 +183,7 @@ func (b *BiggestObjectsBuilder) BuildBiggestObjectsFiltered(topN int, sortBy str
 }
 
 // BuildBiggestObjectsByClass builds the list of biggest objects for a specific class.
+// OPTIMIZATION: Uses a min-heap for O(n log k) top-N selection.
 func (b *BiggestObjectsBuilder) BuildBiggestObjectsByClass(className string, topN int, sortBy string) []*BiggestObject {
 	if b.refGraph == nil {
 		return nil
@@ -253,20 +208,40 @@ func (b *BiggestObjectsBuilder) BuildBiggestObjectsByClass(className string, top
 		return nil
 	}
 
-	// Collect objects with sizes
-	objects := make([]objectWithSize, 0, len(classObjects))
+	// Use a min-heap for efficient top-N selection
+	h := &objectHeap{
+		items:  make([]objectWithSize, 0, topN+1),
+		sortBy: sortBy,
+	}
+	heap.Init(h)
+
+	// Iterate through class objects and maintain top-N in heap
 	for _, objID := range classObjects {
 		if !b.refGraph.IsObjectReachable(objID) {
 			continue
 		}
-		objects = append(objects, objectWithSize{
+
+		obj := objectWithSize{
 			objectID:     objID,
 			shallowSize:  b.refGraph.objectSize[objID],
 			retainedSize: b.refGraph.GetRetainedSize(objID),
-		})
+		}
+
+		if h.Len() < topN {
+			heap.Push(h, obj)
+		} else if h.getSize(obj) > h.minSize() {
+			heap.Pop(h)
+			heap.Push(h, obj)
+		}
 	}
 
-	// Sort
+	// Extract objects from heap
+	objects := make([]objectWithSize, h.Len())
+	for i := len(objects) - 1; i >= 0; i-- {
+		objects[i] = heap.Pop(h).(objectWithSize)
+	}
+
+	// Sort in descending order
 	if sortBy == "shallow" {
 		sort.Slice(objects, func(i, j int) bool {
 			return objects[i].shallowSize > objects[j].shallowSize
@@ -275,11 +250,6 @@ func (b *BiggestObjectsBuilder) BuildBiggestObjectsByClass(className string, top
 		sort.Slice(objects, func(i, j int) bool {
 			return objects[i].retainedSize > objects[j].retainedSize
 		})
-	}
-
-	// Take top N
-	if len(objects) > topN {
-		objects = objects[:topN]
 	}
 
 	// Build result

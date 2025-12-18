@@ -5,12 +5,14 @@ import (
 	"context"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/perf-analysis/pkg/utils"
-	"golang.org/x/sync/errgroup"
 )
+
+// ============================================================================
+// Parallel Analysis Configuration
+// ============================================================================
 
 // ParallelConfig configures parallel analysis behavior.
 type ParallelConfig struct {
@@ -51,6 +53,20 @@ func DefaultParallelConfig() ParallelConfig {
 	}
 }
 
+// ToPoolConfig converts ParallelConfig to PoolConfig for worker pool usage.
+func (c ParallelConfig) ToPoolConfig() PoolConfig {
+	return PoolConfig{
+		MaxWorkers:     c.MaxWorkers,
+		TaskBufferSize: c.MaxWorkers * 2,
+		Timeout:        c.Timeout,
+		CollectMetrics: true,
+	}
+}
+
+// ============================================================================
+// Analysis Task Types
+// ============================================================================
+
 // AnalysisTask represents a unit of work for parallel analysis.
 type AnalysisTask struct {
 	ClassName string
@@ -78,6 +94,10 @@ type BusinessRetainerResult struct {
 	Error     error
 }
 
+// ============================================================================
+// Parallel Analyzer
+// ============================================================================
+
 // ParallelAnalyzer performs parallel analysis on heap data.
 type ParallelAnalyzer struct {
 	config   ParallelConfig
@@ -100,7 +120,7 @@ func NewParallelAnalyzer(refGraph *ReferenceGraph, config ParallelConfig) *Paral
 	return &ParallelAnalyzer{
 		config:   config,
 		refGraph: refGraph,
-		logger:   refGraph.logger, // Inherit logger from refGraph
+		logger:   refGraph.logger,
 	}
 }
 
@@ -111,51 +131,39 @@ func (pa *ParallelAnalyzer) debugf(format string, args ...interface{}) {
 	}
 }
 
+// ============================================================================
+// Retainer Analysis
+// ============================================================================
+
 // AnalyzeRetainersParallel analyzes retainers for multiple classes in parallel.
 func (pa *ParallelAnalyzer) AnalyzeRetainersParallel(ctx context.Context, classes []*ClassStats, topN int) map[string]*ClassRetainers {
 	if !pa.config.Enabled || len(classes) == 0 {
 		return pa.analyzeRetainersSequential(classes, topN)
 	}
 
-	results := make(map[string]*ClassRetainers)
-	var mu sync.Mutex
-
-	// Create task channel
-	tasks := make(chan *ClassStats, len(classes))
-	for _, cls := range classes {
-		tasks <- cls
-	}
-	close(tasks)
-
-	// Create worker pool
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(pa.config.RetainerWorkers)
-
-	for i := 0; i < pa.config.RetainerWorkers; i++ {
-		g.Go(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case cls, ok := <-tasks:
-					if !ok {
-						return nil
-					}
-					// Perform retainer analysis
-					retainers := pa.refGraph.ComputeMultiLevelRetainers(cls.ClassName, 5, topN)
-					if retainers != nil && len(retainers.Retainers) > 0 {
-						retainers.RetainedSize = pa.refGraph.GetClassRetainedSize(cls.ClassName)
-						mu.Lock()
-						results[cls.ClassName] = retainers
-						mu.Unlock()
-					}
-				}
-			}
-		})
+	poolConfig := PoolConfig{
+		MaxWorkers:     pa.config.RetainerWorkers,
+		TaskBufferSize: pa.config.RetainerWorkers * 2,
+		Timeout:        pa.config.Timeout,
 	}
 
-	_ = g.Wait() // Errors are logged but don't stop other workers
-	return results
+	pool := NewWorkerPool[*ClassStats, *ClassRetainers](poolConfig)
+	results := pool.ExecuteFunc(ctx, classes, func(ctx context.Context, cls *ClassStats) (*ClassRetainers, error) {
+		retainers := pa.refGraph.ComputeMultiLevelRetainers(cls.ClassName, 5, topN)
+		if retainers != nil && len(retainers.Retainers) > 0 {
+			retainers.RetainedSize = pa.refGraph.GetClassRetainedSize(cls.ClassName)
+		}
+		return retainers, nil
+	})
+
+	// Collect non-nil results
+	resultMap := make(map[string]*ClassRetainers)
+	for _, r := range results {
+		if r.Result != nil && len(r.Result.Retainers) > 0 {
+			resultMap[r.Input.ClassName] = r.Result
+		}
+	}
+	return resultMap
 }
 
 // analyzeRetainersSequential is the fallback sequential implementation.
@@ -171,49 +179,35 @@ func (pa *ParallelAnalyzer) analyzeRetainersSequential(classes []*ClassStats, to
 	return results
 }
 
+// ============================================================================
+// Reference Graph Generation
+// ============================================================================
+
 // GenerateGraphsParallel generates reference graphs for multiple classes in parallel.
 func (pa *ParallelAnalyzer) GenerateGraphsParallel(ctx context.Context, classes []*ClassStats, maxDepth, maxNodes int) map[string]*ReferenceGraphData {
 	if !pa.config.Enabled || len(classes) == 0 {
 		return pa.generateGraphsSequential(classes, maxDepth, maxNodes)
 	}
 
-	results := make(map[string]*ReferenceGraphData)
-	var mu sync.Mutex
-
-	// Create task channel
-	tasks := make(chan *ClassStats, len(classes))
-	for _, cls := range classes {
-		tasks <- cls
-	}
-	close(tasks)
-
-	// Create worker pool with limited concurrency (graph generation is memory intensive)
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(pa.config.GraphWorkers)
-
-	for i := 0; i < pa.config.GraphWorkers; i++ {
-		g.Go(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case cls, ok := <-tasks:
-					if !ok {
-						return nil
-					}
-					graphData := pa.refGraph.GetReferenceGraphForClass(cls.ClassName, maxDepth, maxNodes)
-					if graphData != nil && len(graphData.Nodes) > 0 {
-						mu.Lock()
-						results[cls.ClassName] = graphData
-						mu.Unlock()
-					}
-				}
-			}
-		})
+	poolConfig := PoolConfig{
+		MaxWorkers:     pa.config.GraphWorkers,
+		TaskBufferSize: pa.config.GraphWorkers * 2,
+		Timeout:        pa.config.Timeout,
 	}
 
-	_ = g.Wait()
-	return results
+	pool := NewWorkerPool[*ClassStats, *ReferenceGraphData](poolConfig)
+	results := pool.ExecuteFunc(ctx, classes, func(ctx context.Context, cls *ClassStats) (*ReferenceGraphData, error) {
+		return pa.refGraph.GetReferenceGraphForClass(cls.ClassName, maxDepth, maxNodes), nil
+	})
+
+	// Collect non-nil results
+	resultMap := make(map[string]*ReferenceGraphData)
+	for _, r := range results {
+		if r.Result != nil && len(r.Result.Nodes) > 0 {
+			resultMap[r.Input.ClassName] = r.Result
+		}
+	}
+	return resultMap
 }
 
 // generateGraphsSequential is the fallback sequential implementation.
@@ -228,49 +222,35 @@ func (pa *ParallelAnalyzer) generateGraphsSequential(classes []*ClassStats, maxD
 	return results
 }
 
+// ============================================================================
+// Business Retainer Analysis
+// ============================================================================
+
 // AnalyzeBusinessRetainersParallel analyzes business retainers for multiple classes in parallel.
 func (pa *ParallelAnalyzer) AnalyzeBusinessRetainersParallel(ctx context.Context, classes []*ClassStats, maxDepth, topN int) map[string][]*BusinessRetainer {
 	if !pa.config.Enabled || len(classes) == 0 {
 		return pa.analyzeBusinessRetainersSequential(classes, maxDepth, topN)
 	}
 
-	results := make(map[string][]*BusinessRetainer)
-	var mu sync.Mutex
-
-	// Create task channel
-	tasks := make(chan *ClassStats, len(classes))
-	for _, cls := range classes {
-		tasks <- cls
-	}
-	close(tasks)
-
-	// Create worker pool
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(pa.config.RetainerWorkers)
-
-	for i := 0; i < pa.config.RetainerWorkers; i++ {
-		g.Go(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case cls, ok := <-tasks:
-					if !ok {
-						return nil
-					}
-					businessRetainers := pa.refGraph.ComputeBusinessRetainers(cls.ClassName, maxDepth, topN)
-					if len(businessRetainers) > 0 {
-						mu.Lock()
-						results[cls.ClassName] = businessRetainers
-						mu.Unlock()
-					}
-				}
-			}
-		})
+	poolConfig := PoolConfig{
+		MaxWorkers:     pa.config.RetainerWorkers,
+		TaskBufferSize: pa.config.RetainerWorkers * 2,
+		Timeout:        pa.config.Timeout,
 	}
 
-	_ = g.Wait()
-	return results
+	pool := NewWorkerPool[*ClassStats, []*BusinessRetainer](poolConfig)
+	results := pool.ExecuteFunc(ctx, classes, func(ctx context.Context, cls *ClassStats) ([]*BusinessRetainer, error) {
+		return pa.refGraph.ComputeBusinessRetainers(cls.ClassName, maxDepth, topN), nil
+	})
+
+	// Collect non-empty results
+	resultMap := make(map[string][]*BusinessRetainer)
+	for _, r := range results {
+		if len(r.Result) > 0 {
+			resultMap[r.Input.ClassName] = r.Result
+		}
+	}
+	return resultMap
 }
 
 // analyzeBusinessRetainersSequential is the fallback sequential implementation.
@@ -285,33 +265,40 @@ func (pa *ParallelAnalyzer) analyzeBusinessRetainersSequential(classes []*ClassS
 	return results
 }
 
+// ============================================================================
+// Full Analysis Result
+// ============================================================================
+
 // FullAnalysisResult holds all parallel analysis results.
 type FullAnalysisResult struct {
 	ClassRetainers    map[string]*ClassRetainers
 	ReferenceGraphs   map[string]*ReferenceGraphData
 	BusinessRetainers map[string][]*BusinessRetainer
-	// Stats holds timing and progress statistics
-	Stats AnalysisStats
+	Stats             AnalysisStats
 }
 
 // AnalysisStats holds statistics about the analysis run.
 type AnalysisStats struct {
-	TotalDuration      time.Duration
-	RetainerDuration   time.Duration
-	GraphDuration      time.Duration
-	BusinessDuration   time.Duration
-	ClassesAnalyzed    int
-	GraphsGenerated    int
-	BusinessAnalyzed   int
-	ParallelEnabled    bool
-	WorkerCount        int
+	TotalDuration    time.Duration
+	RetainerDuration time.Duration
+	GraphDuration    time.Duration
+	BusinessDuration time.Duration
+	ClassesAnalyzed  int
+	GraphsGenerated  int
+	BusinessAnalyzed int
+	ParallelEnabled  bool
+	WorkerCount      int
 }
+
+// ============================================================================
+// Full Analysis Execution
+// ============================================================================
 
 // RunFullAnalysis runs all analysis tasks in parallel using a pipeline pattern.
 // This is the main entry point for parallel heap analysis.
 func (pa *ParallelAnalyzer) RunFullAnalysis(ctx context.Context, topClasses []*ClassStats, opts AnalysisOptions) *FullAnalysisResult {
 	startTime := time.Now()
-	
+
 	result := &FullAnalysisResult{
 		ClassRetainers:    make(map[string]*ClassRetainers),
 		ReferenceGraphs:   make(map[string]*ReferenceGraphData),
@@ -334,43 +321,19 @@ func (pa *ParallelAnalyzer) RunFullAnalysis(ctx context.Context, topClasses []*C
 	}
 
 	// Prepare class lists for different analysis types
-	topForRetainers := topClasses
-	if len(topForRetainers) > opts.MaxRetainerClasses {
-		topForRetainers = topForRetainers[:opts.MaxRetainerClasses]
-	}
-
-	topForGraphs := topClasses
-	if len(topForGraphs) > opts.MaxGraphClasses {
-		topForGraphs = topForGraphs[:opts.MaxGraphClasses]
-	}
-
-	topForBusiness := topClasses
-	if len(topForBusiness) > opts.MaxBusinessClasses {
-		topForBusiness = topForBusiness[:opts.MaxBusinessClasses]
-	}
+	topForRetainers := limitSlice(topClasses, opts.MaxRetainerClasses)
+	topForGraphs := limitSlice(topClasses, opts.MaxGraphClasses)
+	topForBusiness := limitSlice(topClasses, opts.MaxBusinessClasses)
 
 	// Progress tracking
-	var progress atomic.Int32
 	totalTasks := len(topForRetainers) + len(topForGraphs) + len(topForBusiness)
-	
-	// Report progress periodically
+	var tracker *ProgressTracker
 	if pa.config.ProgressCallback != nil {
-		go func() {
-			ticker := time.NewTicker(500 * time.Millisecond)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					current := int(progress.Load())
-					pa.config.ProgressCallback("analyzing", current, totalTasks)
-					if current >= totalTasks {
-						return
-					}
-				}
-			}
-		}()
+		tracker = NewProgressTracker(int64(totalTasks), func(completed, total int64) {
+			pa.config.ProgressCallback("analyzing", int(completed), int(total))
+		}, 500*time.Millisecond)
+		tracker.Start(ctx)
+		defer tracker.Stop()
 	}
 
 	// Timing for each phase
@@ -385,7 +348,10 @@ func (pa *ParallelAnalyzer) RunFullAnalysis(ctx context.Context, topClasses []*C
 	go func() {
 		defer wg.Done()
 		phaseStart := time.Now()
-		result.ClassRetainers = pa.analyzeRetainersWithProgress(ctx, topForRetainers, opts.TopRetainersN, &progress)
+		result.ClassRetainers = pa.AnalyzeRetainersParallel(ctx, topForRetainers, opts.TopRetainersN)
+		if tracker != nil {
+			tracker.Add(int64(len(topForRetainers)))
+		}
 		retainerMu.Lock()
 		retainerDuration = time.Since(phaseStart)
 		retainerMu.Unlock()
@@ -395,7 +361,10 @@ func (pa *ParallelAnalyzer) RunFullAnalysis(ctx context.Context, topClasses []*C
 	go func() {
 		defer wg.Done()
 		phaseStart := time.Now()
-		result.ReferenceGraphs = pa.generateGraphsWithProgress(ctx, topForGraphs, opts.GraphMaxDepth, opts.GraphMaxNodes, &progress)
+		result.ReferenceGraphs = pa.GenerateGraphsParallel(ctx, topForGraphs, opts.GraphMaxDepth, opts.GraphMaxNodes)
+		if tracker != nil {
+			tracker.Add(int64(len(topForGraphs)))
+		}
 		graphMu.Lock()
 		graphDuration = time.Since(phaseStart)
 		graphMu.Unlock()
@@ -405,14 +374,17 @@ func (pa *ParallelAnalyzer) RunFullAnalysis(ctx context.Context, topClasses []*C
 	go func() {
 		defer wg.Done()
 		phaseStart := time.Now()
-		result.BusinessRetainers = pa.analyzeBusinessWithProgress(ctx, topForBusiness, opts.BusinessMaxDepth, opts.TopRetainersN, &progress)
+		result.BusinessRetainers = pa.AnalyzeBusinessRetainersParallel(ctx, topForBusiness, opts.BusinessMaxDepth, opts.TopRetainersN)
+		if tracker != nil {
+			tracker.Add(int64(len(topForBusiness)))
+		}
 		businessMu.Lock()
 		businessDuration = time.Since(phaseStart)
 		businessMu.Unlock()
 	}()
 
 	wg.Wait()
-	
+
 	// Populate stats
 	result.Stats = AnalysisStats{
 		TotalDuration:    time.Since(startTime),
@@ -425,153 +397,20 @@ func (pa *ParallelAnalyzer) RunFullAnalysis(ctx context.Context, topClasses []*C
 		ParallelEnabled:  true,
 		WorkerCount:      pa.config.MaxWorkers,
 	}
-	
+
 	// Log stats
 	pa.debugf("Parallel analysis completed in %v (retainer: %v, graph: %v, business: %v)",
 		result.Stats.TotalDuration, retainerDuration, graphDuration, businessDuration)
 	pa.debugf("Results: %d class retainers, %d graphs, %d business retainers (workers: %d)",
 		result.Stats.ClassesAnalyzed, result.Stats.GraphsGenerated, result.Stats.BusinessAnalyzed, pa.config.MaxWorkers)
-	
+
 	return result
-}
-
-// analyzeRetainersWithProgress analyzes retainers with progress tracking.
-func (pa *ParallelAnalyzer) analyzeRetainersWithProgress(ctx context.Context, classes []*ClassStats, topN int, progress *atomic.Int32) map[string]*ClassRetainers {
-	if len(classes) == 0 {
-		return make(map[string]*ClassRetainers)
-	}
-
-	results := make(map[string]*ClassRetainers)
-	var mu sync.Mutex
-
-	tasks := make(chan *ClassStats, len(classes))
-	for _, cls := range classes {
-		tasks <- cls
-	}
-	close(tasks)
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(pa.config.RetainerWorkers)
-
-	for i := 0; i < pa.config.RetainerWorkers; i++ {
-		g.Go(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case cls, ok := <-tasks:
-					if !ok {
-						return nil
-					}
-					retainers := pa.refGraph.ComputeMultiLevelRetainers(cls.ClassName, 5, topN)
-					if retainers != nil && len(retainers.Retainers) > 0 {
-						retainers.RetainedSize = pa.refGraph.GetClassRetainedSize(cls.ClassName)
-						mu.Lock()
-						results[cls.ClassName] = retainers
-						mu.Unlock()
-					}
-					progress.Add(1)
-				}
-			}
-		})
-	}
-
-	_ = g.Wait()
-	return results
-}
-
-// generateGraphsWithProgress generates graphs with progress tracking.
-func (pa *ParallelAnalyzer) generateGraphsWithProgress(ctx context.Context, classes []*ClassStats, maxDepth, maxNodes int, progress *atomic.Int32) map[string]*ReferenceGraphData {
-	if len(classes) == 0 {
-		return make(map[string]*ReferenceGraphData)
-	}
-
-	results := make(map[string]*ReferenceGraphData)
-	var mu sync.Mutex
-
-	tasks := make(chan *ClassStats, len(classes))
-	for _, cls := range classes {
-		tasks <- cls
-	}
-	close(tasks)
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(pa.config.GraphWorkers)
-
-	for i := 0; i < pa.config.GraphWorkers; i++ {
-		g.Go(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case cls, ok := <-tasks:
-					if !ok {
-						return nil
-					}
-					graphData := pa.refGraph.GetReferenceGraphForClass(cls.ClassName, maxDepth, maxNodes)
-					if graphData != nil && len(graphData.Nodes) > 0 {
-						mu.Lock()
-						results[cls.ClassName] = graphData
-						mu.Unlock()
-					}
-					progress.Add(1)
-				}
-			}
-		})
-	}
-
-	_ = g.Wait()
-	return results
-}
-
-// analyzeBusinessWithProgress analyzes business retainers with progress tracking.
-func (pa *ParallelAnalyzer) analyzeBusinessWithProgress(ctx context.Context, classes []*ClassStats, maxDepth, topN int, progress *atomic.Int32) map[string][]*BusinessRetainer {
-	if len(classes) == 0 {
-		return make(map[string][]*BusinessRetainer)
-	}
-
-	results := make(map[string][]*BusinessRetainer)
-	var mu sync.Mutex
-
-	tasks := make(chan *ClassStats, len(classes))
-	for _, cls := range classes {
-		tasks <- cls
-	}
-	close(tasks)
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(pa.config.RetainerWorkers)
-
-	for i := 0; i < pa.config.RetainerWorkers; i++ {
-		g.Go(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case cls, ok := <-tasks:
-					if !ok {
-						return nil
-					}
-					businessRetainers := pa.refGraph.ComputeBusinessRetainers(cls.ClassName, maxDepth, topN)
-					if len(businessRetainers) > 0 {
-						mu.Lock()
-						results[cls.ClassName] = businessRetainers
-						mu.Unlock()
-					}
-					progress.Add(1)
-				}
-			}
-		})
-	}
-
-	_ = g.Wait()
-	return results
 }
 
 // runFullAnalysisSequential runs all analysis sequentially.
 func (pa *ParallelAnalyzer) runFullAnalysisSequential(topClasses []*ClassStats, opts AnalysisOptions) *FullAnalysisResult {
 	startTime := time.Now()
-	
+
 	result := &FullAnalysisResult{
 		ClassRetainers:    make(map[string]*ClassRetainers),
 		ReferenceGraphs:   make(map[string]*ReferenceGraphData),
@@ -580,28 +419,19 @@ func (pa *ParallelAnalyzer) runFullAnalysisSequential(topClasses []*ClassStats, 
 
 	// Retainer analysis
 	retainerStart := time.Now()
-	topForRetainers := topClasses
-	if len(topForRetainers) > opts.MaxRetainerClasses {
-		topForRetainers = topForRetainers[:opts.MaxRetainerClasses]
-	}
+	topForRetainers := limitSlice(topClasses, opts.MaxRetainerClasses)
 	result.ClassRetainers = pa.analyzeRetainersSequential(topForRetainers, opts.TopRetainersN)
 	retainerDuration := time.Since(retainerStart)
 
 	// Reference graphs
 	graphStart := time.Now()
-	topForGraphs := topClasses
-	if len(topForGraphs) > opts.MaxGraphClasses {
-		topForGraphs = topForGraphs[:opts.MaxGraphClasses]
-	}
+	topForGraphs := limitSlice(topClasses, opts.MaxGraphClasses)
 	result.ReferenceGraphs = pa.generateGraphsSequential(topForGraphs, opts.GraphMaxDepth, opts.GraphMaxNodes)
 	graphDuration := time.Since(graphStart)
 
 	// Business retainers
 	businessStart := time.Now()
-	topForBusiness := topClasses
-	if len(topForBusiness) > opts.MaxBusinessClasses {
-		topForBusiness = topForBusiness[:opts.MaxBusinessClasses]
-	}
+	topForBusiness := limitSlice(topClasses, opts.MaxBusinessClasses)
 	result.BusinessRetainers = pa.analyzeBusinessRetainersSequential(topForBusiness, opts.BusinessMaxDepth, opts.TopRetainersN)
 	businessDuration := time.Since(businessStart)
 
@@ -623,6 +453,10 @@ func (pa *ParallelAnalyzer) runFullAnalysisSequential(topClasses []*ClassStats, 
 
 	return result
 }
+
+// ============================================================================
+// Analysis Options
+// ============================================================================
 
 // AnalysisOptions configures analysis parameters.
 type AnalysisOptions struct {
@@ -653,4 +487,16 @@ func DefaultAnalysisOptions() AnalysisOptions {
 		GraphMaxNodes:      100,
 		BusinessMaxDepth:   15,
 	}
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+// limitSlice returns a slice limited to maxLen elements.
+func limitSlice[T any](s []T, maxLen int) []T {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
 }

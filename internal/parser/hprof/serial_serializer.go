@@ -3,9 +3,7 @@ package hprof
 
 import (
 	"bytes"
-	"compress/gzip"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -15,13 +13,11 @@ import (
 
 const (
 	// SerializerVersion is the current serialization format version
-	SerializerVersion = 1
+	// Version 2: Added support for zstd compression
+	SerializerVersion = 2
 	
 	// Magic bytes for file format identification
 	MagicBytes = "REFG"
-	
-	// Default compression level (gzip.BestCompression for smallest size)
-	DefaultCompressionLevel = gzip.BestCompression
 )
 
 // SerializeOptions controls serialization behavior.
@@ -29,18 +25,43 @@ type SerializeOptions struct {
 	// IncludeDominatorData includes precomputed dominator tree data
 	IncludeDominatorData bool
 	
-	// CompressionLevel for gzip (1-9, or gzip.BestSpeed/BestCompression)
-	CompressionLevel int
+	// Compression specifies the compression type (zstd or gzip)
+	Compression CompressionType
+	
+	// CompressionLevel controls the compression level (1=fastest, 9=best)
+	CompressionLevel CompressionLevel
 	
 	// SourceFile is the original hprof file name (for metadata)
 	SourceFile string
 }
 
 // DefaultSerializeOptions returns default serialization options.
+// Uses zstd with default compression level for optimal speed/size balance.
 func DefaultSerializeOptions() SerializeOptions {
 	return SerializeOptions{
 		IncludeDominatorData: true,
-		CompressionLevel:     DefaultCompressionLevel,
+		Compression:          CompressionZstd,
+		CompressionLevel:     CompressionDefault,
+		SourceFile:           "",
+	}
+}
+
+// FastSerializeOptions returns options optimized for speed.
+func FastSerializeOptions() SerializeOptions {
+	return SerializeOptions{
+		IncludeDominatorData: true,
+		Compression:          CompressionZstd,
+		CompressionLevel:     CompressionFastest,
+		SourceFile:           "",
+	}
+}
+
+// LegacySerializeOptions returns options compatible with older versions (gzip).
+func LegacySerializeOptions() SerializeOptions {
+	return SerializeOptions{
+		IncludeDominatorData: true,
+		Compression:          CompressionGzip,
+		CompressionLevel:     CompressionDefault,
 		SourceFile:           "",
 	}
 }
@@ -209,7 +230,7 @@ func (g *ReferenceGraph) Serialize(opts SerializeOptions) ([]byte, *Serializatio
 	}
 	stats.RawSize = int64(len(rawBytes))
 	
-	// Compress with gzip
+	// Build header
 	var buf bytes.Buffer
 	
 	// Write magic bytes for format identification
@@ -217,6 +238,9 @@ func (g *ReferenceGraph) Serialize(opts SerializeOptions) ([]byte, *Serializatio
 	
 	// Write version
 	buf.WriteByte(byte(SerializerVersion))
+	
+	// Write compression type (1 byte)
+	buf.WriteByte(byte(opts.Compression))
 	
 	// Write string table (for field names)
 	stringTableProto := &pb.StringTable{Strings: fieldNames}
@@ -233,20 +257,25 @@ func (g *ReferenceGraph) Serialize(opts SerializeOptions) ([]byte, *Serializatio
 	buf.WriteByte(byte(stLen))
 	buf.Write(stringTableBytes)
 	
-	// Compress main data
-	gzWriter, err := gzip.NewWriterLevel(&buf, opts.CompressionLevel)
+	// Compress main data using the specified compressor
+	var compressor Compressor
+	switch opts.Compression {
+	case CompressionZstd:
+		zstdComp, err := NewZstdCompressor(opts.CompressionLevel)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create zstd compressor: %w", err)
+		}
+		defer zstdComp.Close()
+		compressor = zstdComp
+	default:
+		compressor = NewGzipCompressor(opts.CompressionLevel)
+	}
+	
+	compressedData, err := compressor.Compress(rawBytes)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create gzip writer: %w", err)
+		return nil, nil, fmt.Errorf("failed to compress data: %w", err)
 	}
-	
-	if _, err := gzWriter.Write(rawBytes); err != nil {
-		gzWriter.Close()
-		return nil, nil, fmt.Errorf("failed to write compressed data: %w", err)
-	}
-	
-	if err := gzWriter.Close(); err != nil {
-		return nil, nil, fmt.Errorf("failed to close gzip writer: %w", err)
-	}
+	buf.Write(compressedData)
 	
 	result := buf.Bytes()
 	stats.CompressedSize = int64(len(result))
@@ -271,8 +300,9 @@ func (g *ReferenceGraph) SerializeToFile(filename string, opts SerializeOptions)
 }
 
 // Deserialize deserializes a ReferenceGraph from compressed protobuf bytes.
+// Supports both version 1 (gzip only) and version 2 (gzip or zstd).
 func DeserializeReferenceGraph(data []byte) (*ReferenceGraph, error) {
-	if len(data) < 9 { // Magic(4) + Version(1) + StringTableLen(4)
+	if len(data) < 10 { // Magic(4) + Version(1) + CompressionType(1) + StringTableLen(4)
 		return nil, fmt.Errorf("data too short")
 	}
 	
@@ -283,35 +313,62 @@ func DeserializeReferenceGraph(data []byte) (*ReferenceGraph, error) {
 	
 	// Read version
 	version := data[4]
-	if version != SerializerVersion {
-		return nil, fmt.Errorf("unsupported version: %d (expected %d)", version, SerializerVersion)
+	
+	var compressionType CompressionType
+	var headerOffset int
+	
+	if version == 1 {
+		// Version 1: no compression type byte, always gzip
+		compressionType = CompressionGzip
+		headerOffset = 5
+	} else if version == 2 {
+		// Version 2: has compression type byte
+		compressionType = CompressionType(data[5])
+		headerOffset = 6
+	} else {
+		return nil, fmt.Errorf("unsupported version: %d", version)
 	}
 	
 	// Read string table length
-	stLen := uint32(data[5])<<24 | uint32(data[6])<<16 | uint32(data[7])<<8 | uint32(data[8])
-	if int(9+stLen) > len(data) {
+	stLen := uint32(data[headerOffset])<<24 | uint32(data[headerOffset+1])<<16 | 
+		uint32(data[headerOffset+2])<<8 | uint32(data[headerOffset+3])
+	stringTableStart := headerOffset + 4
+	if int(stringTableStart)+int(stLen) > len(data) {
 		return nil, fmt.Errorf("invalid string table length")
 	}
 	
 	// Unmarshal string table
-	stringTableBytes := data[9 : 9+stLen]
+	stringTableBytes := data[stringTableStart : stringTableStart+int(stLen)]
 	var stringTable pb.StringTable
 	if err := proto.Unmarshal(stringTableBytes, &stringTable); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal string table: %w", err)
 	}
 	fieldNames := stringTable.Strings
 	
-	// Decompress main data
-	compressedData := data[9+stLen:]
-	gzReader, err := gzip.NewReader(bytes.NewReader(compressedData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
-	}
-	defer gzReader.Close()
+	// Decompress main data using appropriate decompressor
+	compressedData := data[stringTableStart+int(stLen):]
 	
-	rawBytes, err := io.ReadAll(gzReader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decompress data: %w", err)
+	var rawBytes []byte
+	var err error
+	
+	switch compressionType {
+	case CompressionZstd:
+		zstdComp, err := NewZstdCompressor(CompressionDefault)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create zstd decompressor: %w", err)
+		}
+		defer zstdComp.Close()
+		rawBytes, err = zstdComp.Decompress(compressedData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decompress zstd data: %w", err)
+		}
+	default:
+		// Gzip decompression
+		gzipComp := NewGzipCompressor(CompressionDefault)
+		rawBytes, err = gzipComp.Decompress(compressedData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decompress gzip data: %w", err)
+		}
 	}
 	
 	// Unmarshal protobuf

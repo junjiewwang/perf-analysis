@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/perf-analysis/pkg/filter"
 	"github.com/perf-analysis/pkg/model"
 	"github.com/perf-analysis/pkg/utils"
 )
@@ -180,40 +181,7 @@ func (f *HeapFormatter) FormatSummary(resp *model.AnalysisResponse) map[string]i
 
 // isBusinessClass checks if a class is likely a business/application class.
 func (f *HeapFormatter) isBusinessClass(className string) bool {
-	// Primitive arrays are not business classes
-	primitiveArrays := []string{"byte[]", "int[]", "char[]", "long[]", "short[]", "boolean[]", "float[]", "double[]"}
-	for _, arr := range primitiveArrays {
-		if className == arr {
-			return false
-		}
-	}
-
-	// JDK classes
-	jdkPrefixes := []string{
-		"java.", "javax.", "sun.", "com.sun.", "jdk.",
-		"[", // arrays
-	}
-	for _, prefix := range jdkPrefixes {
-		if len(className) >= len(prefix) && className[:len(prefix)] == prefix {
-			return false
-		}
-	}
-
-	// Common framework classes
-	frameworkPrefixes := []string{
-		"org.springframework.", "org.apache.", "org.hibernate.",
-		"com.google.", "io.netty.", "org.slf4j.", "ch.qos.logback.",
-		"com.fasterxml.", "org.aspectj.", "org.jboss.",
-		"io.micrometer.", "reactor.", "rx.", "akka.",
-		"io.opentelemetry.", "net.bytebuddy.",
-	}
-	for _, prefix := range frameworkPrefixes {
-		if len(className) >= len(prefix) && className[:len(prefix)] == prefix {
-			return false
-		}
-	}
-
-	return true
+	return filter.IsBusiness(className)
 }
 
 // generateQuickDiagnosis generates a quick diagnosis summary for root cause analysis.

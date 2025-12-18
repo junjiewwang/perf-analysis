@@ -185,21 +185,39 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 	}
 
 	// Step 9: Serialize ReferenceGraph for advanced analysis in serve mode
+	// Uses async serialization to avoid blocking the main analysis flow
+	var serializeResultChan <-chan *hprof.AsyncSerializationResult
 	if heapResult.RefGraph != nil {
 		timer.TimeFunc("Serialize reference graph", func() {
 			refGraphFile := filepath.Join(taskDir, "refgraph.bin")
-			opts := hprof.DefaultSerializeOptions()
+			opts := hprof.FastSerializeOptions() // Use fast options with zstd
 			opts.SourceFile = req.InputFile
-			stats, serializeErr := heapResult.RefGraph.SerializeToFile(refGraphFile, opts)
+			
+			// Start async serialization - this returns immediately
+			var serializeErr error
+			serializeResultChan, serializeErr = hprof.SerializeToFileAsync(context.Background(), heapResult.RefGraph, refGraphFile, opts)
 			if serializeErr != nil {
 				if a.config.Logger != nil {
-					a.config.Logger.Warn("Failed to serialize reference graph: %v", serializeErr)
+					a.config.Logger.Warn("Failed to start reference graph serialization: %v", serializeErr)
 				}
 			} else if a.config.Logger != nil {
-				a.config.Logger.Info("Reference graph serialized: %d objects, %d refs, %.2f KB (ratio: %.2fx)",
-					stats.Objects, stats.References, float64(stats.CompressedSize)/1024, stats.CompressionRatio)
+				a.config.Logger.Info("Reference graph serialization started (async)")
 			}
 		})
+	}
+
+	// Wait for async serialization to complete before printing summary
+	if serializeResultChan != nil {
+		result := <-serializeResultChan
+		if result.Error != nil {
+			if a.config.Logger != nil {
+				a.config.Logger.Warn("Reference graph serialization failed: %v", result.Error)
+			}
+		} else if result.Stats != nil && a.config.Logger != nil {
+			a.config.Logger.Info("Reference graph serialized: %d objects, %d refs, %.2f KB (ratio: %.2fx)",
+				result.Stats.Objects, result.Stats.References, 
+				float64(result.Stats.CompressedSize)/1024, result.Stats.CompressionRatio)
+		}
 	}
 
 	// Print timing summary for post-parse operations
