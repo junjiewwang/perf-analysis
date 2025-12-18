@@ -12,6 +12,7 @@ import (
 
 	"github.com/perf-analysis/internal/parser/hprof"
 	"github.com/perf-analysis/pkg/model"
+	"github.com/perf-analysis/pkg/utils"
 )
 
 // JavaHeapAnalyzer analyzes Java heap dump (HPROF) files.
@@ -87,7 +88,10 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 		return nil, fmt.Errorf("java heap analyzer only supports task type java_heap, got %v", req.TaskType)
 	}
 
-	// Step 1: Parse the HPROF data
+	// Create timer for post-parse operations (uses dependency injection via Logger)
+	timer := utils.NewTimer("Post-Parse Operations", utils.WithLogger(a.config.Logger), utils.WithEnabled(a.config.Logger != nil))
+
+	// Step 1: Parse the HPROF data (has its own internal timer)
 	parser := hprof.NewParser(a.hprofOpts)
 	heapResult, err := parser.Parse(ctx, dataReader)
 	if err != nil {
@@ -99,83 +103,107 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 	}
 
 	// Step 2: Determine output directory
-	taskDir := req.OutputDir
-	if taskDir == "" {
-		taskDir, err = a.ensureOutputDir(req.TaskUUID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create output directory: %w", err)
+	var taskDir string
+	timer.TimeFunc("Ensure output directory", func() {
+		taskDir = req.OutputDir
+		if taskDir == "" {
+			taskDir, err = a.ensureOutputDir(req.TaskUUID)
 		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	// Step 3: Generate heap analysis report
 	heapReportFile := filepath.Join(taskDir, "heap_analysis.json")
-	if err := a.writeHeapReport(heapResult, heapReportFile); err != nil {
+	timer.TimeFuncWithError("Write heap report", func() error {
+		return a.writeHeapReport(heapResult, heapReportFile)
+	})
+	if err != nil {
 		return nil, fmt.Errorf("failed to write heap report: %w", err)
 	}
 
 	// Step 4: Generate class histogram (similar to jmap -histo)
 	histogramFile := filepath.Join(taskDir, "class_histogram.json")
-	if err := a.writeClassHistogram(heapResult, histogramFile); err != nil {
+	timer.TimeFuncWithError("Write class histogram", func() error {
+		return a.writeClassHistogram(heapResult, histogramFile)
+	})
+	if err != nil {
 		return nil, fmt.Errorf("failed to write class histogram: %w", err)
 	}
 
-	// Step 5: Build top classes
-	topClasses := a.buildTopClasses(heapResult)
+	// Step 5-7: Build data structures
+	var topClasses []model.HeapClassStats
+	var suggestions []model.SuggestionItem
+	var heapData *model.HeapAnalysisData
 
-	// Step 6: Generate suggestions
-	suggestions := a.generateSuggestions(heapResult)
+	timer.TimeFunc("Build top classes", func() {
+		topClasses = a.buildTopClasses(heapResult)
+	})
 
-	// Step 7: Build HeapAnalysisData
-	heapData := &model.HeapAnalysisData{
-		HeapReportFile:    heapReportFile,
-		HistogramFile:     histogramFile,
-		TotalClasses:      heapResult.TotalClasses,
-		TotalInstances:    heapResult.TotalInstances,
-		TotalHeapSize:     heapResult.TotalHeapSize,
-		HeapSizeHuman:     formatBytes(heapResult.TotalHeapSize),
-		TopClasses:        topClasses,
-		BiggestObjects:    a.buildBiggestObjects(heapResult),
-		ReferenceGraphs:   a.buildReferenceGraphs(heapResult),
-		BusinessRetainers: a.buildBusinessRetainers(heapResult),
-	}
+	timer.TimeFunc("Generate suggestions", func() {
+		suggestions = a.generateSuggestions(heapResult)
+	})
 
-	if heapResult.Header != nil {
-		heapData.Format = heapResult.Header.Format
-		heapData.IDSize = heapResult.Header.IDSize
-		heapData.Timestamp = heapResult.Header.Timestamp.Unix()
-	}
+	timer.TimeFunc("Build HeapAnalysisData", func() {
+		heapData = &model.HeapAnalysisData{
+			HeapReportFile:    heapReportFile,
+			HistogramFile:     histogramFile,
+			TotalClasses:      heapResult.TotalClasses,
+			TotalInstances:    heapResult.TotalInstances,
+			TotalHeapSize:     heapResult.TotalHeapSize,
+			HeapSizeHuman:     formatBytes(heapResult.TotalHeapSize),
+			TopClasses:        topClasses,
+			BiggestObjects:    a.buildBiggestObjects(heapResult),
+			ReferenceGraphs:   a.buildReferenceGraphs(heapResult),
+			BusinessRetainers: a.buildBusinessRetainers(heapResult),
+		}
 
-	if heapResult.Summary != nil {
-		heapData.LiveBytes = heapResult.Summary.TotalLiveBytes
-		heapData.LiveObjects = heapResult.Summary.TotalLiveObjects
-	}
+		if heapResult.Header != nil {
+			heapData.Format = heapResult.Header.Format
+			heapData.IDSize = heapResult.Header.IDSize
+			heapData.Timestamp = heapResult.Header.Timestamp.Unix()
+		}
+
+		if heapResult.Summary != nil {
+			heapData.LiveBytes = heapResult.Summary.TotalLiveBytes
+			heapData.LiveObjects = heapResult.Summary.TotalLiveObjects
+		}
+	})
 
 	// Step 8: Write biggest objects file
 	if len(heapData.BiggestObjects) > 0 {
-		biggestObjectsFile := filepath.Join(taskDir, "biggest_objects.json")
-		if err := a.writeBiggestObjects(heapData.BiggestObjects, biggestObjectsFile); err != nil {
-			// Log error but don't fail the analysis
-			if a.config.Logger != nil {
-				a.config.Logger.Warn("Failed to write biggest objects file: %v", err)
+		timer.TimeFunc("Write biggest objects file", func() {
+			biggestObjectsFile := filepath.Join(taskDir, "biggest_objects.json")
+			if writeErr := a.writeBiggestObjects(heapData.BiggestObjects, biggestObjectsFile); writeErr != nil {
+				// Log error but don't fail the analysis
+				if a.config.Logger != nil {
+					a.config.Logger.Warn("Failed to write biggest objects file: %v", writeErr)
+				}
 			}
-		}
+		})
 	}
 
 	// Step 9: Serialize ReferenceGraph for advanced analysis in serve mode
 	if heapResult.RefGraph != nil {
-		refGraphFile := filepath.Join(taskDir, "refgraph.bin")
-		opts := hprof.DefaultSerializeOptions()
-		opts.SourceFile = req.InputFile
-		stats, err := heapResult.RefGraph.SerializeToFile(refGraphFile, opts)
-		if err != nil {
-			if a.config.Logger != nil {
-				a.config.Logger.Warn("Failed to serialize reference graph: %v", err)
+		timer.TimeFunc("Serialize reference graph", func() {
+			refGraphFile := filepath.Join(taskDir, "refgraph.bin")
+			opts := hprof.DefaultSerializeOptions()
+			opts.SourceFile = req.InputFile
+			stats, serializeErr := heapResult.RefGraph.SerializeToFile(refGraphFile, opts)
+			if serializeErr != nil {
+				if a.config.Logger != nil {
+					a.config.Logger.Warn("Failed to serialize reference graph: %v", serializeErr)
+				}
+			} else if a.config.Logger != nil {
+				a.config.Logger.Info("Reference graph serialized: %d objects, %d refs, %.2f KB (ratio: %.2fx)",
+					stats.Objects, stats.References, float64(stats.CompressedSize)/1024, stats.CompressionRatio)
 			}
-		} else if a.config.Logger != nil {
-			a.config.Logger.Info("Reference graph serialized: %d objects, %d refs, %.2f KB (ratio: %.2fx)",
-				stats.Objects, stats.References, float64(stats.CompressedSize)/1024, stats.CompressionRatio)
-		}
+		})
 	}
+
+	// Print timing summary for post-parse operations
+	timer.PrintSummary()
 
 	// Step 10: Build output files
 	outputFiles := []model.OutputFile{
