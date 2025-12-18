@@ -62,7 +62,6 @@ const HeapAnalysis = (function() {
         }
 
         // 渲染 top classes 预览（使用新的 Tailwind 样式）
-        const heapData = data.data || {};
         const topClasses = heapData.top_classes || [];
         const previewBody = document.getElementById('topFuncsPreview');
         previewBody.innerHTML = topClasses.slice(0, 5).map((cls, i) => `
@@ -103,12 +102,6 @@ const HeapAnalysis = (function() {
     function renderAnalysis(data) {
         console.log('[HeapAnalysis] renderAnalysis called');
         const heapData = data.data || {};
-
-        // 渲染统计信息
-        document.getElementById('heapTotalSize').textContent = heapData.heap_size_human || Utils.formatBytes(heapData.total_heap_size || 0);
-        document.getElementById('heapTotalClasses').textContent = Utils.formatNumber(heapData.total_classes || 0);
-        document.getElementById('heapTotalInstances').textContent = Utils.formatNumber(heapData.total_instances || 0);
-        document.getElementById('heapFormat').textContent = heapData.format || 'Unknown';
 
         // 加载数据到核心模块（触发各子模块渲染）
         console.log('[HeapAnalysis] Calling HeapCore.loadAnalysisData');
