@@ -184,6 +184,19 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 		})
 	}
 
+	// Step 8.5: Write GC roots file
+	if heapResult.GCRootsAnalysis != nil {
+		timer.TimeFunc("Write GC roots file", func() {
+			gcRootsFile := filepath.Join(taskDir, "gc_roots.json")
+			gcRootsData := a.buildGCRootsData(heapResult.GCRootsAnalysis)
+			if writeErr := a.writeGCRoots(gcRootsData, gcRootsFile); writeErr != nil {
+				if a.config.Logger != nil {
+					a.config.Logger.Warn("Failed to write GC roots file: %v", writeErr)
+				}
+			}
+		})
+	}
+
 	// Step 9: Serialize ReferenceGraph for advanced analysis in serve mode
 	// Uses async serialization to avoid blocking the main analysis flow
 	var serializeResultChan <-chan *hprof.AsyncSerializationResult
@@ -501,6 +514,66 @@ func (a *JavaHeapAnalyzer) writeBiggestObjects(objects []model.HeapBiggestObject
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(objects)
+}
+
+// buildGCRootsData converts hprof.GCRootsAnalysis to model.HeapGCRootsData.
+func (a *JavaHeapAnalyzer) buildGCRootsData(analysis *hprof.GCRootsAnalysis) *model.HeapGCRootsData {
+	if analysis == nil {
+		return nil
+	}
+
+	data := &model.HeapGCRootsData{
+		Summary: model.HeapGCRootsSummary{
+			TotalRoots:    analysis.TotalRoots,
+			TotalClasses:  analysis.TotalClasses,
+			TotalRetained: analysis.TotalRetained,
+			TotalShallow:  analysis.TotalShallow,
+		},
+		Classes: make([]model.HeapGCRootClass, 0, len(analysis.Classes)),
+	}
+
+	for _, cls := range analysis.Classes {
+		classData := model.HeapGCRootClass{
+			ClassName:     cls.ClassName,
+			RootType:      string(cls.RootType),
+			TotalShallow:  cls.TotalShallow,
+			TotalRetained: cls.TotalRetained,
+			InstanceCount: cls.InstanceCount,
+			Roots:         make([]model.HeapGCRootInstance, 0, len(cls.Roots)),
+		}
+
+		for _, root := range cls.Roots {
+			classData.Roots = append(classData.Roots, model.HeapGCRootInstance{
+				ObjectID:     formatObjectID(root.ObjectID),
+				RootType:     string(root.RootType),
+				ShallowSize:  root.ShallowSize,
+				RetainedSize: root.RetainedSize,
+				ThreadID:     formatObjectID(root.ThreadID),
+				FrameIndex:   root.FrameIndex,
+			})
+		}
+
+		data.Classes = append(data.Classes, classData)
+	}
+
+	return data
+}
+
+// writeGCRoots writes the GC roots data to a JSON file.
+func (a *JavaHeapAnalyzer) writeGCRoots(data *model.HeapGCRootsData, outputPath string) error {
+	if data == nil {
+		return nil
+	}
+
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(data)
 }
 
 // formatObjectID formats an object ID as a hex string.

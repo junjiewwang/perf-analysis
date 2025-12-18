@@ -210,3 +210,206 @@ func (g *ReferenceGraph) FindNonArrayRetainers(topN int) map[string]int {
 
 	return result
 }
+
+// GCRootInfo represents aggregated information about a GC root for display.
+type GCRootInfo struct {
+	ObjectID     uint64     `json:"object_id"`
+	ClassName    string     `json:"class_name"`
+	RootType     GCRootType `json:"root_type"`
+	ShallowSize  int64      `json:"shallow_size"`
+	RetainedSize int64      `json:"retained_size"`
+	ThreadID     uint64     `json:"thread_id,omitempty"`
+	FrameIndex   int        `json:"frame_index,omitempty"`
+}
+
+// GCRootSummary represents a summary of GC roots grouped by class (like IDEA).
+type GCRootSummary struct {
+	ClassName       string        `json:"class_name"`
+	RootType        GCRootType    `json:"root_type,omitempty"`
+	TotalShallow    int64         `json:"total_shallow"`
+	TotalRetained   int64         `json:"total_retained"`
+	InstanceCount   int           `json:"instance_count"`
+	Roots           []*GCRootInfo `json:"roots,omitempty"`
+	RetainedClasses []string      `json:"retained_classes,omitempty"`
+}
+
+// GetGCRootsList returns all GC roots with their information.
+// Results are sorted by retained size descending.
+func (g *ReferenceGraph) GetGCRootsList() []*GCRootInfo {
+	// Ensure dominator tree is computed for accurate retained sizes
+	g.ComputeDominatorTree()
+	
+	result := make([]*GCRootInfo, 0, len(g.gcRoots))
+	
+	for _, root := range g.gcRoots {
+		classID, ok := g.objectClass[root.ObjectID]
+		if !ok {
+			continue
+		}
+		
+		className := g.classNames[classID]
+		if className == "" {
+			className = "Unknown"
+		}
+		
+		info := &GCRootInfo{
+			ObjectID:     root.ObjectID,
+			ClassName:    className,
+			RootType:     root.Type,
+			ShallowSize:  g.objectSize[root.ObjectID],
+			RetainedSize: g.GetRetainedSize(root.ObjectID),
+			ThreadID:     root.ThreadID,
+			FrameIndex:   root.FrameIndex,
+		}
+		result = append(result, info)
+	}
+	
+	// Also include Class objects as GC roots (they are held by ClassLoaders)
+	for classObjID := range g.classObjectIDs {
+		if _, isExplicitRoot := g.gcRootSet[classObjID]; isExplicitRoot {
+			continue // Already included
+		}
+		
+		classID, ok := g.objectClass[classObjID]
+		if !ok {
+			continue
+		}
+		
+		className := g.classNames[classID]
+		if className == "" {
+			className = "java.lang.Class"
+		}
+		
+		info := &GCRootInfo{
+			ObjectID:     classObjID,
+			ClassName:    className,
+			RootType:     GCRootStickyClass,
+			ShallowSize:  g.objectSize[classObjID],
+			RetainedSize: g.GetRetainedSize(classObjID),
+		}
+		result = append(result, info)
+	}
+	
+	// Sort by retained size descending
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].RetainedSize > result[i].RetainedSize {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+	
+	return result
+}
+
+// GetGCRootsSummary returns GC roots grouped by class name (like IDEA).
+func (g *ReferenceGraph) GetGCRootsSummary() []*GCRootSummary {
+	// Ensure dominator tree is computed
+	g.ComputeDominatorTree()
+	
+	// Group by class name only (like IDEA)
+	groups := make(map[string]*GCRootSummary)
+	rootTypeCounts := make(map[string]map[GCRootType]int)
+	
+	allRoots := g.GetGCRootsList()
+	for _, root := range allRoots {
+		className := root.ClassName
+		summary, ok := groups[className]
+		if !ok {
+			summary = &GCRootSummary{
+				ClassName: className,
+				Roots:     make([]*GCRootInfo, 0),
+			}
+			groups[className] = summary
+			rootTypeCounts[className] = make(map[GCRootType]int)
+		}
+		summary.TotalShallow += root.ShallowSize
+		summary.TotalRetained += root.RetainedSize
+		summary.InstanceCount++
+		summary.Roots = append(summary.Roots, root)
+		rootTypeCounts[className][root.RootType]++
+	}
+	
+	// Set the primary root type (most common) for each group
+	for className, summary := range groups {
+		maxCount := 0
+		for rootType, count := range rootTypeCounts[className] {
+			if count > maxCount {
+				maxCount = count
+				summary.RootType = rootType
+			}
+		}
+		// Sort roots by retained size descending
+		roots := summary.Roots
+		for i := 0; i < len(roots)-1; i++ {
+			for j := i + 1; j < len(roots); j++ {
+				if roots[j].RetainedSize > roots[i].RetainedSize {
+					roots[i], roots[j] = roots[j], roots[i]
+				}
+			}
+		}
+	}
+	
+	// Convert to slice and sort by retained size
+	result := make([]*GCRootSummary, 0, len(groups))
+	for _, summary := range groups {
+		result = append(result, summary)
+	}
+	
+	// Sort by retained size descending
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].TotalRetained > result[i].TotalRetained {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+	
+	return result
+}
+
+// GetRetainedObjectsByGCRoot returns the objects directly retained by a GC root.
+func (g *ReferenceGraph) GetRetainedObjectsByGCRoot(rootObjectID uint64, maxObjects int) []*GCRootInfo {
+	if maxObjects <= 0 {
+		maxObjects = 50
+	}
+	
+	result := make([]*GCRootInfo, 0)
+	
+	// Get outgoing references from the GC root
+	refs := g.outgoingRefs[rootObjectID]
+	for _, ref := range refs {
+		if len(result) >= maxObjects {
+			break
+		}
+		
+		classID, ok := g.objectClass[ref.ToObjectID]
+		if !ok {
+			continue
+		}
+		
+		className := g.classNames[classID]
+		if className == "" {
+			className = "Unknown"
+		}
+		
+		info := &GCRootInfo{
+			ObjectID:     ref.ToObjectID,
+			ClassName:    className,
+			ShallowSize:  g.objectSize[ref.ToObjectID],
+			RetainedSize: g.GetRetainedSize(ref.ToObjectID),
+		}
+		result = append(result, info)
+	}
+	
+	// Sort by retained size descending
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].RetainedSize > result[i].RetainedSize {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+	
+	return result
+}

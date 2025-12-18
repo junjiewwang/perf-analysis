@@ -46,6 +46,42 @@ const API = {
             throw new Error(`HTTP ${response.status}`);
         }
         return response.json();
+    },
+
+    // Fetch GC roots summary (from gc_roots.json or refgraph)
+    async getGCRootsSummary(taskId) {
+        const response = await fetch(`/api/refgraph/gc-roots-summary?task=${taskId}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    },
+
+    // Fetch GC roots list
+    async getGCRootsList(taskId) {
+        const response = await fetch(`/api/refgraph/gc-roots-list?task=${taskId}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    },
+
+    // Fetch objects retained by a specific GC root
+    async getGCRootRetained(taskId, objectId, maxObjects = 50) {
+        const response = await fetch(`/api/refgraph/gc-root-retained?task=${taskId}&id=${objectId}&max=${maxObjects}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    },
+
+    // Fetch object fields using refgraph
+    async getObjectFields(taskId, objectId) {
+        const response = await fetch(`/api/refgraph/fields?task=${taskId}&id=${objectId}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
     }
 };
 

@@ -62,6 +62,9 @@ func (rb *ResultBuilder) Build() *HeapAnalysisResult {
 	// Build BiggestObjects
 	rb.buildBiggestObjects(result)
 
+	// Build GC Roots analysis
+	rb.buildGCRoots(result)
+
 	return result
 }
 
@@ -300,5 +303,53 @@ func (rb *ResultBuilder) buildBiggestObjects(result *HeapAnalysisResult) {
 		if rb.opts.Verbose {
 			builder.DebugClassLoaderRetainedSize("com.taobao.arthas.agent.ArthasClassloader")
 		}
+	})
+}
+
+// buildGCRoots builds the GC roots analysis for persistence.
+func (rb *ResultBuilder) buildGCRoots(result *HeapAnalysisResult) {
+	if rb.state.refGraph == nil || !rb.opts.AnalyzeRetainers {
+		return
+	}
+
+	rb.timer.TimeFunc("GC roots analysis", func() {
+		// Get GC roots summary from reference graph
+		summaries := rb.state.refGraph.GetGCRootsSummary()
+		
+		// Convert to GCRootsAnalysis structure
+		analysis := &GCRootsAnalysis{
+			Classes: make([]*GCRootClassSummary, 0, len(summaries)),
+		}
+		
+		for _, summary := range summaries {
+			classSummary := &GCRootClassSummary{
+				ClassName:     summary.ClassName,
+				RootType:      summary.RootType,
+				TotalShallow:  summary.TotalShallow,
+				TotalRetained: summary.TotalRetained,
+				InstanceCount: summary.InstanceCount,
+				Roots:         make([]*GCRootInstanceInfo, 0, len(summary.Roots)),
+			}
+			
+			// Convert individual roots
+			for _, root := range summary.Roots {
+				classSummary.Roots = append(classSummary.Roots, &GCRootInstanceInfo{
+					ObjectID:     root.ObjectID,
+					RootType:     root.RootType,
+					ShallowSize:  root.ShallowSize,
+					RetainedSize: root.RetainedSize,
+					ThreadID:     root.ThreadID,
+					FrameIndex:   root.FrameIndex,
+				})
+			}
+			
+			analysis.Classes = append(analysis.Classes, classSummary)
+			analysis.TotalRoots += classSummary.InstanceCount
+			analysis.TotalRetained += classSummary.TotalRetained
+			analysis.TotalShallow += classSummary.TotalShallow
+		}
+		
+		analysis.TotalClasses = len(analysis.Classes)
+		result.GCRootsAnalysis = analysis
 	})
 }

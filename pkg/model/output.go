@@ -236,6 +236,41 @@ type HeapGCRootPathNode struct {
 	Size      int64  `json:"size"`
 }
 
+// HeapGCRootsData holds GC roots analysis data for persistence.
+// This is written to gc_roots.json during analysis for fast loading in serve mode.
+type HeapGCRootsData struct {
+	Summary HeapGCRootsSummary  `json:"summary"`
+	Classes []HeapGCRootClass   `json:"classes"`
+}
+
+// HeapGCRootsSummary holds summary statistics for GC roots.
+type HeapGCRootsSummary struct {
+	TotalRoots    int   `json:"total_roots"`
+	TotalClasses  int   `json:"total_classes"`
+	TotalRetained int64 `json:"total_retained"`
+	TotalShallow  int64 `json:"total_shallow"`
+}
+
+// HeapGCRootClass represents GC roots grouped by class name (like IDEA).
+type HeapGCRootClass struct {
+	ClassName     string               `json:"class_name"`
+	RootType      string               `json:"root_type,omitempty"` // Primary root type (most common)
+	TotalShallow  int64                `json:"total_shallow"`
+	TotalRetained int64                `json:"total_retained"`
+	InstanceCount int                  `json:"instance_count"`
+	Roots         []HeapGCRootInstance `json:"roots,omitempty"` // Individual GC root instances
+}
+
+// HeapGCRootInstance represents a single GC root instance.
+type HeapGCRootInstance struct {
+	ObjectID     string `json:"object_id"`
+	RootType     string `json:"root_type"`
+	ShallowSize  int64  `json:"shallow_size"`
+	RetainedSize int64  `json:"retained_size"`
+	ThreadID     string `json:"thread_id,omitempty"`
+	FrameIndex   int    `json:"frame_index,omitempty"`
+}
+
 // HeapAnalysisData holds Java heap dump analysis data.
 type HeapAnalysisData struct {
 	HeapReportFile    string                           `json:"heap_report_file"`

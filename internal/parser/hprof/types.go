@@ -140,6 +140,7 @@ type HeapAnalysisResult struct {
 	TotalHeapSize    int64                         `json:"total_heap_size"`
 	LargestObjects   []*ObjectInfo                 `json:"largest_objects,omitempty"`
 	BiggestObjects   []*BiggestObject              `json:"biggest_objects,omitempty"`
+	GCRootsAnalysis  *GCRootsAnalysis              `json:"gc_roots_analysis,omitempty"`
 	StringStats      *StringStats                  `json:"string_stats,omitempty"`
 	ArrayStats       *ArrayStats                   `json:"array_stats,omitempty"`
 	ClassRetainers   map[string]*ClassRetainers    `json:"class_retainers,omitempty"`
@@ -151,6 +152,35 @@ type HeapAnalysisResult struct {
 	Strings          map[uint64]string             `json:"-"`
 	// RefGraph holds the reference graph for advanced analysis (not serialized to JSON)
 	RefGraph         *ReferenceGraph               `json:"-"`
+}
+
+// GCRootsAnalysis holds GC roots analysis data for persistence.
+type GCRootsAnalysis struct {
+	TotalRoots    int                   `json:"total_roots"`
+	TotalClasses  int                   `json:"total_classes"`
+	TotalRetained int64                 `json:"total_retained"`
+	TotalShallow  int64                 `json:"total_shallow"`
+	Classes       []*GCRootClassSummary `json:"classes"`
+}
+
+// GCRootClassSummary represents GC roots grouped by class name.
+type GCRootClassSummary struct {
+	ClassName     string                `json:"class_name"`
+	RootType      GCRootType            `json:"root_type,omitempty"`
+	TotalShallow  int64                 `json:"total_shallow"`
+	TotalRetained int64                 `json:"total_retained"`
+	InstanceCount int                   `json:"instance_count"`
+	Roots         []*GCRootInstanceInfo `json:"roots,omitempty"`
+}
+
+// GCRootInstanceInfo represents a single GC root instance.
+type GCRootInstanceInfo struct {
+	ObjectID     uint64     `json:"object_id"`
+	RootType     GCRootType `json:"root_type"`
+	ShallowSize  int64      `json:"shallow_size"`
+	RetainedSize int64      `json:"retained_size"`
+	ThreadID     uint64     `json:"thread_id,omitempty"`
+	FrameIndex   int        `json:"frame_index,omitempty"`
 }
 
 // ObjectInfo holds information about a specific object.

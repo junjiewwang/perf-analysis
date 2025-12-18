@@ -161,6 +161,41 @@ func (s *RefGraphService) GetRetainers(taskID string, objectIDStr string, maxRet
 	return result, nil
 }
 
+// GetGCRootsSummary returns GC roots grouped by class (like IDEA).
+func (s *RefGraphService) GetGCRootsSummary(taskID string) ([]*hprof.GCRootSummary, error) {
+	entry, err := s.getOrLoadGraph(taskID)
+	if err != nil {
+		return nil, err
+	}
+	
+	return entry.refGraph.GetGCRootsSummary(), nil
+}
+
+// GetGCRootsList returns all GC roots with their information.
+func (s *RefGraphService) GetGCRootsList(taskID string) ([]*hprof.GCRootInfo, error) {
+	entry, err := s.getOrLoadGraph(taskID)
+	if err != nil {
+		return nil, err
+	}
+	
+	return entry.refGraph.GetGCRootsList(), nil
+}
+
+// GetRetainedObjectsByGCRoot returns objects retained by a specific GC root.
+func (s *RefGraphService) GetRetainedObjectsByGCRoot(taskID string, objectIDStr string, maxObjects int) ([]*hprof.GCRootInfo, error) {
+	entry, err := s.getOrLoadGraph(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	objectID, err := parseObjectID(objectIDStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid object ID: %w", err)
+	}
+
+	return entry.refGraph.GetRetainedObjectsByGCRoot(objectID, maxObjects), nil
+}
+
 // HasRefGraph checks if a reference graph file exists for the given task.
 func (s *RefGraphService) HasRefGraph(taskID string) bool {
 	taskDir := s.getTaskDir(taskID)

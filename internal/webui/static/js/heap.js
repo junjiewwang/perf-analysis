@@ -4,13 +4,11 @@
  * 
  * 架构说明：
  * - HeapCore: 核心模块，状态管理和事件系统
- * - HeapDiagnosis: 问题诊断概览（首页展示）
  * - HeapTreemap: Treemap 可视化
  * - HeapBiggestObjects: 最大对象分析
  * - HeapHistogram: Class Histogram 表格
  * - HeapGCRoots: GC Roots 分析
  * - HeapMergedPaths: Merged Paths 分析（IDEA 风格）
- * - HeapRootCause: Root Cause 详细分析
  * 
  * 设计原则：
  * - 门面模式：提供统一的简化接口
@@ -34,7 +32,7 @@ const HeapAnalysis = (function() {
         
         // 子模块会在加载时自动注册到核心模块
         console.log('[HeapAnalysis] Initialized with modules:', 
-            Array.from(['diagnosis', 'treemap', 'biggestObjects', 'histogram', 'gcroots', 'mergedPaths', 'rootcause'])
+            Array.from(['treemap', 'biggestObjects', 'histogram', 'gcroots', 'mergedPaths'])
                 .filter(name => HeapCore.getModule(name))
                 .join(', ')
         );
@@ -64,24 +62,25 @@ const HeapAnalysis = (function() {
         }
 
         // 渲染 top classes 预览（使用新的 Tailwind 样式）
-        const topItems = data.top_items || [];
+        const heapData = data.data || {};
+        const topClasses = heapData.top_classes || [];
         const previewBody = document.getElementById('topFuncsPreview');
-        previewBody.innerHTML = topItems.slice(0, 5).map((item, i) => `
+        previewBody.innerHTML = topClasses.slice(0, 5).map((cls, i) => `
             <tr class="hover:bg-gray-50 transition-colors">
                 <td class="px-6 py-4 text-sm text-gray-500 font-medium">${i + 1}</td>
                 <td class="px-6 py-4">
-                    <span class="font-mono text-sm text-gray-800" title="${Utils.escapeHtml(item.name)}">${Utils.escapeHtml(item.name)}</span>
+                    <span class="font-mono text-sm text-gray-800" title="${Utils.escapeHtml(cls.class_name)}">${Utils.escapeHtml(cls.class_name)}</span>
                 </td>
                 <td class="px-6 py-4">
                     <div class="flex items-center gap-3">
                         <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden max-w-[120px]">
-                            <div class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300" style="width: ${Math.min(item.percentage, 100)}%"></div>
+                            <div class="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300" style="width: ${Math.min(cls.percentage, 100)}%"></div>
                         </div>
-                        <span class="text-sm font-semibold text-gray-700 w-16 text-right">${item.percentage.toFixed(2)}%</span>
+                        <span class="text-sm font-semibold text-gray-700 w-16 text-right">${cls.percentage.toFixed(2)}%</span>
                     </div>
                 </td>
                 <td class="px-6 py-4 text-center">
-                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">${Utils.formatBytes(item.value)}</span>
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">${Utils.formatBytes(cls.total_size)}</span>
                 </td>
             </tr>
         `).join('');
@@ -115,16 +114,17 @@ const HeapAnalysis = (function() {
         console.log('[HeapAnalysis] Calling HeapCore.loadAnalysisData');
         HeapCore.loadAnalysisData(data);
 
-        // 渲染问题诊断概览（首页）
-        const diagnosisModule = HeapCore.getModule('diagnosis');
-        if (diagnosisModule) {
-            diagnosisModule.render(data);
-        }
-
-        // Treemap 需要额外的参数
+        // Treemap 需要额外的参数 - 使用 classData
         const treemapModule = HeapCore.getModule('treemap');
         if (treemapModule) {
-            treemapModule.render(data.top_items || [], heapData.total_heap_size || 0);
+            const topClasses = heapData.top_classes || [];
+            // 转换为 treemap 需要的格式
+            const treemapData = topClasses.map(cls => ({
+                name: cls.class_name,
+                value: cls.total_size,
+                percentage: cls.percentage
+            }));
+            treemapModule.render(treemapData, heapData.total_heap_size || 0);
         }
 
         // 渲染 GC Roots
@@ -132,22 +132,6 @@ const HeapAnalysis = (function() {
         if (gcRootsModule) {
             gcRootsModule.render();
         }
-    }
-
-    // ============================================
-    // 委托方法 - Diagnosis
-    // ============================================
-    
-    function renderDiagnosis(data) {
-        const diagnosisModule = HeapCore.getModule('diagnosis');
-        if (diagnosisModule) {
-            diagnosisModule.render(data);
-        }
-    }
-
-    function getDiagnosisData() {
-        const diagnosisModule = HeapCore.getModule('diagnosis');
-        return diagnosisModule ? diagnosisModule.getDiagnosisData() : null;
     }
 
     // ============================================
@@ -205,22 +189,6 @@ const HeapAnalysis = (function() {
 
     function collapseAllPaths() {
         HeapMergedPaths.collapseAll();
-    }
-
-    // ============================================
-    // 委托方法 - Root Cause
-    // ============================================
-    
-    function renderRootCauseAnalysis(data) {
-        HeapRootCause.render(data);
-    }
-
-    function toggleBusinessGroup(idx) {
-        HeapRootCause.toggleBusinessGroup(idx);
-    }
-
-    function filterRootCause() {
-        HeapRootCause.filter();
     }
 
     // ============================================
@@ -313,10 +281,6 @@ const HeapAnalysis = (function() {
         // 分析
         renderAnalysis,
         
-        // Diagnosis (新增)
-        renderDiagnosis,
-        getDiagnosisData,
-        
         // Histogram
         filterClasses,
         clearSearch,
@@ -335,11 +299,6 @@ const HeapAnalysis = (function() {
         // Merged Paths
         expandAllPaths,
         collapseAllPaths,
-        
-        // Root Cause
-        renderRootCauseAnalysis,
-        toggleBusinessGroup,
-        filterRootCause,
         
         // Treemap
         resizeTreemap,

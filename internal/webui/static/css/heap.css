@@ -970,3 +970,267 @@
 #biggestObjectsList > .sticky {
     backdrop-filter: blur(4px);
 }
+
+/* ============================================
+   Enhanced GC Roots Styles (New API)
+   ============================================ */
+
+/* Class row styles */
+.gc-roots-table tr.gc-root-class-row {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.gc-roots-table tr.gc-root-class-row:hover {
+    background: #3a3d40;
+}
+
+.gc-roots-table tr.gc-root-class-row.business-class {
+    background: rgba(255, 152, 0, 0.08);
+}
+
+.gc-roots-table tr.gc-root-class-row.business-class:hover {
+    background: rgba(255, 152, 0, 0.15);
+}
+
+.gc-roots-table .gc-root-class {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 13px;
+}
+
+.gc-roots-table .gc-root-class.highlight {
+    color: #ffc66d;
+    font-weight: 600;
+}
+
+.gc-roots-table .instance-count {
+    color: #808080;
+    font-size: 11px;
+    margin-left: 8px;
+}
+
+/* Instances container */
+.gc-roots-table tr.gc-root-instances {
+    background: #1e2123;
+}
+
+.gc-roots-table tr.gc-root-instances > td {
+    padding: 0;
+}
+
+.gc-root-instances-container {
+    padding: 12px 20px;
+}
+
+.instances-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #3c3f41;
+    margin-bottom: 8px;
+    color: #a9b7c6;
+    font-size: 13px;
+}
+
+.instances-hint {
+    color: #6897bb;
+    font-size: 11px;
+}
+
+/* Instances table */
+.instances-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.instances-table th {
+    background: #2b2b2b;
+    color: #808080;
+    font-weight: 500;
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid #3c3f41;
+}
+
+.instances-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #2d2d2d;
+}
+
+.instances-table tr.instance-row {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.instances-table tr.instance-row:hover {
+    background: #2d3436;
+}
+
+.instances-table .object-id {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    color: #6897bb;
+    font-size: 11px;
+    background: #2b2b2b;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.instances-table .thread-id {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    color: #9876aa;
+    font-size: 10px;
+}
+
+.instances-table .no-thread {
+    color: #555;
+}
+
+.instances-table .retained-size {
+    color: #cc7832;
+    font-weight: 500;
+}
+
+/* Instance children (fields) */
+.instances-table tr.instance-children {
+    background: #1a1c1e;
+}
+
+.instances-table tr.instance-children > td {
+    padding: 0;
+}
+
+.instance-content {
+    padding: 10px 15px;
+}
+
+.instance-content .loading {
+    color: #6897bb;
+    font-size: 12px;
+    padding: 10px;
+}
+
+.instance-content .error-message {
+    color: #f44336;
+    font-size: 12px;
+    padding: 10px;
+}
+
+.instance-content .no-fields {
+    color: #808080;
+    font-size: 12px;
+    padding: 10px;
+}
+
+/* Fields list */
+.fields-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.field-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #232527;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.field-item.expandable {
+    cursor: pointer;
+}
+
+.field-item.expandable:hover {
+    background: #2a2d30;
+}
+
+.field-item.business-class {
+    background: rgba(255, 152, 0, 0.1);
+}
+
+.field-expand {
+    width: 14px;
+    color: #6897bb;
+    font-size: 10px;
+}
+
+.field-name {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    color: #9876aa;
+    font-weight: 500;
+}
+
+.field-type {
+    color: #808080;
+    font-size: 11px;
+}
+
+.field-ref-class {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    color: #6897bb;
+    font-size: 11px;
+}
+
+.field-ref-class.highlight {
+    color: #ffc66d;
+}
+
+.field-value {
+    color: #6a8759;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 11px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.field-size {
+    color: #cc7832;
+    font-size: 11px;
+    margin-left: auto;
+}
+
+/* Expand button mini */
+.expand-btn.mini {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+    padding: 0;
+}
+
+/* More instances indicator */
+.more-instances {
+    color: #6897bb;
+    font-size: 12px;
+    padding: 10px;
+    text-align: center;
+    border-top: 1px solid #3c3f41;
+}
+
+/* No instances message */
+.no-instances {
+    color: #808080;
+    font-size: 12px;
+    padding: 20px;
+    text-align: center;
+}
+
+/* Loading spinner */
+.loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #3c3f41;
+    border-top-color: #6897bb;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

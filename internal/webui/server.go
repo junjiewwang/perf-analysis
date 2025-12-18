@@ -70,6 +70,9 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/refgraph/fields", s.handleRefGraphFields)
 	mux.HandleFunc("/api/refgraph/info", s.handleRefGraphObjectInfo)
 	mux.HandleFunc("/api/refgraph/gc-roots", s.handleRefGraphGCRoots)
+	mux.HandleFunc("/api/refgraph/gc-roots-summary", s.handleRefGraphGCRootsSummary)
+	mux.HandleFunc("/api/refgraph/gc-roots-list", s.handleRefGraphGCRootsList)
+	mux.HandleFunc("/api/refgraph/gc-root-retained", s.handleRefGraphGCRootRetained)
 	mux.HandleFunc("/api/refgraph/retainers", s.handleRefGraphRetainers)
 	mux.HandleFunc("/api/refgraph/biggest-by-class", s.handleRefGraphBiggestByClass)
 
@@ -702,6 +705,85 @@ func (s *Server) handleRefGraphGCRoots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(paths)
+}
+
+// handleRefGraphGCRootsSummary returns GC roots grouped by class (like IDEA).
+// First tries to read from gc_roots.json, falls back to refgraph if not available.
+func (s *Server) handleRefGraphGCRootsSummary(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	// Try to read from gc_roots.json first (fast path)
+	taskDir := filepath.Join(s.dataDir, taskID)
+	gcRootsFile := filepath.Join(taskDir, "gc_roots.json")
+	if data, err := os.ReadFile(gcRootsFile); err == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write(data)
+		return
+	}
+
+	// Fall back to refgraph (slow path - requires loading refgraph.bin)
+	summary, err := s.refGraphService.GetGCRootsSummary(taskID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(summary)
+}
+
+// handleRefGraphGCRootsList returns all GC roots with their information.
+func (s *Server) handleRefGraphGCRootsList(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	roots, err := s.refGraphService.GetGCRootsList(taskID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(roots)
+}
+
+// handleRefGraphGCRootRetained returns objects retained by a specific GC root.
+func (s *Server) handleRefGraphGCRootRetained(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	objectIDStr := r.URL.Query().Get("id")
+	if objectIDStr == "" {
+		http.Error(w, "Object ID is required", http.StatusBadRequest)
+		return
+	}
+
+	maxObjects := 50
+	if mo := r.URL.Query().Get("max"); mo != "" {
+		if n, err := parseInt(mo); err == nil && n > 0 {
+			maxObjects = n
+		}
+	}
+
+	objects, err := s.refGraphService.GetRetainedObjectsByGCRoot(taskID, objectIDStr, maxObjects)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(objects)
 }
 
 // handleRefGraphRetainers returns the objects that retain a specific object.

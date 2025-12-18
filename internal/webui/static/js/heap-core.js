@@ -180,14 +180,10 @@ const HeapCore = (function() {
         }
         console.log('[HeapCore] loadAnalysisData: data keys:', Object.keys(data));
         
-        const topItems = data.top_items || [];
         const heapData = data.data || {};
         const topClasses = heapData.top_classes || [];
         
-        console.log('[HeapCore] topItems:', topItems.length, 'topClasses:', topClasses.length);
-        if (topItems.length > 0) {
-            console.log('[HeapCore] First topItem:', topItems[0]);
-        }
+        console.log('[HeapCore] topClasses:', topClasses.length);
         if (topClasses.length > 0) {
             console.log('[HeapCore] First topClass:', topClasses[0]);
         }
@@ -208,38 +204,12 @@ const HeapCore = (function() {
             }
         });
 
-        // 合并所有类数据
+        // 从 top_classes 构建类数据
         const allClassData = [];
-        const seenClasses = new Set();
         
-        // 首先添加 topItems（包含完整信息）
-        topItems.forEach(item => {
-            const classInfo = topClasses.find(c => (c.class_name || c.name) === item.name) || {};
-            seenClasses.add(item.name);
-            
-            const gcPaths = classInfo.gc_root_paths || gcRootPathsMap[item.name] || [];
-            
-            allClassData.push({
-                name: item.name,
-                size: item.value,
-                percentage: item.percentage,
-                instanceCount: item.extra ? item.extra.instance_count : (classInfo.instance_count || 0),
-                count: item.extra ? item.extra.instance_count : (classInfo.instance_count || 0),
-                retainers: classInfo.retainers || retainerMap[item.name] || [],
-                retained_size: classInfo.retained_size || 0,
-                gc_root_paths: gcPaths
-            });
-            
-            // 确保 gcRootPathsMap 中有这个类
-            if (gcPaths.length > 0) {
-                gcRootPathsMap[item.name] = gcPaths;
-            }
-        });
-        
-        // 添加未包含在 topItems 中的类
         topClasses.forEach(cls => {
             const className = cls.class_name || cls.name;
-            if (!className || seenClasses.has(className)) return;
+            if (!className) return;
             
             const gcPaths = cls.gc_root_paths || [];
             
@@ -251,7 +221,8 @@ const HeapCore = (function() {
                 count: cls.instance_count || 0,
                 retainers: cls.retainers || [],
                 retained_size: cls.retained_size || 0,
-                gc_root_paths: gcPaths
+                gc_root_paths: gcPaths,
+                is_business: cls.is_business || false
             });
             
             // 确保 gcRootPathsMap 中有这个类
@@ -273,7 +244,7 @@ const HeapCore = (function() {
         // 批量更新状态
         setStateMultiple({
             classData: allClassData,
-            topItems: topItems,
+            topItems: allClassData, // 保持向后兼容
             heapData: heapData,
             referenceGraphs: heapData.reference_graphs || {},
             businessRetainers: heapData.business_retainers || {},
@@ -284,7 +255,7 @@ const HeapCore = (function() {
         });
 
         // 触发数据加载完成事件
-        emit('dataLoaded', { classData: allClassData, heapData, topItems, gcRootPaths: gcRootPathsMap });
+        emit('dataLoaded', { classData: allClassData, heapData, topItems: allClassData, gcRootPaths: gcRootPathsMap });
     }
 
     /**
