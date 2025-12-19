@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/internal/statistics"
 	"github.com/perf-analysis/pkg/model"
 )
 
@@ -92,7 +91,7 @@ main-thread;java.lang.String.valueOf;com.example.App.stringify 3000`
 	allocData, ok := result.Data.(*model.AllocationData)
 	require.True(t, ok, "Data should be AllocationData")
 	assert.Contains(t, allocData.FlameGraphFile, "alloc_data.json.gz")
-	assert.Contains(t, allocData.CallGraphFile, "alloc_data.json")
+	assert.Contains(t, allocData.CallGraphFile, "alloc_callgraph_data.json.gz")
 }
 
 func TestJavaMemAnalyzer_Analyze_EmptyData(t *testing.T) {
@@ -135,14 +134,12 @@ func TestJavaMemAnalyzer_Analyze_WrongProfilerType(t *testing.T) {
 func TestJavaMemAnalyzer_GenerateMemorySuggestions(t *testing.T) {
 	analyzer := NewJavaMemAnalyzer(nil)
 
-	topFuncsResult := &statistics.TopFuncsResult{
-		TopFuncs: []statistics.TopFuncEntry{
-			{Name: "com.example.App.allocate", SelfSamples: 1500, SelfPercent: 15.0},
-			{Name: "com.example.Worker.process", SelfSamples: 500, SelfPercent: 5.0},
-		},
+	topAllocators := model.TopFuncsMap{
+		"com.example.App.allocate":    model.TopFuncValue{Self: 15.0},
+		"com.example.Worker.process":  model.TopFuncValue{Self: 5.0},
 	}
 
-	suggestions := analyzer.generateMemorySuggestions(topFuncsResult)
+	suggestions := analyzer.generateMemorySuggestions(topAllocators)
 
 	// Should have suggestion for function > 10%
 	require.Len(t, suggestions, 1)
@@ -160,7 +157,7 @@ func TestJavaMemAnalyzer_GetOutputFiles(t *testing.T) {
 	assert.Equal(t, "/tmp/test-uuid/alloc_data.json.gz", files[0].LocalPath)
 	assert.Equal(t, "test-uuid/alloc_data.json.gz", files[0].COSKey)
 
-	// Check call graph file
-	assert.Equal(t, "/tmp/test-uuid/alloc_data.json", files[1].LocalPath)
-	assert.Equal(t, "test-uuid/alloc_data.json", files[1].COSKey)
+	// Check call graph file (now gzipped)
+	assert.Equal(t, "/tmp/test-uuid/alloc_callgraph_data.json.gz", files[1].LocalPath)
+	assert.Equal(t, "test-uuid/alloc_callgraph_data.json.gz", files[1].COSKey)
 }

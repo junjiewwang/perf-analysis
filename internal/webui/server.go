@@ -32,15 +32,22 @@ type Server struct {
 	logger          utils.Logger
 	server          *http.Server
 	refGraphService *RefGraphService
+	fgService       *FlameGraphService
 }
 
 // NewServer creates a new web UI server
 func NewServer(dataDir string, port int, logger utils.Logger) *Server {
+	fgService := NewFlameGraphService(dataDir)
+	// Register additional loaders for memory and tracing
+	fgService.RegisterLoader(NewMemoryFlameGraphLoader())
+	fgService.RegisterLoader(NewTracingFlameGraphLoader())
+
 	return &Server{
 		dataDir:         dataDir,
 		port:            port,
 		logger:          logger,
 		refGraphService: NewRefGraphService(dataDir),
+		fgService:       fgService,
 	}
 }
 
@@ -150,13 +157,50 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// handleFlameGraph returns flame graph data
+// handleFlameGraph returns flame graph data.
+// Supports multiple flame graph types via the "type" query parameter:
+// - cpu (default): CPU profiling flame graph
+// - memory/alloc: Memory allocation flame graph
+// - tracing/latency: Tracing/latency flame graph
 func (s *Server) handleFlameGraph(w http.ResponseWriter, r *http.Request) {
 	taskID := r.URL.Query().Get("task")
 	if taskID == "" {
 		taskID = s.getDefaultTask()
 	}
 
+	// Determine flame graph type
+	fgTypeStr := r.URL.Query().Get("type")
+	fgType := FlameGraphTypeCPU // default
+	switch strings.ToLower(fgTypeStr) {
+	case "memory", "alloc", "heap":
+		fgType = FlameGraphTypeMemory
+	case "tracing", "latency", "wall":
+		fgType = FlameGraphTypeTracing
+	case "cpu", "":
+		fgType = FlameGraphTypeCPU
+	default:
+		// Unknown type, try to find any .json.gz file (legacy behavior)
+		s.handleFlameGraphLegacy(w, r, taskID)
+		return
+	}
+
+	// Use FlameGraphService to load the flame graph
+	ctx := r.Context()
+	fg, err := s.fgService.GetFlameGraph(ctx, taskID, fgType)
+	if err != nil {
+		// Fall back to legacy behavior for backward compatibility
+		s.handleFlameGraphLegacy(w, r, taskID)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(fg)
+}
+
+// handleFlameGraphLegacy provides backward compatible flame graph loading.
+// It directly reads .json.gz files without type-specific processing.
+func (s *Server) handleFlameGraphLegacy(w http.ResponseWriter, r *http.Request, taskID string) {
 	taskDir := filepath.Join(s.dataDir, taskID)
 	if taskID == "" {
 		taskDir = s.dataDir
@@ -209,24 +253,65 @@ func (s *Server) handleCallGraph(w http.ResponseWriter, r *http.Request) {
 		taskID = s.getDefaultTask()
 	}
 
+	// Determine call graph type from query parameter
+	cgType := r.URL.Query().Get("type")
+
 	taskDir := filepath.Join(s.dataDir, taskID)
 	if taskID == "" {
 		taskDir = s.dataDir
 	}
 
-	// Find the call graph file (*.json but not .json.gz)
-	files, err := os.ReadDir(taskDir)
-	if err != nil {
-		http.Error(w, "Task directory not found", http.StatusNotFound)
-		return
+	// Try to find call graph file in order of priority based on type
+	callGraphFile := ""
+	isGzipped := false
+
+	// Build priority list based on type
+	var priorityFiles []string
+	switch strings.ToLower(cgType) {
+	case "memory", "alloc":
+		priorityFiles = []string{
+			"alloc_callgraph_data.json.gz", // New format for memory
+			"alloc_callgraph.json.gz",      // Alternative
+			"memory_callgraph.json.gz",     // Legacy
+		}
+	default: // cpu or empty
+		priorityFiles = []string{
+			"callgraph_data.json.gz", // New format for CPU
+			"callgraph.json",         // Legacy format
+		}
 	}
 
-	var callGraphFile string
-	for _, f := range files {
-		name := f.Name()
-		if strings.HasSuffix(name, ".json") && !strings.HasSuffix(name, ".gz") && name != "summary.json" {
-			callGraphFile = filepath.Join(taskDir, name)
+	// Try priority files first
+	for _, fileName := range priorityFiles {
+		filePath := filepath.Join(taskDir, fileName)
+		if _, err := os.Stat(filePath); err == nil {
+			callGraphFile = filePath
+			isGzipped = strings.HasSuffix(fileName, ".gz")
 			break
+		}
+	}
+
+	// Fallback: search for any callgraph file
+	if callGraphFile == "" {
+		files, err := os.ReadDir(taskDir)
+		if err != nil {
+			http.Error(w, "Task directory not found", http.StatusNotFound)
+			return
+		}
+
+		for _, f := range files {
+			name := f.Name()
+			// Match callgraph files
+			if strings.Contains(name, "callgraph") {
+				if strings.HasSuffix(name, ".json.gz") {
+					callGraphFile = filepath.Join(taskDir, name)
+					isGzipped = true
+					break
+				} else if strings.HasSuffix(name, ".json") && name != "summary.json" {
+					callGraphFile = filepath.Join(taskDir, name)
+					break
+				}
+			}
 		}
 	}
 
@@ -235,10 +320,36 @@ func (s *Server) handleCallGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := os.ReadFile(callGraphFile)
-	if err != nil {
-		http.Error(w, "Failed to read file", http.StatusInternalServerError)
-		return
+	// Read file (handle gzip if needed)
+	var data []byte
+	var err error
+
+	if isGzipped {
+		file, err := os.Open(callGraphFile)
+		if err != nil {
+			http.Error(w, "Failed to open file", http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
+
+		gzReader, err := gzip.NewReader(file)
+		if err != nil {
+			http.Error(w, "Failed to decompress", http.StatusInternalServerError)
+			return
+		}
+		defer gzReader.Close()
+
+		data, err = io.ReadAll(gzReader)
+		if err != nil {
+			http.Error(w, "Failed to read compressed file", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		data, err = os.ReadFile(callGraphFile)
+		if err != nil {
+			http.Error(w, "Failed to read file", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

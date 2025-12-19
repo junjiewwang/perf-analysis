@@ -18,42 +18,22 @@ import (
 
 var (
 	// Analyze command flags
-	inputFile    string
-	outputDir    string
-	taskType     string
-	profilerType string
-	taskUUID     string
-	topN         int
-	serveAfter   bool
-	servePort    int
+	inputFile       string
+	outputDir       string
+	analysisMode    string
+	analysisProfile string
+	taskUUID        string
+	topN            int
+	serveAfter      bool
+	servePort       int
 )
 
 // analyzeCmd represents the analyze command
 var analyzeCmd = &cobra.Command{
 	Use:   "analyze",
 	Short: "Analyze profiling data from input file",
-	Long: `Analyze profiling data and generate flame graphs, call graphs, and suggestions.
-
-The analyze command processes collapsed stack trace data and generates:
-  - Flame graph data (JSON format, gzipped)
-  - Call graph data (JSON format)
-  - Performance summary with top functions
-  - Optimization suggestions
-
-Supported task types:
-  - java     : Java application profiling (default)
-  - generic  : Generic application profiling
-  - tracing  : Tracing data analysis
-  - timing   : Timing analysis
-  - memleak  : Memory leak detection
-  - pprof_mem: Go pprof memory profiling
-  - java_heap: Java heap analysis
-
-Supported profiler types:
-  - perf       : Linux perf profiler (default)
-  - async_alloc: async-profiler allocation mode
-  - pprof      : Go pprof profiler`,
-	RunE: runAnalyze,
+	Long:  buildAnalyzeLongHelp(),
+	RunE:  runAnalyze,
 }
 
 func init() {
@@ -61,32 +41,75 @@ func init() {
 
 	// Set dynamic example using actual binary name
 	binName := BinName()
-	analyzeCmd.Example = `  # Analyze Java CPU profiling data
-  ` + binName + ` analyze -i ./test/origin.data -o ./output -t java -p perf
+	analyzeCmd.Example = fmt.Sprintf(`  # Analyze Java CPU profiling data
+  %s analyze -i ./test/origin.data -m java-cpu
 
-  # Analyze memory allocation data with verbose output
-  ` + binName + ` analyze -i ./alloc.data -t java -p async_alloc -v
+  # Analyze Java memory allocation data
+  %s analyze -i ./alloc.data -m java-alloc
 
-  # Analyze and immediately start web server to view results
-  ` + binName + ` analyze -i ./test/origin.data --serve --port 8080
+  # Analyze Java heap dump
+  %s analyze -i ./heap.hprof -m java-heap
 
-  # Specify custom task UUID
-  ` + binName + ` analyze -i ./data.txt --uuid my-analysis-001`
+  # Use detailed analysis profile for deep investigation
+  %s analyze -i ./data.collapsed -m java-cpu --profile detailed
+
+  # Quick analysis for fast results
+  %s analyze -i ./data.collapsed -m java-cpu --profile quick
+
+  # Analyze and start web server to view results
+  %s analyze -i ./test/origin.data -m java-cpu --serve --port 8080
+
+  # Specify custom output directory and task UUID
+  %s analyze -i ./data.txt -m cpu -o ./results --uuid my-analysis-001`,
+		binName, binName, binName, binName, binName, binName, binName)
 
 	// Input/Output flags
-	analyzeCmd.Flags().StringVarP(&inputFile, "input", "i", "", "Input collapsed data file (required)")
+	analyzeCmd.Flags().StringVarP(&inputFile, "input", "i", "", "Input profiling data file (required)")
 	analyzeCmd.Flags().StringVarP(&outputDir, "output", "o", "./output", "Output directory for generated files")
 	analyzeCmd.MarkFlagRequired("input")
 
-	// Analysis configuration flags
-	analyzeCmd.Flags().StringVarP(&taskType, "type", "t", "java", "Task type: java, generic, tracing, timing, memleak, pprof_mem, java_heap")
-	analyzeCmd.Flags().StringVarP(&profilerType, "profiler", "p", "perf", "Profiler type: perf, async_alloc, pprof")
+	// Analysis mode flag (replaces type + profiler)
+	analyzeCmd.Flags().StringVarP(&analysisMode, "mode", "m", "java-cpu",
+		fmt.Sprintf("Analysis mode: %s", analyzer.ValidModes()))
+
+	// Analysis profile flag (controls analysis depth)
+	analyzeCmd.Flags().StringVar(&analysisProfile, "profile", "standard",
+		"Analysis depth: quick (fast), standard (balanced), detailed (comprehensive)")
+
+	// Other flags
 	analyzeCmd.Flags().StringVar(&taskUUID, "uuid", "", "Task UUID (auto-generated if empty)")
 	analyzeCmd.Flags().IntVarP(&topN, "top", "n", 50, "Number of top functions to report")
 
 	// Serve flags
 	analyzeCmd.Flags().BoolVar(&serveAfter, "serve", false, "Start web server after analysis")
 	analyzeCmd.Flags().IntVar(&servePort, "port", 8080, "Port for web server (used with --serve)")
+}
+
+// buildAnalyzeLongHelp builds the long help message with mode descriptions.
+func buildAnalyzeLongHelp() string {
+	var sb strings.Builder
+	sb.WriteString(`Analyze profiling data and generate flame graphs, call graphs, and suggestions.
+
+The analyze command processes profiling data and generates:
+  - Flame graph data (JSON format, gzipped)
+  - Call graph data (JSON format, gzipped)
+  - Performance summary with top functions
+  - Optimization suggestions
+
+`)
+	sb.WriteString("Available analysis modes:\n")
+	for _, info := range analyzer.AllModes() {
+		sb.WriteString(fmt.Sprintf("  %-12s %s\n", info.Mode, info.Description))
+		sb.WriteString(fmt.Sprintf("               Input: %s\n", info.InputFormat))
+	}
+
+	sb.WriteString(`
+Analysis profiles control the depth of analysis:
+  quick      Fast analysis with minimal overhead (good for large files)
+  standard   Balanced analysis with thread analysis (default)
+  detailed   Comprehensive analysis for deep investigation`)
+
+	return sb.String()
 }
 
 func runAnalyze(cmd *cobra.Command, args []string) error {
@@ -97,22 +120,25 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("input file not found: %s", inputFile)
 	}
 
+	// Parse analysis mode
+	mode, err := analyzer.ParseMode(analysisMode)
+	if err != nil {
+		return err
+	}
+
+	// Parse analysis profile
+	profile, err := parseAnalysisProfile(analysisProfile)
+	if err != nil {
+		return err
+	}
+
+	// Get mode info for display
+	modeInfo := mode.Info()
+
 	// Generate task UUID if not provided
 	uuid := taskUUID
 	if uuid == "" {
 		uuid = generateUUID()
-	}
-
-	// Parse task type
-	tt, err := parseTaskType(taskType)
-	if err != nil {
-		return fmt.Errorf("invalid task type: %w", err)
-	}
-
-	// Parse profiler type
-	pt, err := parseProfilerType(profilerType)
-	if err != nil {
-		return fmt.Errorf("invalid profiler type: %w", err)
 	}
 
 	// Create output directory
@@ -124,22 +150,23 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	log.Info("=== Perf Analysis CLI ===")
 	log.Info("Input file:    %s", inputFile)
 	log.Info("Output dir:    %s", taskOutputDir)
-	log.Info("Task type:     %s (%d)", taskType, tt)
-	log.Info("Profiler type: %s (%d)", profilerType, pt)
+	log.Info("Analysis mode: %s (%s)", mode, modeInfo.Description)
+	log.Info("Profile:       %s", profile)
 	log.Info("Task UUID:     %s", uuid)
 	log.Info("")
 
 	// Create analyzer configuration
 	config := &analyzer.BaseAnalyzerConfig{
-		OutputDir: outputDir,
-		TopFuncsN: topN,
-		Logger:    log,     // Pass logger for debug output with -v flag
-		Verbose:   verbose, // Pass verbose flag for detailed analysis (dependency injection)
+		OutputDir:       outputDir,
+		TopFuncsN:       topN,
+		Logger:          log,
+		Verbose:         verbose,
+		AnalysisProfile: profile,
 	}
 
 	// Create analyzer using factory
 	factory := analyzer.NewFactory(config)
-	ana, err := factory.CreateAnalyzer(tt, pt)
+	ana, err := factory.CreateAnalyzerForMode(mode)
 	if err != nil {
 		return fmt.Errorf("failed to create analyzer: %w", err)
 	}
@@ -151,8 +178,8 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	req := &model.AnalysisRequest{
 		TaskID:       1,
 		TaskUUID:     uuid,
-		TaskType:     tt,
-		ProfilerType: pt,
+		TaskType:     mode.ToTaskType(),
+		ProfilerType: mode.ToProfilerType(),
 		InputFile:    inputFile,
 		OutputDir:    taskOutputDir,
 	}
@@ -175,10 +202,9 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 
 	// Save result summary with metadata
 	metadata := &AnalysisMetadata{
-		TaskType:       int(tt),
-		TaskTypeName:   tt.String(),
-		ProfilerType:   int(pt),
-		ProfilerName:   pt.String(),
+		Mode:           string(mode),
+		ModeDesc:       modeInfo.Description,
+		Profile:        string(profile),
 		InputFile:      filepath.Base(inputFile),
 		CreatedAt:      startTime.Format(time.RFC3339),
 		AnalysisTimeMs: analysisTime.Milliseconds(),
@@ -199,45 +225,25 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func parseTaskType(s string) (model.TaskType, error) {
-	switch strings.ToLower(s) {
-	case "generic", "0":
-		return model.TaskTypeGeneric, nil
-	case "java", "1":
-		return model.TaskTypeJava, nil
-	case "tracing", "2":
-		return model.TaskTypeTracing, nil
-	case "timing", "3":
-		return model.TaskTypeTiming, nil
-	case "memleak", "4":
-		return model.TaskTypeMemLeak, nil
-	case "pprof_mem", "5":
-		return model.TaskTypePProfMem, nil
-	case "java_heap", "6":
-		return model.TaskTypeJavaHeap, nil
+// parseAnalysisProfile parses the profile string into AnalysisProfile.
+func parseAnalysisProfile(s string) (analyzer.AnalysisProfile, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "quick", "fast":
+		return analyzer.ProfileQuick, nil
+	case "standard", "normal", "default", "":
+		return analyzer.ProfileStandard, nil
+	case "detailed", "deep", "full":
+		return analyzer.ProfileDetailed, nil
 	default:
-		return 0, fmt.Errorf("unknown task type: %s (valid: java, generic, tracing, timing, memleak, pprof_mem, java_heap)", s)
-	}
-}
-
-func parseProfilerType(s string) (model.ProfilerType, error) {
-	switch strings.ToLower(s) {
-	case "perf", "0":
-		return model.ProfilerTypePerf, nil
-	case "async_alloc", "1":
-		return model.ProfilerTypeAsyncAlloc, nil
-	case "pprof", "2":
-		return model.ProfilerTypePProf, nil
-	default:
-		return 0, fmt.Errorf("unknown profiler type: %s (valid: perf, async_alloc, pprof)", s)
+		return "", fmt.Errorf("unknown analysis profile: %q (valid: quick, standard, detailed)", s)
 	}
 }
 
 func generateUUID() string {
-	return fmt.Sprintf("local-%d", os.Getpid())
+	return fmt.Sprintf("local-%s", time.Now().Format("20060102-150405"))
 }
 
-func printResults(log interface{ Info(format string, args ...interface{}) }, result *model.AnalysisResponse) {
+func printResults(_ any, result *model.AnalysisResponse) {
 	// Use the formatter registry to format results based on data type
 	registry := formatter.NewRegistry()
 	registry.Format(result, GetLogger())
@@ -250,11 +256,10 @@ func saveSummary(result *model.AnalysisResponse, outputDir string, metadata *Ana
 
 	// Add metadata if provided
 	if metadata != nil {
-		summary["metadata"] = map[string]interface{}{
-			"task_type":        metadata.TaskType,
-			"task_type_name":   metadata.TaskTypeName,
-			"profiler_type":    metadata.ProfilerType,
-			"profiler_name":    metadata.ProfilerName,
+		summary["metadata"] = map[string]any{
+			"mode":             metadata.Mode,
+			"mode_description": metadata.ModeDesc,
+			"profile":          metadata.Profile,
 			"input_file":       metadata.InputFile,
 			"created_at":       metadata.CreatedAt,
 			"analysis_time_ms": metadata.AnalysisTimeMs,
@@ -275,12 +280,11 @@ func saveSummary(result *model.AnalysisResponse, outputDir string, metadata *Ana
 	}
 }
 
-// AnalysisMetadata holds metadata about the analysis task
+// AnalysisMetadata holds metadata about the analysis task.
 type AnalysisMetadata struct {
-	TaskType       int    `json:"task_type"`
-	TaskTypeName   string `json:"task_type_name"`
-	ProfilerType   int    `json:"profiler_type"`
-	ProfilerName   string `json:"profiler_name"`
+	Mode           string `json:"mode"`
+	ModeDesc       string `json:"mode_description"`
+	Profile        string `json:"profile"`
 	InputFile      string `json:"input_file"`
 	CreatedAt      string `json:"created_at"`
 	AnalysisTimeMs int64  `json:"analysis_time_ms"`

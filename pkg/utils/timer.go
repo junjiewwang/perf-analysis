@@ -362,19 +362,17 @@ func (t *Timer) Reset() {
 // TimeFunc times the execution of a function and records it as a phase.
 func (t *Timer) TimeFunc(phaseName string, fn func()) time.Duration {
 	pt := t.Start(phaseName)
-	defer pt.Stop()
 	fn()
-	return t.GetDuration(phaseName)
+	return pt.Stop()
 }
 
 // TimeFuncWithError times the execution of a function that returns an error.
 func (t *Timer) TimeFuncWithError(phaseName string, fn func() error) (time.Duration, error) {
 	pt := t.Start(phaseName)
-	defer pt.Stop()
 	err := fn()
-	return t.GetDuration(phaseName), err
+	return pt.Stop(), err
 }
 
 // NullTimer is a no-op timer for when timing is disabled.
 // All methods are safe to call but do nothing.
-var NullTimer = &Timer{enabled: false, phases: make(map[string]*Phase)}
+var NullTimer = &Timer{enabled: false, phases: make(map[string]*Phase), clock: NewRealClock()}

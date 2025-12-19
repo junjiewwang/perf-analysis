@@ -1,10 +1,12 @@
 package analyzer
 
 import (
+	"fmt"
+
 	"github.com/perf-analysis/pkg/model"
 )
 
-// Factory creates analyzers based on task type and profiler type.
+// Factory creates analyzers based on analysis mode.
 type Factory struct {
 	config *BaseAnalyzerConfig
 }
@@ -17,7 +19,26 @@ func NewFactory(config *BaseAnalyzerConfig) *Factory {
 	return &Factory{config: config}
 }
 
+// CreateAnalyzerForMode creates an analyzer for the given analysis mode.
+// This is the preferred method for creating analyzers.
+func (f *Factory) CreateAnalyzerForMode(mode AnalysisMode) (Analyzer, error) {
+	switch mode {
+	case ModeJavaCPU:
+		return NewJavaCPUAnalyzer(f.config), nil
+	case ModeJavaAlloc:
+		return NewJavaMemAnalyzer(f.config), nil
+	case ModeJavaHeap:
+		return NewJavaHeapAnalyzer(f.config), nil
+	case ModeCPU:
+		// Generic CPU uses the same analyzer as Java CPU (collapsed format)
+		return NewJavaCPUAnalyzer(f.config), nil
+	default:
+		return nil, fmt.Errorf("%w: unknown mode %q", ErrUnsupportedMode, mode)
+	}
+}
+
 // CreateAnalyzer creates an analyzer for the given task type and profiler type.
+// Deprecated: Use CreateAnalyzerForMode instead.
 func (f *Factory) CreateAnalyzer(taskType model.TaskType, profilerType model.ProfilerType) (Analyzer, error) {
 	switch taskType {
 	case model.TaskTypeJava:
@@ -47,10 +68,8 @@ func (f *Factory) createJavaAnalyzer(profilerType model.ProfilerType) (Analyzer,
 func (f *Factory) createGenericAnalyzer(profilerType model.ProfilerType) (Analyzer, error) {
 	switch profilerType {
 	case model.ProfilerTypePerf:
-		// For now, use Java CPU analyzer as it handles collapsed format
 		return NewJavaCPUAnalyzer(f.config), nil
 	case model.ProfilerTypePProf:
-		// TODO: Implement pprof analyzer
 		return nil, ErrUnsupportedTaskType
 	default:
 		return nil, ErrUnsupportedTaskType
@@ -61,31 +80,17 @@ func (f *Factory) createGenericAnalyzer(profilerType model.ProfilerType) (Analyz
 func (f *Factory) CreateManager() *Manager {
 	manager := NewManager()
 
-	// Register Java CPU analyzer
+	// Register Java CPU analyzer with specific key
 	javaCPUAnalyzer := NewJavaCPUAnalyzer(f.config)
-	manager.Register(javaCPUAnalyzer)
+	manager.RegisterWithKey(javaCPUAnalyzer, model.TaskTypeJava, model.ProfilerTypePerf)
 
-	// Register Java memory analyzer (shares TaskTypeJava but different profiler type)
-	// Note: Manager routes by TaskType, so we need special handling for profiler type
+	// Register Java memory analyzer with specific key
+	javaMemAnalyzer := NewJavaMemAnalyzer(f.config)
+	manager.RegisterWithKey(javaMemAnalyzer, model.TaskTypeJava, model.ProfilerTypeAsyncAlloc)
 
 	// Register Java heap analyzer
 	javaHeapAnalyzer := NewJavaHeapAnalyzer(f.config)
 	manager.Register(javaHeapAnalyzer)
 
 	return manager
-}
-
-// AnalyzerSelector selects the appropriate analyzer based on request.
-type AnalyzerSelector struct {
-	factory *Factory
-}
-
-// NewAnalyzerSelector creates a new analyzer selector.
-func NewAnalyzerSelector(factory *Factory) *AnalyzerSelector {
-	return &AnalyzerSelector{factory: factory}
-}
-
-// Select selects the appropriate analyzer for the given request.
-func (s *AnalyzerSelector) Select(req *model.AnalysisRequest) (Analyzer, error) {
-	return s.factory.CreateAnalyzer(req.TaskType, req.ProfilerType)
 }

@@ -184,3 +184,132 @@ func TestMakeNodeID(t *testing.T) {
 		})
 	}
 }
+
+func TestCallGraph_GetCallers(t *testing.T) {
+	cg := NewCallGraph()
+	cg.TotalSamples = 1000
+
+	// Add nodes
+	cg.AddNode("caller1", "", 0, 500)
+	cg.AddNode("caller2", "", 0, 300)
+	cg.AddNode("target", "", 200, 800)
+
+	// Add edges (caller -> target)
+	cg.AddEdge("caller1", "", "target", "", 500)
+	cg.AddEdge("caller2", "", "target", "", 300)
+
+	cg.CalculatePercentages()
+
+	callers := cg.GetCallers("target")
+	require.Len(t, callers, 2)
+
+	// Should be sorted by call count descending
+	assert.Equal(t, "caller1", callers[0].Name)
+	assert.Equal(t, int64(500), callers[0].CallCount)
+	assert.InDelta(t, 62.5, callers[0].Percentage, 0.1) // 500/(500+300) * 100
+
+	assert.Equal(t, "caller2", callers[1].Name)
+	assert.Equal(t, int64(300), callers[1].CallCount)
+}
+
+func TestCallGraph_GetCallees(t *testing.T) {
+	cg := NewCallGraph()
+	cg.TotalSamples = 1000
+
+	// Add nodes
+	cg.AddNode("source", "", 0, 800)
+	cg.AddNode("callee1", "", 100, 500)
+	cg.AddNode("callee2", "", 50, 300)
+
+	// Add edges (source -> callees)
+	cg.AddEdge("source", "", "callee1", "", 500)
+	cg.AddEdge("source", "", "callee2", "", 300)
+
+	cg.CalculatePercentages()
+
+	callees := cg.GetCallees("source")
+	require.Len(t, callees, 2)
+
+	// Should be sorted by call count descending
+	assert.Equal(t, "callee1", callees[0].Name)
+	assert.Equal(t, int64(500), callees[0].CallCount)
+
+	assert.Equal(t, "callee2", callees[1].Name)
+	assert.Equal(t, int64(300), callees[1].CallCount)
+}
+
+func TestCallGraph_GetTopFunctionsBySelf(t *testing.T) {
+	cg := NewCallGraph()
+	cg.TotalSamples = 1000
+
+	cg.AddNode("hot1", "", 300, 500)
+	cg.AddNode("hot2", "", 200, 400)
+	cg.AddNode("cold", "", 10, 100)
+
+	cg.CalculatePercentages()
+
+	// Get top 2
+	top := cg.GetTopFunctionsBySelf(2)
+	require.Len(t, top, 2)
+
+	assert.Equal(t, "hot1", top[0].Name)
+	assert.Equal(t, int64(300), top[0].SelfTime)
+
+	assert.Equal(t, "hot2", top[1].Name)
+	assert.Equal(t, int64(200), top[1].SelfTime)
+}
+
+func TestCallGraph_GetTopFunctionsByTotal(t *testing.T) {
+	cg := NewCallGraph()
+	cg.TotalSamples = 1000
+
+	cg.AddNode("func1", "", 100, 800)
+	cg.AddNode("func2", "", 200, 600)
+	cg.AddNode("func3", "", 50, 200)
+
+	cg.CalculatePercentages()
+
+	// Get top 2
+	top := cg.GetTopFunctionsByTotal(2)
+	require.Len(t, top, 2)
+
+	assert.Equal(t, "func1", top[0].Name)
+	assert.Equal(t, int64(800), top[0].TotalTime)
+
+	assert.Equal(t, "func2", top[1].Name)
+	assert.Equal(t, int64(600), top[1].TotalTime)
+}
+
+func TestNewThreadCallGraph(t *testing.T) {
+	tcg := NewThreadCallGraph(123, "worker-thread")
+
+	assert.Equal(t, 123, tcg.TID)
+	assert.Equal(t, "worker-thread", tcg.ThreadName)
+	assert.NotNil(t, tcg.Nodes)
+	assert.NotNil(t, tcg.Edges)
+	assert.NotNil(t, tcg.nodeMap)
+}
+
+func TestThreadCallGraph_AddNode(t *testing.T) {
+	tcg := NewThreadCallGraph(1, "main")
+
+	node := tcg.AddNode("func1", "mod", 100, 200)
+
+	assert.Len(t, tcg.Nodes, 1)
+	assert.Equal(t, "func1", node.Name)
+	assert.Equal(t, "mod", node.Module)
+}
+
+func TestThreadCallGraph_CalculatePercentages(t *testing.T) {
+	tcg := NewThreadCallGraph(1, "main")
+	tcg.TotalSamples = 1000
+
+	tcg.AddNode("func1", "", 200, 500)
+	tcg.AddEdge("func1", "", "func2", "", 200)
+
+	tcg.CalculatePercentages()
+
+	node := tcg.nodeMap["func1"]
+	assert.InDelta(t, 20.0, node.SelfPct, 0.01)
+	assert.InDelta(t, 50.0, node.TotalPct, 0.01)
+}

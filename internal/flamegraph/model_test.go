@@ -8,22 +8,29 @@ import (
 )
 
 func TestNewNode(t *testing.T) {
-	node := NewNode("process", 123, "func", "module", 100)
+	node := NewNode("func", 100)
 
-	assert.Equal(t, "process", node.Process)
-	assert.Equal(t, 123, node.TID)
-	assert.Equal(t, "func", node.Func)
-	assert.Equal(t, "module", node.Module)
+	assert.Equal(t, "func", node.Name)
 	assert.Equal(t, int64(100), node.Value)
 	assert.NotNil(t, node.Children)
 	assert.NotNil(t, node.childrenMap)
 }
 
+func TestNewNodeWithMetadata(t *testing.T) {
+	node := NewNodeWithMetadata("func", "module", "process", 123, 100)
+
+	assert.Equal(t, "func", node.Name)
+	assert.Equal(t, "module", node.Module)
+	assert.Equal(t, "process", node.Process)
+	assert.Equal(t, 123, node.TID)
+	assert.Equal(t, int64(100), node.Value)
+}
+
 func TestNode_AddChild(t *testing.T) {
-	parent := NewNode("", -1, "root", "", 0)
-	child1 := NewNode("proc", 1, "func1", "mod1", 10)
-	child2 := NewNode("proc", 1, "func2", "mod2", 20)
-	child1Dup := NewNode("proc", 1, "func1", "mod1", 5) // Same as child1
+	parent := NewNode("root", 0)
+	child1 := NewNode("func1", 10)
+	child2 := NewNode("func2", 20)
+	child1Dup := NewNode("func1", 5) // Same name as child1
 
 	idx1 := parent.AddChild(child1)
 	idx2 := parent.AddChild(child2)
@@ -36,35 +43,84 @@ func TestNode_AddChild(t *testing.T) {
 }
 
 func TestNode_GetChild(t *testing.T) {
-	parent := NewNode("", -1, "root", "", 0)
-	child := NewNode("proc", 1, "func1", "mod1", 10)
+	parent := NewNode("root", 0)
+	child := NewNode("func1", 10)
 	parent.AddChild(child)
 
 	// Found
-	found := parent.GetChild("proc", 1, "func1", "mod1")
+	found := parent.GetChild("func1")
 	require.NotNil(t, found)
-	assert.Equal(t, "func1", found.Func)
+	assert.Equal(t, "func1", found.Name)
 
 	// Not found
-	notFound := parent.GetChild("proc", 1, "func2", "mod2")
+	notFound := parent.GetChild("func2")
 	assert.Nil(t, notFound)
 }
 
-func TestNode_HasChild(t *testing.T) {
-	parent := NewNode("", -1, "root", "", 0)
-	child := NewNode("proc", 1, "func1", "mod1", 10)
+func TestNode_GetChildWithMetadata(t *testing.T) {
+	parent := NewNode("root", 0)
+	child := NewNodeWithMetadata("func1", "mod1", "proc", 1, 10)
 	parent.AddChild(child)
 
-	assert.True(t, parent.HasChild("proc", 1, "func1", "mod1"))
-	assert.False(t, parent.HasChild("proc", 1, "func2", "mod2"))
+	// Found
+	found := parent.GetChildWithMetadata("func1", "mod1", "proc", 1)
+	require.NotNil(t, found)
+	assert.Equal(t, "func1", found.Name)
+
+	// Not found
+	notFound := parent.GetChildWithMetadata("func1", "mod2", "proc", 1)
+	assert.Nil(t, notFound)
+}
+
+func TestNode_FindOrCreateChild(t *testing.T) {
+	parent := NewNode("root", 0)
+
+	// Create new child
+	child1 := parent.FindOrCreateChild("func1")
+	require.NotNil(t, child1)
+	assert.Equal(t, "func1", child1.Name)
+
+	// Find existing child
+	child1Again := parent.FindOrCreateChild("func1")
+	assert.Equal(t, child1, child1Again) // Same pointer
+
+	assert.Len(t, parent.Children, 1)
+}
+
+func TestNode_Clone(t *testing.T) {
+	original := NewNodeWithMetadata("func", "mod", "proc", 1, 100)
+	original.Self = 50
+	child := NewNode("child", 30)
+	original.AddChild(child)
+
+	clone := original.Clone()
+
+	// Verify clone is independent
+	assert.Equal(t, original.Name, clone.Name)
+	assert.Equal(t, original.Value, clone.Value)
+	assert.Equal(t, original.Self, clone.Self)
+	assert.Len(t, clone.Children, 1)
+
+	// Modify clone shouldn't affect original
+	clone.Value = 200
+	assert.Equal(t, int64(100), original.Value)
 }
 
 func TestNewFlameGraph(t *testing.T) {
 	fg := NewFlameGraph()
 
 	require.NotNil(t, fg.Root)
-	assert.Equal(t, "root", fg.Root.Func)
+	assert.Equal(t, "root", fg.Root.Name)
 	assert.Equal(t, int64(0), fg.Root.Value)
+}
+
+func TestNewFlameGraphWithAnalysis(t *testing.T) {
+	fg := NewFlameGraphWithAnalysis()
+
+	require.NotNil(t, fg.Root)
+	require.NotNil(t, fg.ThreadAnalysis)
+	assert.NotNil(t, fg.ThreadAnalysis.Threads)
+	assert.NotNil(t, fg.ThreadAnalysis.TopFunctions)
 }
 
 func TestFlameGraph_Cleanup(t *testing.T) {
@@ -72,9 +128,9 @@ func TestFlameGraph_Cleanup(t *testing.T) {
 	fg.TotalSamples = 1000
 
 	// Add children
-	child1 := NewNode("proc", 1, "hot_func", "", 500) // 50%
-	child2 := NewNode("proc", 1, "cold_func", "", 5)  // 0.5%
-	child3 := NewNode("proc", 1, "tiny_func", "", 1)  // 0.1%
+	child1 := NewNode("hot_func", 500) // 50%
+	child2 := NewNode("cold_func", 5)  // 0.5%
+	child3 := NewNode("tiny_func", 1)  // 0.1%
 
 	fg.Root.AddChild(child1)
 	fg.Root.AddChild(child2)
@@ -86,7 +142,7 @@ func TestFlameGraph_Cleanup(t *testing.T) {
 
 	// Only hot_func should remain
 	assert.Len(t, fg.Root.Children, 1)
-	assert.Equal(t, "hot_func", fg.Root.Children[0].Func)
+	assert.Equal(t, "hot_func", fg.Root.Children[0].Name)
 
 	// Internal map should be cleared
 	assert.Nil(t, fg.Root.childrenMap)
@@ -96,9 +152,9 @@ func TestFlameGraph_CalculateMaxDepth(t *testing.T) {
 	fg := NewFlameGraph()
 
 	// Build: root -> child1 -> grandchild -> great_grandchild
-	child1 := NewNode("proc", 1, "func1", "", 100)
-	grandchild := NewNode("proc", 1, "func2", "", 100)
-	greatGrandchild := NewNode("proc", 1, "func3", "", 100)
+	child1 := NewNode("func1", 100)
+	grandchild := NewNode("func2", 100)
+	greatGrandchild := NewNode("func3", 100)
 
 	grandchild.AddChild(greatGrandchild)
 	child1.AddChild(grandchild)
@@ -119,14 +175,100 @@ func TestFlameGraph_EmptyGraph(t *testing.T) {
 	assert.Nil(t, fg.Root.Children)
 }
 
+func TestFlameGraph_GetThread(t *testing.T) {
+	fg := NewFlameGraphWithAnalysis()
+	fg.ThreadAnalysis.Threads = []*ThreadInfo{
+		{TID: 1, Name: "thread-1"},
+		{TID: 2, Name: "thread-2"},
+	}
+
+	thread := fg.GetThread(1)
+	require.NotNil(t, thread)
+	assert.Equal(t, "thread-1", thread.Name)
+
+	notFound := fg.GetThread(999)
+	assert.Nil(t, notFound)
+}
+
+func TestFlameGraph_SortThreads(t *testing.T) {
+	fg := NewFlameGraphWithAnalysis()
+	fg.ThreadAnalysis.Threads = []*ThreadInfo{
+		{TID: 1, Name: "low", Samples: 10},
+		{TID: 2, Name: "high", Samples: 100},
+		{TID: 3, Name: "mid", Samples: 50},
+	}
+
+	fg.SortThreads()
+
+	assert.Equal(t, "high", fg.ThreadAnalysis.Threads[0].Name)
+	assert.Equal(t, "mid", fg.ThreadAnalysis.Threads[1].Name)
+	assert.Equal(t, "low", fg.ThreadAnalysis.Threads[2].Name)
+}
+
+func TestNodeBuilder_AddStack(t *testing.T) {
+	builder := NewNodeBuilder("root")
+
+	builder.AddStack([]string{"a", "b", "c"}, 100)
+	builder.AddStack([]string{"a", "b", "d"}, 50)
+	builder.AddStack([]string{"a", "e"}, 30)
+
+	root := builder.Build()
+
+	assert.Equal(t, int64(180), root.Value)
+	assert.Len(t, root.Children, 1) // Only "a"
+
+	a := root.Children[0]
+	assert.Equal(t, "a", a.Name)
+	assert.Equal(t, int64(180), a.Value)
+	assert.Len(t, a.Children, 2) // "b" and "e"
+}
+
+func TestNodeBuilder_EmptyStack(t *testing.T) {
+	builder := NewNodeBuilder("root")
+
+	builder.AddStack([]string{}, 100)
+	builder.AddStack(nil, 50)
+
+	root := builder.Build()
+	assert.Equal(t, int64(0), root.Value)
+	assert.Empty(t, root.Children)
+}
+
+func TestMergeNodes(t *testing.T) {
+	node1 := NewNode("thread1", 100)
+	node2 := NewNode("thread2", 50)
+
+	merged := MergeNodes([]*Node{node1, node2})
+
+	require.NotNil(t, merged)
+	assert.Equal(t, "all", merged.Name)
+	assert.Equal(t, int64(150), merged.Value)
+	assert.Len(t, merged.Children, 2)
+}
+
+func TestMergeNodes_Empty(t *testing.T) {
+	merged := MergeNodes([]*Node{})
+	assert.Nil(t, merged)
+}
+
+func TestMergeNodes_Single(t *testing.T) {
+	node := NewNode("single", 100)
+	merged := MergeNodes([]*Node{node})
+	assert.Equal(t, node, merged)
+}
+
 func TestMakeChildKey(t *testing.T) {
-	key := makeChildKey("process", 123, "function", "module")
-	// Should contain separator character
-	assert.Contains(t, key, "\x1E")
-	assert.Contains(t, key, "process")
-	assert.Contains(t, key, "123")
-	assert.Contains(t, key, "function")
-	assert.Contains(t, key, "module")
+	// Simple key (no metadata)
+	key1 := makeChildKey("func", "", "", 0)
+	assert.Equal(t, "func", key1)
+
+	// Key with metadata
+	key2 := makeChildKey("func", "mod", "proc", 123)
+	assert.Contains(t, key2, "\x1E")
+	assert.Contains(t, key2, "func")
+	assert.Contains(t, key2, "mod")
+	assert.Contains(t, key2, "proc")
+	assert.Contains(t, key2, "123")
 }
 
 func TestItoa(t *testing.T) {

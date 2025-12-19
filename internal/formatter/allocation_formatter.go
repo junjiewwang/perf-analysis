@@ -68,10 +68,16 @@ func (f *AllocationFormatter) FormatSummary(resp *model.AnalysisResponse) map[st
 	if resp.Data != nil {
 		summary["data"] = resp.Data.Summary()
 		summary["top_items"] = resp.Data.TopItems()
+
+		// Include thread stats for frontend
+		if allocData, ok := resp.Data.(*model.AllocationData); ok {
+			summary["threads"] = allocData.ThreadStats
+		}
 	}
 
 	summary["output_files"] = resp.OutputFiles
 	summary["suggestions_count"] = len(resp.Suggestions)
+	summary["suggestions"] = resp.Suggestions
 
 	return summary
 }

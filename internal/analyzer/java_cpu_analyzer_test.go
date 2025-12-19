@@ -67,7 +67,7 @@ main-thread;java.lang.Thread.run;com.example.App.init 30`
 	require.True(t, ok, "Data should be CPUProfilingData")
 	assert.NotEmpty(t, cpuData.TopFuncs)
 	assert.Contains(t, cpuData.FlameGraphFile, "collapsed_data.json.gz")
-	assert.Contains(t, cpuData.CallGraphFile, "collapsed_data.json")
+	assert.Contains(t, cpuData.CallGraphFile, "callgraph_data.json.gz")
 }
 
 func TestJavaCPUAnalyzer_Analyze_EmptyData(t *testing.T) {
@@ -148,8 +148,8 @@ func TestJavaCPUAnalyzer_GetOutputFiles(t *testing.T) {
 	assert.Equal(t, "test-uuid/collapsed_data.json.gz", files[0].COSKey)
 
 	// Check call graph file
-	assert.Equal(t, "/tmp/test-uuid/collapsed_data.json", files[1].LocalPath)
-	assert.Equal(t, "test-uuid/collapsed_data.json", files[1].COSKey)
+	assert.Equal(t, "/tmp/test-uuid/callgraph_data.json.gz", files[1].LocalPath)
+	assert.Equal(t, "test-uuid/callgraph_data.json.gz", files[1].COSKey)
 }
 
 func TestJavaCPUAnalyzer_OutputFilesCreated(t *testing.T) {
@@ -181,7 +181,7 @@ func TestJavaCPUAnalyzer_OutputFilesCreated(t *testing.T) {
 	_, err = os.Stat(fgPath)
 	assert.NoError(t, err)
 
-	cgPath := filepath.Join(taskDir, "collapsed_data.json")
+	cgPath := filepath.Join(taskDir, "callgraph_data.json.gz")
 	_, err = os.Stat(cgPath)
 	assert.NoError(t, err)
 }

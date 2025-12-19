@@ -22,8 +22,13 @@ const API = {
     },
 
     // Fetch flame graph data for a task
-    async getFlameGraph(taskId) {
-        const response = await fetch(`/api/flamegraph?task=${taskId}`);
+    // type: 'cpu' (default), 'memory', 'alloc', 'tracing'
+    async getFlameGraph(taskId, type = '') {
+        let url = `/api/flamegraph?task=${taskId}`;
+        if (type) {
+            url += `&type=${type}`;
+        }
+        const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -31,8 +36,13 @@ const API = {
     },
 
     // Fetch call graph data for a task
-    async getCallGraph(taskId) {
-        const response = await fetch(`/api/callgraph?task=${taskId}`);
+    // type: 'cpu' (default), 'memory', 'alloc'
+    async getCallGraph(taskId, type = '') {
+        let url = `/api/callgraph?task=${taskId}`;
+        if (type) {
+            url += `&type=${type}`;
+        }
+        const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }

@@ -5,42 +5,31 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/perf-analysis/pkg/writer"
 )
 
 // JSONWriter writes call graph data as JSON.
-type JSONWriter struct {
-	// Indent specifies the indentation for pretty printing.
-	Indent string
-}
+// This is a type alias for backward compatibility.
+type JSONWriter = writer.JSONWriter[*CallGraph]
 
 // NewJSONWriter creates a new JSON writer.
 func NewJSONWriter() *JSONWriter {
-	return &JSONWriter{Indent: ""}
+	return writer.NewJSONWriter[*CallGraph]()
 }
 
 // NewPrettyJSONWriter creates a JSON writer with pretty printing.
 func NewPrettyJSONWriter() *JSONWriter {
-	return &JSONWriter{Indent: "  "}
+	return writer.NewPrettyJSONWriter[*CallGraph]()
 }
 
-// Write writes the call graph as JSON to the writer.
-func (w *JSONWriter) Write(cg *CallGraph, writer io.Writer) error {
-	encoder := json.NewEncoder(writer)
-	if w.Indent != "" {
-		encoder.SetIndent("", w.Indent)
-	}
-	return encoder.Encode(cg)
-}
+// GzipWriter writes call graph data as gzipped JSON.
+// This is a type alias for backward compatibility.
+type GzipWriter = writer.GzipWriter[*CallGraph]
 
-// WriteToFile writes the call graph as JSON to a file.
-func (w *JSONWriter) WriteToFile(cg *CallGraph, filepath string) error {
-	file, err := os.Create(filepath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer file.Close()
-
-	return w.Write(cg, file)
+// NewGzipWriter creates a new gzip writer with default compression.
+func NewGzipWriter() *GzipWriter {
+	return writer.NewGzipWriter[*CallGraph]()
 }
 
 // XDotJSONOutput represents the xdot_json format compatible with graphviz.

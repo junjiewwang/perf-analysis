@@ -62,14 +62,18 @@ const CallGraph = (function() {
 
     function getNodeWidth(name) {
         if (!name) return 150;
+        // Strip allocation marker for width calculation
+        const cleanName = Utils.stripAllocationMarker(name);
         const charWidth = 7;
         const padding = 20;
-        return Math.min(300, Math.max(150, name.length * charWidth + padding));
+        return Math.min(300, Math.max(150, cleanName.length * charWidth + padding));
     }
 
     function getDisplayName(name, maxLen) {
         if (!name) return '';
-        const parts = name.split('.');
+        // Strip allocation marker for display
+        const cleanName = Utils.stripAllocationMarker(name);
+        const parts = cleanName.split('.');
         if (parts.length >= 2) {
             const className = parts[parts.length - 2] || '';
             const methodName = parts[parts.length - 1] || '';
@@ -78,17 +82,19 @@ const CallGraph = (function() {
             if (methodName.length <= maxLen) return methodName;
             return methodName.substring(0, maxLen - 2) + '..';
         }
-        if (name.length <= maxLen) return name;
-        return name.substring(0, maxLen - 2) + '..';
+        if (cleanName.length <= maxLen) return cleanName;
+        return cleanName.substring(0, maxLen - 2) + '..';
     }
 
     function getShortName(name) {
         if (!name) return '';
-        const parts = name.split('.');
+        // Strip allocation marker for display
+        const cleanName = Utils.stripAllocationMarker(name);
+        const parts = cleanName.split('.');
         if (parts.length >= 2) {
             return parts.slice(-2).join('.');
         }
-        return name.length > 40 ? name.substring(0, 38) + '..' : name;
+        return cleanName.length > 40 ? cleanName.substring(0, 38) + '..' : cleanName;
     }
 
     function getNodeBoundaryPoint(cx, cy, halfWidth, halfHeight, angle) {
@@ -423,12 +429,12 @@ const CallGraph = (function() {
             }
         },
 
-        async load(taskId) {
+        async load(taskId, type = '') {
             const container = document.getElementById('callgraph');
             container.innerHTML = '<div class="loading">Loading call graph</div>';
 
             try {
-                const data = await API.getCallGraph(taskId);
+                const data = await API.getCallGraph(taskId, type);
                 originalData = data;
                 this.render(data);
             } catch (err) {
@@ -566,7 +572,17 @@ const CallGraph = (function() {
                 d3.select(this).classed('highlighted', true);
                 link.classed('highlighted', l => l.source.index === d.index || l.target.index === d.index);
                 tooltip.style.display = 'block';
-                tooltip.innerHTML = `<b>${Utils.escapeHtml(d.name)}</b><br>Self: ${(d.selfPct || 0).toFixed(2)}%<br>Total: ${(d.totalPct || 0).toFixed(2)}%`;
+                // Format function name with allocation info
+                const formatted = Utils.formatFunctionName(d.name, { showBadge: false });
+                let tooltipHtml = `<b>${Utils.escapeHtml(formatted.displayName)}</b>`;
+                if (formatted.isAllocation) {
+                    const allocLabel = formatted.allocationType === 'instance' 
+                        ? '📦 Instance Allocation' 
+                        : '📊 Size Allocation';
+                    tooltipHtml += `<br><span style="color: #3498db; font-size: 11px;">${allocLabel}</span>`;
+                }
+                tooltipHtml += `<br>Self: ${(d.selfPct || 0).toFixed(2)}%<br>Total: ${(d.totalPct || 0).toFixed(2)}%`;
+                tooltip.innerHTML = tooltipHtml;
                 tooltip.style.left = (event.pageX + 10) + 'px';
                 tooltip.style.top = (event.pageY + 10) + 'px';
             })
@@ -609,11 +625,15 @@ const CallGraph = (function() {
 
             searchTerm = term;
             const termLower = term.toLowerCase();
+            // Also search without allocation marker for better UX
+            const termClean = Utils.stripAllocationMarker(term).toLowerCase();
 
-            const allMatches = nodes.filter(n =>
-                n.name && n.name.toLowerCase().includes(termLower) &&
-                !filteredNodeIndices.has(n.index)
-            );
+            const allMatches = nodes.filter(n => {
+                if (!n.name || filteredNodeIndices.has(n.index)) return false;
+                const nameLower = n.name.toLowerCase();
+                const nameClean = Utils.stripAllocationMarker(n.name).toLowerCase();
+                return nameLower.includes(termLower) || nameClean.includes(termClean);
+            });
 
             const wasLimited = allMatches.length > MAX_MATCHES;
             searchMatches = allMatches.slice(0, MAX_MATCHES);

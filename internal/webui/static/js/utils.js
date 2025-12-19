@@ -67,8 +67,11 @@ function getShortClassName(fullName) {
 function extractSearchTerm(funcName) {
     if (!funcName) return '';
     
+    // Remove allocation marker suffix for search
+    const cleanName = stripAllocationMarker(funcName);
+    
     // For Java-style names like "com.example.Class.method", extract "Class.method" or just "method"
-    const parts = funcName.split('.');
+    const parts = cleanName.split('.');
     if (parts.length >= 2) {
         const lastTwo = parts.slice(-2).join('.');
         if (lastTwo.length > 50) {
@@ -78,12 +81,78 @@ function extractSearchTerm(funcName) {
     }
     
     // For C++ style names with ::, extract the last part
-    if (funcName.includes('::')) {
-        const cppParts = funcName.split('::');
+    if (cleanName.includes('::')) {
+        const cppParts = cleanName.split('::');
         return cppParts[cppParts.length - 1];
     }
     
-    return funcName;
+    return cleanName;
+}
+
+// Allocation marker patterns from async-profiler
+// _[i] = instance allocation (object count)
+// _[k] = size allocation (bytes)
+const ALLOCATION_MARKER_REGEX = /_\[(i|k)\]$/;
+
+// Check if function name has allocation marker
+function hasAllocationMarker(funcName) {
+    if (!funcName) return false;
+    return ALLOCATION_MARKER_REGEX.test(funcName);
+}
+
+// Get allocation marker type
+function getAllocationMarkerType(funcName) {
+    if (!funcName) return null;
+    const match = funcName.match(ALLOCATION_MARKER_REGEX);
+    if (!match) return null;
+    return match[1] === 'i' ? 'instance' : 'size';
+}
+
+// Strip allocation marker from function name
+function stripAllocationMarker(funcName) {
+    if (!funcName) return '';
+    return funcName.replace(ALLOCATION_MARKER_REGEX, '');
+}
+
+// Format function name for display with allocation info
+// Returns { displayName, badge, tooltip, originalName }
+function formatFunctionName(funcName, options = {}) {
+    if (!funcName) return { displayName: '', badge: '', tooltip: '', originalName: '' };
+    
+    const { showBadge = true, showTooltip = true } = options;
+    const markerType = getAllocationMarkerType(funcName);
+    const cleanName = stripAllocationMarker(funcName);
+    
+    let badge = '';
+    let tooltip = '';
+    
+    if (markerType && showBadge) {
+        if (markerType === 'instance') {
+            badge = '<span class="alloc-badge alloc-instance" title="Instance allocation (object count)">📦 inst</span>';
+            tooltip = 'Instance allocation - counts number of objects allocated';
+        } else {
+            badge = '<span class="alloc-badge alloc-size" title="Size allocation (bytes)">📊 size</span>';
+            tooltip = 'Size allocation - measures bytes allocated';
+        }
+    }
+    
+    return {
+        displayName: cleanName,
+        badge: badge,
+        tooltip: showTooltip ? tooltip : '',
+        originalName: funcName,
+        isAllocation: !!markerType,
+        allocationType: markerType
+    };
+}
+
+// Format function name as HTML with badge
+function formatFunctionNameHtml(funcName, options = {}) {
+    const formatted = formatFunctionName(funcName, options);
+    if (!formatted.badge) {
+        return Utils.escapeHtml(formatted.displayName);
+    }
+    return `${Utils.escapeHtml(formatted.displayName)} ${formatted.badge}`;
 }
 
 // Copy text to clipboard
@@ -280,6 +349,12 @@ const Utils = {
     getTaskTypeClass,
     getTaskTypeIcon,
     getProfilerIcon,
+    // Allocation marker utilities
+    hasAllocationMarker,
+    getAllocationMarkerType,
+    stripAllocationMarker,
+    formatFunctionName,
+    formatFunctionNameHtml,
     SYSTEM_PATTERNS
 };
 

@@ -361,3 +361,47 @@
     color: #333;
     font-size: 14px;
 }
+
+/* ===== Allocation Badges ===== */
+.alloc-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+    margin-left: 6px;
+    vertical-align: middle;
+    cursor: help;
+}
+
+.alloc-badge.alloc-instance {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    color: white;
+}
+
+.alloc-badge.alloc-size {
+    background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+    color: white;
+}
+
+/* Allocation info tooltip in flame graph */
+.alloc-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(52, 152, 219, 0.15);
+    border: 1px solid rgba(52, 152, 219, 0.3);
+    border-radius: 6px;
+    font-size: 11px;
+    color: #2980b9;
+    margin-top: 4px;
+}
+
+.alloc-info.size-alloc {
+    background: rgba(155, 89, 182, 0.15);
+    border-color: rgba(155, 89, 182, 0.3);
+    color: #8e44ad;
+}

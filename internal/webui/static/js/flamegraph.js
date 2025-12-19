@@ -48,6 +48,89 @@ const FlameGraph = (function() {
         ]
     };
 
+    // Create custom tooltip for flame graph
+    // d3-flamegraph requires a tooltip object with show(d) and hide() methods
+    function createFlameTooltip() {
+        let tooltipEl = null;
+        
+        function ensureTooltipElement() {
+            if (!tooltipEl) {
+                tooltipEl = d3.select('body')
+                    .append('div')
+                    .attr('class', 'flame-tooltip')
+                    .style('position', 'absolute')
+                    .style('z-index', '10000')
+                    .style('visibility', 'hidden')
+                    .style('background', 'rgba(0, 0, 0, 0.9)')
+                    .style('color', 'white')
+                    .style('padding', '8px 12px')
+                    .style('border-radius', '6px')
+                    .style('font-size', '12px')
+                    .style('font-family', 'monospace')
+                    .style('max-width', '500px')
+                    .style('word-wrap', 'break-word')
+                    .style('pointer-events', 'none')
+                    .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)');
+            }
+            return tooltipEl;
+        }
+        
+        // Track mouse position for tooltip positioning
+        let mouseX = 0, mouseY = 0;
+        document.addEventListener('mousemove', function(e) {
+            mouseX = e.pageX;
+            mouseY = e.pageY;
+        });
+        
+        return {
+            // d3-flamegraph calls show(d, element) where element is the DOM node
+            show: function(d, element) {
+                const el = ensureTooltipElement();
+                const name = d.data.name || '';
+                const value = d.value || 0;
+                
+                // Format function name with allocation info
+                const formatted = Utils.formatFunctionName(name, { showBadge: false });
+                const displayName = formatted.displayName;
+                
+                // Calculate percentage
+                let percentage = 0;
+                if (flameGraphData && flameGraphData.value > 0) {
+                    percentage = (value / flameGraphData.value * 100).toFixed(2);
+                }
+                
+                // Build tooltip HTML
+                let html = `<div style="font-weight: bold; margin-bottom: 4px;">${Utils.escapeHtml(displayName)}</div>`;
+                
+                // Show allocation type badge if applicable
+                if (formatted.isAllocation) {
+                    const allocLabel = formatted.allocationType === 'instance' 
+                        ? '📦 Instance Allocation (object count)' 
+                        : '📊 Size Allocation (bytes)';
+                    const bgColor = formatted.allocationType === 'instance' 
+                        ? 'rgba(52, 152, 219, 0.3)' 
+                        : 'rgba(155, 89, 182, 0.3)';
+                    html += `<div style="background: ${bgColor}; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-bottom: 4px; display: inline-block;">${allocLabel}</div><br>`;
+                }
+                
+                html += `<div style="color: #ccc;">Samples: <span style="color: #fff;">${value.toLocaleString()}</span></div>`;
+                html += `<div style="color: #ccc;">Percentage: <span style="color: #fff;">${percentage}%</span></div>`;
+                
+                el.html(html)
+                    .style('visibility', 'visible');
+                
+                // Position tooltip near mouse using tracked position
+                el.style('top', (mouseY + 15) + 'px')
+                    .style('left', (mouseX + 15) + 'px');
+            },
+            
+            hide: function() {
+                const el = ensureTooltipElement();
+                el.style('visibility', 'hidden');
+            }
+        };
+    }
+
     // Transform flame graph data to d3-flamegraph format
     function transformFlameData(data) {
         if (!data) return null;
@@ -210,12 +293,17 @@ const FlameGraph = (function() {
     function applySearchHighlight(term) {
         if (!term) return 0;
         const termLower = term.toLowerCase();
+        // Also search without allocation marker for better UX
+        const termClean = Utils.stripAllocationMarker(term).toLowerCase();
         let matchCount = 0;
         d3.select('#flamegraph').selectAll('.d3-flame-graph g').each(function() {
             const g = d3.select(this);
             const titleEl = g.select('title');
             const name = titleEl.empty() ? '' : titleEl.text();
-            if (name && name.toLowerCase().includes(termLower)) {
+            const nameLower = name.toLowerCase();
+            // Match original name or name without allocation marker
+            const nameClean = Utils.stripAllocationMarker(name).toLowerCase();
+            if (name && (nameLower.includes(termLower) || nameClean.includes(termClean))) {
                 g.classed('search-match', true);
                 matchCount++;
             } else {
@@ -237,12 +325,12 @@ const FlameGraph = (function() {
             }
         },
 
-        async load(taskId) {
+        async load(taskId, type = '') {
             const container = document.getElementById('flamegraph');
             container.innerHTML = '<div class="loading">Loading flame graph</div>';
 
             try {
-                const data = await API.getFlameGraph(taskId);
+                const data = await API.getFlameGraph(taskId, type);
                 flameGraphData = transformFlameData(data);
                 originalFlameGraphData = deepCloneFlameData(flameGraphData);
 
@@ -296,7 +384,8 @@ const FlameGraph = (function() {
                 .title('')
                 .inverted(isInverted)
                 .selfValue(false)
-                .onClick(this.handleClick.bind(this));
+                .onClick(this.handleClick.bind(this))
+                .tooltip(createFlameTooltip());
 
             // Color scheme
             flameChart.setColorMapper(function(d, originalColor) {

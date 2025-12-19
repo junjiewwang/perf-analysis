@@ -36,6 +36,7 @@
     <link rel="stylesheet" href="/static/css/flamegraph.css">
     <link rel="stylesheet" href="/static/css/callgraph.css">
     <link rel="stylesheet" href="/static/css/heap.css">
+    <link rel="stylesheet" href="/static/css/threads.css">
 </head>
 <body class="bg-gray-100 text-gray-800" x-data="appState()" x-init="init()">
     <!-- Header -->
@@ -77,22 +78,22 @@
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 📊 Class Histogram
             </button>
-            <button @click="showPanel('flamegraph')" x-show="analysisType === 'cpu'"
+            <button @click="showPanel('flamegraph')" x-show="analysisType === 'cpu' || analysisType === 'alloc'"
                 :class="{'tab-active': activePanel === 'flamegraph'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 🔥 Flame Graph
             </button>
-            <button @click="showPanel('callgraph')" x-show="analysisType === 'cpu'"
+            <button @click="showPanel('callgraph')" x-show="analysisType === 'cpu' || analysisType === 'alloc'"
                 :class="{'tab-active': activePanel === 'callgraph'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 📈 Call Graph
             </button>
-            <button @click="showPanel('topfuncs')" x-show="analysisType === 'cpu'"
+            <button @click="showPanel('topfuncs')" x-show="analysisType === 'cpu' || analysisType === 'alloc'"
                 :class="{'tab-active': activePanel === 'topfuncs'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 📋 Top Functions
             </button>
-            <button @click="showPanel('threads')" x-show="analysisType === 'cpu'"
+            <button @click="showPanel('threads')" x-show="analysisType === 'cpu' || analysisType === 'alloc'"
                 :class="{'tab-active': activePanel === 'threads'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 🧵 Threads
@@ -125,11 +126,11 @@
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                     <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
-                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Task Type</span>
+                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Analysis Mode</span>
                         <div class="mt-2" id="metaTaskType">-</div>
                     </div>
                     <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
-                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Profiler</span>
+                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Profile</span>
                         <div class="mt-2 text-sm font-medium text-gray-700" id="metaProfiler">-</div>
                     </div>
                     <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
@@ -374,14 +375,34 @@
 
         <!-- Top Functions Panel: Alpine.js 控制显示 -->
         <div x-show="activePanel === 'topfuncs'" x-cloak class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white">📋</div>
-                <div>
-                    <h2 class="text-base font-semibold text-gray-800">All Functions (sorted by self %)</h2>
-                    <p class="text-xs text-gray-400 mt-0.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white">📋</div>
+                    <div>
+                        <h2 class="text-base font-semibold text-gray-800">All Functions (sorted by self %)</h2>
+                        <p class="text-xs text-gray-400 mt-0.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
+                    </div>
+                </div>
+                <!-- View Toggle -->
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500">View:</span>
+                    <button id="topFuncsViewTable" onclick="TopFuncsPanel.setView('table')" 
+                        class="px-3 py-1.5 text-xs rounded-lg bg-primary text-white transition-colors">
+                        📋 Table
+                    </button>
+                    <button id="topFuncsViewChart" onclick="TopFuncsPanel.setView('chart')" 
+                        class="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">
+                        📊 Functions
+                    </button>
+                    <button id="topFuncsViewThreads" onclick="TopFuncsPanel.setView('threads')" 
+                        class="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">
+                        🧵 Threads
+                    </button>
                 </div>
             </div>
-            <div class="overflow-x-auto">
+            
+            <!-- Table View -->
+            <div id="topFuncsTableView" class="overflow-x-auto">
                 <table class="w-full">
                     <thead>
                         <tr class="bg-gray-50 text-left">
@@ -394,15 +415,123 @@
                     <tbody id="topFuncsAll" class="divide-y divide-gray-100"></tbody>
                 </table>
             </div>
+            
+            <!-- Chart View -->
+            <div id="topFuncsChartView" class="hidden p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-4">
+                        <label class="text-xs text-gray-500">
+                            Show top 
+                            <select id="topFuncsChartCount" onchange="TopFuncsPanel.updateChart()" 
+                                class="mx-1 px-2 py-1 border border-gray-300 rounded text-xs">
+                                <option value="10">10</option>
+                                <option value="20" selected>20</option>
+                                <option value="30">30</option>
+                                <option value="50">50</option>
+                            </select>
+                            functions
+                        </label>
+                        <label class="text-xs text-gray-500 flex items-center gap-1">
+                            <input type="checkbox" id="topFuncsChartShowOthers" onchange="TopFuncsPanel.updateChart()" checked>
+                            Group remaining as "Others"
+                        </label>
+                    </div>
+                    <div class="text-xs text-gray-400">
+                        💡 Click on a bar to search in Flame Graph
+                    </div>
+                </div>
+                <div id="topFuncsBarChart" style="width: 100%; height: 500px;"></div>
+            </div>
+            
+            <!-- Thread Groups View -->
+            <div id="topFuncsThreadsView" class="hidden p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-4">
+                        <label class="text-xs text-gray-500">
+                            Show top 
+                            <select id="topFuncsThreadCount" onchange="TopFuncsPanel.updateThreadChart()" 
+                                class="mx-1 px-2 py-1 border border-gray-300 rounded text-xs">
+                                <option value="8">8</option>
+                                <option value="10" selected>10</option>
+                                <option value="15">15</option>
+                                <option value="20">20</option>
+                            </select>
+                            thread groups
+                        </label>
+                        <label class="text-xs text-gray-500 flex items-center gap-1">
+                            <input type="checkbox" id="topFuncsThreadShowOthers" onchange="TopFuncsPanel.updateThreadChart()" checked>
+                            Group remaining as "Others"
+                        </label>
+                    </div>
+                    <div class="text-xs text-gray-400">
+                        💡 Click on a segment to filter threads
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div id="topFuncsThreadPie" style="width: 100%; height: 400px;"></div>
+                    <div id="topFuncsThreadBar" style="width: 100%; height: 400px;"></div>
+                </div>
+                <div id="topFuncsThreadLegend" class="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-2">Thread Group Details</div>
+                    <div id="topFuncsThreadDetails" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 text-xs"></div>
+                </div>
+            </div>
         </div>
 
-        <!-- Threads Panel: Alpine.js 控制显示 -->
+        <!-- Threads Panel: Enhanced CPU Thread Analysis -->
         <div x-show="activePanel === 'threads'" x-cloak class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white">🧵</div>
-                <h2 class="text-base font-semibold text-gray-800">Thread Statistics</h2>
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white">🧵</div>
+                    <div>
+                        <h2 class="text-base font-semibold text-gray-800">Thread Analysis</h2>
+                        <p class="text-xs text-gray-500" id="cpu-threads-summary">Loading thread data...</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="cpu-thread-search" placeholder="Search threads or functions..."
+                        class="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-56">
+                    <select id="cpu-thread-sort" class="px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none">
+                        <option value="samples-desc">Samples (High to Low)</option>
+                        <option value="samples-asc">Samples (Low to High)</option>
+                        <option value="name-asc">Name (A-Z)</option>
+                        <option value="name-desc">Name (Z-A)</option>
+                        <option value="percentage-desc">Percentage (High to Low)</option>
+                    </select>
+                    <button onclick="ThreadsPanel.refresh()" class="px-3 py-1.5 text-sm bg-primary text-white hover:bg-primary/90 rounded transition-colors">
+                        🔄 Refresh
+                    </button>
+                </div>
             </div>
-            <ul class="divide-y divide-gray-100" id="threadList"></ul>
+            
+            <!-- Thread Table Container -->
+            <div class="overflow-x-auto">
+                <table class="w-full" id="cpu-threads-table">
+                    <thead>
+                        <tr class="bg-gray-50 text-left">
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-12">#</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Thread Name</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24 text-right">TID</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28 text-right">Samples</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Percentage</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Top Function</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cpu-threads-tbody" class="divide-y divide-gray-100">
+                        <tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                            <div class="animate-spin text-2xl mb-2">⏳</div>
+                            <p>Loading thread analysis data...</p>
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            <div id="cpu-threads-pagination" class="px-6 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
+                <div class="text-sm text-gray-500" id="cpu-threads-page-info">Showing 0 threads</div>
+                <div class="flex items-center gap-1" id="cpu-threads-page-buttons"></div>
+            </div>
         </div>
 
         <!-- Heap Biggest Objects Panel: Alpine.js 控制显示 -->
@@ -669,9 +798,11 @@
                         if (this.analysisType === 'heap') {
                             HeapAnalysis.renderAnalysis(this.summaryData);
                         } else {
+                            // Determine flame graph / call graph type based on analysis type
+                            const graphType = this.analysisType === 'alloc' ? 'memory' : 'cpu';
                             await Promise.all([
-                                FlameGraph.load(taskId),
-                                CallGraph.load(taskId)
+                                FlameGraph.load(taskId, graphType),
+                                CallGraph.load(taskId, graphType)
                             ]);
                         }
                     } finally {
@@ -698,10 +829,14 @@
                     const taskType = data.task_type || '';
                     const metadata = data.metadata || {};
                     const taskTypeName = metadata.task_type_name || taskType;
+                    const mode = metadata.mode || '';
 
                     if (taskTypeName === 'java_heap' || taskType === 'java_heap' ||
                         (data.data && data.data.total_heap_size !== undefined)) {
                         this.analysisType = 'heap';
+                    } else if (mode === 'java-alloc' || taskTypeName === 'java_alloc' ||
+                        (data.data && data.data.total_allocations !== undefined)) {
+                        this.analysisType = 'alloc';
                     } else {
                         this.analysisType = 'cpu';
                     }
@@ -739,14 +874,16 @@
 
                     card.style.display = 'block';
 
-                    const typeName = metadata.task_type_name || 'unknown';
-                    const typeClass = this.getTaskTypeClass(typeName);
-                    const typeIcon = this.getTaskTypeIcon(typeName);
-                    document.getElementById('metaTaskType').innerHTML = `<span class="type-badge ${typeClass}">${typeIcon} ${typeName.toUpperCase()}</span>`;
+                    // Use mode field (new format) or fall back to task_type_name (legacy)
+                    const modeName = metadata.mode || metadata.task_type_name || 'unknown';
+                    const modeClass = this.getModeClass(modeName);
+                    const modeIcon = this.getModeIcon(modeName);
+                    document.getElementById('metaTaskType').innerHTML = `<span class="type-badge ${modeClass}">${modeIcon} ${modeName.toUpperCase()}</span>`;
 
-                    const profilerName = metadata.profiler_name || 'unknown';
-                    const profilerIcon = this.getProfilerIcon(profilerName);
-                    document.getElementById('metaProfiler').innerHTML = `<span class="profiler-badge">${profilerIcon} ${profilerName}</span>`;
+                    // Use profile field (new format) or fall back to profiler_name (legacy)
+                    const profileName = metadata.profile || metadata.profiler_name || 'unknown';
+                    const profileIcon = this.getProfileIcon(profileName);
+                    document.getElementById('metaProfiler').innerHTML = `<span class="profiler-badge">${profileIcon} ${profileName}</span>`;
 
                     document.getElementById('metaInputFile').textContent = metadata.input_file || '-';
                     document.getElementById('metaCreatedAt').textContent = metadata.created_at ? Utils.formatDateTime(metadata.created_at) : '-';
@@ -766,11 +903,22 @@
                     }
 
                     const self = this;
-                    const renderRow = (f, i) => `
+                    const isAllocMode = this.analysisType === 'alloc';
+                    
+                    const renderRow = (f, i) => {
+                        // Format function name with allocation badge if applicable
+                        const formatted = Utils.formatFunctionName(f.name, { showBadge: isAllocMode });
+                        const displayName = Utils.escapeHtml(formatted.displayName);
+                        const badge = formatted.badge || '';
+                        // Use original name for search/copy operations
+                        const originalName = f.name;
+                        const escapedOriginal = Utils.escapeHtml(originalName).replace(/'/g, "\\'");
+                        
+                        return `
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="px-6 py-4 text-sm text-gray-500 font-medium">${i + 1}</td>
                             <td class="px-6 py-4">
-                                <span class="font-mono text-sm text-gray-800 cursor-pointer hover:text-primary hover:underline" title="Click to copy" onclick="Utils.copyToClipboard('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">${Utils.escapeHtml(f.name)}</span>
+                                <span class="font-mono text-sm text-gray-800 cursor-pointer hover:text-primary hover:underline" title="Click to copy: ${Utils.escapeHtml(originalName)}" onclick="Utils.copyToClipboard('${escapedOriginal}')">${displayName}</span>${badge}
                             </td>
                             <td class="px-6 py-4">
                                 <div class="flex items-center gap-3">
@@ -782,20 +930,29 @@
                             </td>
                             <td class="px-6 py-4 text-center">
                                 <div class="flex items-center justify-center gap-2">
-                                    <button class="w-8 h-8 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white flex items-center justify-center hover:scale-110 transition-transform" title="Search in Flame Graph" onclick="App.searchInFlameGraph('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">🔥</button>
-                                    <button class="w-8 h-8 rounded-lg bg-gradient-to-r from-primary to-secondary text-white flex items-center justify-center hover:scale-110 transition-transform" title="Search in Call Graph" onclick="App.searchInCallGraph('${Utils.escapeHtml(f.name).replace(/'/g, "\\'")}')">📈</button>
+                                    <button class="w-8 h-8 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white flex items-center justify-center hover:scale-110 transition-transform" title="Search in Flame Graph" onclick="App.searchInFlameGraph('${escapedOriginal}')">🔥</button>
+                                    <button class="w-8 h-8 rounded-lg bg-gradient-to-r from-primary to-secondary text-white flex items-center justify-center hover:scale-110 transition-transform" title="Search in Call Graph" onclick="App.searchInCallGraph('${escapedOriginal}')">📈</button>
                                 </div>
                             </td>
                         </tr>
                     `;
+                    };
 
                     document.getElementById('topFuncsPreview').innerHTML = funcs.slice(0, 5).map(renderRow).join('');
                     document.getElementById('topFuncsAll').innerHTML = funcs.map(renderRow).join('');
+                    
+                    // Update TopFuncsPanel data for chart view
+                    if (typeof TopFuncsPanel !== 'undefined') {
+                        TopFuncsPanel.setData(funcs);
+                    }
                 },
 
                 // Render threads
                 renderThreads(data) {
                     const threadList = document.getElementById('threadList');
+                    // Skip if threadList element doesn't exist (removed from UI)
+                    if (!threadList) return;
+                    
                     threadList.innerHTML = (data.threads || []).map((t, i) => `
                         <li class="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
                             <div class="flex items-center gap-3">
@@ -882,6 +1039,16 @@
                                 }
                             });
                         });
+                    } else if (panelId === 'threads') {
+                        // 加载线程分析数据
+                        this.$nextTick(() => {
+                            requestAnimationFrame(() => {
+                                if (typeof ThreadsPanel !== 'undefined') {
+                                    ThreadsPanel.init();
+                                    ThreadsPanel.load(this.currentTask);
+                                }
+                            });
+                        });
                     }
                 },
 
@@ -897,7 +1064,39 @@
                     setTimeout(() => CallGraph.searchFor(funcName), 100);
                 },
 
-                // Helper methods
+                // Helper methods for new mode-based metadata
+                getModeClass(modeName) {
+                    const modeMap = {
+                        'java-cpu': 'java', 'java-alloc': 'memory', 'java-heap': 'heap',
+                        'cpu': 'generic', 'go-pprof': 'pprof',
+                        // Legacy fallbacks
+                        'java': 'java', 'generic': 'generic', 'pprof_mem': 'pprof',
+                        'memleak': 'memory', 'java_heap': 'heap'
+                    };
+                    return modeMap[modeName] || 'generic';
+                },
+
+                getModeIcon(modeName) {
+                    const iconMap = {
+                        'java-cpu': '☕🔥', 'java-alloc': '☕📈', 'java-heap': '☕📦',
+                        'cpu': '🔥', 'go-pprof': '🐹',
+                        // Legacy fallbacks
+                        'java': '☕', 'generic': '🔧', 'pprof_mem': '🐹', 'memleak': '💾',
+                        'java_heap': '📦'
+                    };
+                    return iconMap[modeName] || '📊';
+                },
+
+                getProfileIcon(profileName) {
+                    const iconMap = {
+                        'quick': '⚡', 'standard': '⚖️', 'detailed': '🔬',
+                        // Legacy fallbacks
+                        'perf': '🔥', 'async_alloc': '📈', 'pprof': '🐹'
+                    };
+                    return iconMap[profileName] || '📊';
+                },
+
+                // Legacy helper methods (kept for backward compatibility)
                 getTaskTypeClass(typeName) {
                     const typeMap = {
                         'java': 'java', 'generic': 'generic', 'pprof_mem': 'pprof',
@@ -951,6 +1150,9 @@
     <script src="/static/js/api.js"></script>
     <script src="/static/js/flamegraph.js"></script>
     <script src="/static/js/callgraph.js"></script>
+    <!-- CPU Analysis Scripts -->
+    <script src="/static/js/threads.js"></script>
+    <script src="/static/js/topfuncs.js"></script>
     <!-- Heap Analysis Modular Scripts (load order matters) -->
     <script src="/static/js/heap-core.js"></script>
     <script src="/static/js/heap-treemap.js"></script>

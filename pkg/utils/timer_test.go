@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ type MockOutput struct {
 }
 
 func (m *MockOutput) Output(format string, args ...interface{}) {
-	m.Messages = append(m.Messages, format)
+	m.Messages = append(m.Messages, fmt.Sprintf(format, args...))
 }
 
 func TestNewTimer(t *testing.T) {

@@ -4,3 +4,4 @@ configs/build/
 **/logs
 data
 *.hprof
+.codebuddy

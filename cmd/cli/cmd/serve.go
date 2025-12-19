@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -94,6 +96,10 @@ func startServeMode(dataDirectory string, serverPort int, log utils.Logger) erro
 	log.Info("")
 
 	if err := server.Start(); err != nil {
+		// http.ErrServerClosed is expected when server is gracefully shut down
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
 		return fmt.Errorf("server error: %w", err)
 	}
 

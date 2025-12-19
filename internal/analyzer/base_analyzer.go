@@ -16,6 +16,18 @@ import (
 	"github.com/perf-analysis/pkg/utils"
 )
 
+// AnalysisProfile defines preset analysis configurations for different use cases.
+type AnalysisProfile string
+
+const (
+	// ProfileQuick provides fast analysis with minimal overhead.
+	ProfileQuick AnalysisProfile = "quick"
+	// ProfileStandard provides balanced analysis (default).
+	ProfileStandard AnalysisProfile = "standard"
+	// ProfileDetailed provides comprehensive analysis for deep investigation.
+	ProfileDetailed AnalysisProfile = "detailed"
+)
+
 // BaseAnalyzerConfig holds configuration for the base analyzer.
 type BaseAnalyzerConfig struct {
 	// OutputDir is the directory for output files.
@@ -27,7 +39,7 @@ type BaseAnalyzerConfig struct {
 	// CallGraphOptions configures call graph generation.
 	CallGraphOptions *callgraph.GeneratorOptions
 
-	// TopFuncsOptions configures top functions calculation.
+	// TopFuncsN configures top functions calculation.
 	TopFuncsN int
 
 	// IncludeSwapper includes swapper thread in statistics.
@@ -39,6 +51,9 @@ type BaseAnalyzerConfig struct {
 	// Verbose enables verbose debug output including detailed analysis.
 	// This is typically enabled via the -v command line flag.
 	Verbose bool
+
+	// AnalysisProfile selects preset analysis configuration.
+	AnalysisProfile AnalysisProfile
 }
 
 // DefaultBaseAnalyzerConfig returns default configuration.
@@ -49,6 +64,7 @@ func DefaultBaseAnalyzerConfig() *BaseAnalyzerConfig {
 		CallGraphOptions:  callgraph.DefaultGeneratorOptions(),
 		TopFuncsN:         50,
 		IncludeSwapper:    false,
+		AnalysisProfile:   ProfileStandard,
 	}
 }
 
@@ -93,6 +109,115 @@ func (a *BaseAnalyzer) GenerateCallGraph(ctx context.Context, samples []*model.S
 	return a.callGraphGen.Generate(ctx, samples)
 }
 
+// GenerateFlameGraphWithAnalysis generates flame graph with thread analysis enabled.
+// The analysis depth is controlled by the AnalysisProfile in config.
+func (a *BaseAnalyzer) GenerateFlameGraphWithAnalysis(ctx context.Context, samples []*model.Sample) (*flamegraph.FlameGraph, error) {
+	opts := a.getFlameGraphOptionsForProfile()
+	gen := flamegraph.NewGenerator(opts)
+	return gen.Generate(ctx, samples)
+}
+
+// GenerateCallGraphWithAnalysis generates call graph with full analysis enabled.
+// The analysis depth is controlled by the AnalysisProfile in config.
+func (a *BaseAnalyzer) GenerateCallGraphWithAnalysis(ctx context.Context, samples []*model.Sample) (*callgraph.CallGraph, error) {
+	opts := a.getCallGraphOptionsForProfile()
+	gen := callgraph.NewGenerator(opts)
+	return gen.Generate(ctx, samples)
+}
+
+// getFlameGraphOptionsForProfile returns flame graph options based on analysis profile.
+func (a *BaseAnalyzer) getFlameGraphOptionsForProfile() *flamegraph.GeneratorOptions {
+	opts := flamegraph.DefaultGeneratorOptions()
+
+	switch a.config.AnalysisProfile {
+	case ProfileQuick:
+		// Quick: Minimal analysis for fast results
+		opts.EnableThreadAnalysis = false
+		opts.BuildPerThreadFlameGraphs = false
+		opts.MinPercent = 0.5
+		opts.TopNPerThread = 5
+		opts.TopNGlobal = 20
+		opts.MaxCallStacksPerThread = 50
+		opts.MaxCallStacksPerFunc = 3
+		opts.IncludeSwapper = false
+		opts.IncludeModule = false
+
+	case ProfileDetailed:
+		// Detailed: Comprehensive analysis for deep investigation
+		opts.EnableThreadAnalysis = true
+		opts.BuildPerThreadFlameGraphs = true
+		opts.MinPercent = 0.05
+		opts.TopNPerThread = 30
+		opts.TopNGlobal = 100
+		opts.MaxCallStacksPerThread = 500
+		opts.MaxCallStacksPerFunc = 20
+		opts.IncludeSwapper = a.config.IncludeSwapper
+		opts.IncludeModule = true
+
+	default: // ProfileStandard
+		// Standard: Balanced analysis (default)
+		opts.EnableThreadAnalysis = true
+		opts.BuildPerThreadFlameGraphs = true
+		opts.MinPercent = 0.1
+		opts.TopNPerThread = 15
+		opts.TopNGlobal = 50
+		opts.MaxCallStacksPerThread = 200
+		opts.MaxCallStacksPerFunc = 10
+		opts.IncludeSwapper = false
+		opts.IncludeModule = true
+	}
+
+	return opts
+}
+
+// getCallGraphOptionsForProfile returns call graph options based on analysis profile.
+func (a *BaseAnalyzer) getCallGraphOptionsForProfile() *callgraph.GeneratorOptions {
+	opts := callgraph.DefaultGeneratorOptions()
+
+	switch a.config.AnalysisProfile {
+	case ProfileQuick:
+		// Quick: Minimal analysis
+		opts.EnableThreadAnalysis = false
+		opts.EnableHotPathAnalysis = false
+		opts.EnableModuleAnalysis = false
+		opts.MinNodePct = 1.0
+		opts.MinEdgePct = 0.5
+		opts.TopNFunctions = 20
+		opts.TopNHotPaths = 5
+		opts.MaxThreadCallGraphs = 10
+		opts.IncludeSwapper = false
+		opts.IncludeModule = false
+
+	case ProfileDetailed:
+		// Detailed: Comprehensive analysis
+		opts.EnableThreadAnalysis = true
+		opts.EnableHotPathAnalysis = true
+		opts.EnableModuleAnalysis = true
+		opts.MinNodePct = 0.1
+		opts.MinEdgePct = 0.05
+		opts.TopNFunctions = 100
+		opts.TopNHotPaths = 50
+		opts.MaxThreadCallGraphs = 100
+		opts.IncludeSwapper = a.config.IncludeSwapper
+		opts.IncludeModule = true
+
+	default: // ProfileStandard
+		// Standard: Balanced analysis
+		opts.EnableThreadAnalysis = true
+		opts.EnableHotPathAnalysis = true
+		opts.EnableModuleAnalysis = true
+		opts.MinNodePct = 0.5
+		opts.MinEdgePct = 0.1
+		opts.TopNFunctions = 50
+		opts.TopNHotPaths = 20
+		opts.MaxThreadCallGraphs = 50
+		opts.IncludeSwapper = false
+		opts.IncludeModule = true
+	}
+
+	return opts
+}
+
 // CalculateTopFuncs calculates top hot functions.
 func (a *BaseAnalyzer) CalculateTopFuncs(samples []*model.Sample) *statistics.TopFuncsResult {
 	return a.topFuncsCalc.Calculate(samples)
@@ -112,6 +237,12 @@ func (a *BaseAnalyzer) WriteFlameGraphGzip(fg *flamegraph.FlameGraph, outputPath
 // WriteCallGraphJSON writes call graph to JSON file.
 func (a *BaseAnalyzer) WriteCallGraphJSON(cg *callgraph.CallGraph, outputPath string) error {
 	writer := callgraph.NewJSONWriter()
+	return writer.WriteToFile(cg, outputPath)
+}
+
+// WriteCallGraphGzip writes call graph to gzip JSON file.
+func (a *BaseAnalyzer) WriteCallGraphGzip(cg *callgraph.CallGraph, outputPath string) error {
+	writer := callgraph.NewGzipWriter()
 	return writer.WriteToFile(cg, outputPath)
 }
 

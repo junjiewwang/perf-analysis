@@ -150,12 +150,12 @@ func TestFlameGraphOutput_GzipJSON(t *testing.T) {
 	decompressed, err := io.ReadAll(gzReader)
 	require.NoError(t, err)
 
-	var node flamegraph.Node
-	err = json.Unmarshal(decompressed, &node)
+	var fg2 flamegraph.FlameGraph
+	err = json.Unmarshal(decompressed, &fg2)
 	require.NoError(t, err)
 
-	assert.Equal(t, "root", node.Func)
-	assert.Greater(t, node.Value, int64(0))
+	assert.Equal(t, "root", fg2.Root.Name)
+	assert.Greater(t, fg2.Root.Value, int64(0))
 }
 
 func TestCallGraphOutput_JSON(t *testing.T) {
