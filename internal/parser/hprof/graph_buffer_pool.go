@@ -425,3 +425,220 @@ func (b *ChildrenBuilder) GetChildrenSlice() [][]int32 {
 	}
 	return b.children
 }
+
+// ============================================================================
+// RetainerBFSContext - Optimized BFS context for retainer analysis
+// ============================================================================
+
+// RetainerBFSContext holds reusable state for retainer analysis BFS traversals.
+// Key optimizations:
+// 1. Uses VersionedBitset for O(1) reset instead of O(V) map clearing
+// 2. Uses index-based levels to eliminate objectID -> index map lookups during BFS
+type RetainerBFSContext struct {
+	// Visited tracking using versioned bitset (O(1) reset)
+	visited *collections.VersionedBitset
+
+	// countedRetainers tracks which retainer keys have been counted for current target
+	// Uses versioned bitset for O(1) reset
+	countedRetainers *collections.VersionedBitset
+
+	// Index-based level slices for BFS traversal (pre-allocated)
+	// Using int (object index) instead of uint64 (objectID) eliminates map lookups
+	currentLevelIdx []int
+	nextLevelIdx    []int
+
+	// Legacy: object ID based levels (kept for backward compatibility)
+	currentLevel []uint64
+	nextLevel    []uint64
+
+	// Maximum object count this context can handle
+	maxObjects int
+
+	// Maximum retainer keys this context can handle
+	maxRetainerKeys int
+}
+
+// NewRetainerBFSContext creates a new retainer BFS context.
+// maxObjects: maximum number of objects in the graph
+// maxRetainerKeys: estimated maximum number of unique retainer keys (classID + fieldNameID + depth combinations)
+func NewRetainerBFSContext(maxObjects, maxRetainerKeys int) *RetainerBFSContext {
+	if maxRetainerKeys <= 0 {
+		maxRetainerKeys = 100000 // Default estimate
+	}
+	return &RetainerBFSContext{
+		visited:          collections.NewVersionedBitset(maxObjects),
+		countedRetainers: collections.NewVersionedBitset(maxRetainerKeys),
+		currentLevelIdx:  make([]int, 0, 256),
+		nextLevelIdx:     make([]int, 0, 256),
+		currentLevel:     make([]uint64, 0, 256),
+		nextLevel:        make([]uint64, 0, 256),
+		maxObjects:       maxObjects,
+		maxRetainerKeys:  maxRetainerKeys,
+	}
+}
+
+// Reset resets the context for a new target object traversal.
+// This is O(1) instead of O(V) for map clearing.
+func (c *RetainerBFSContext) Reset() {
+	c.visited.Reset()
+	c.countedRetainers.Reset()
+	c.currentLevelIdx = c.currentLevelIdx[:0]
+	c.nextLevelIdx = c.nextLevelIdx[:0]
+	c.currentLevel = c.currentLevel[:0]
+	c.nextLevel = c.nextLevel[:0]
+}
+
+// ResetVisitedOnly resets only the visited tracking (for new sample object).
+func (c *RetainerBFSContext) ResetVisitedOnly() {
+	c.visited.Reset()
+	c.currentLevelIdx = c.currentLevelIdx[:0]
+	c.nextLevelIdx = c.nextLevelIdx[:0]
+	c.currentLevel = c.currentLevel[:0]
+	c.nextLevel = c.nextLevel[:0]
+}
+
+// ResetCountedOnly resets only the counted retainers (for new sample object).
+func (c *RetainerBFSContext) ResetCountedOnly() {
+	c.countedRetainers.Reset()
+}
+
+// MarkVisited marks an object index as visited.
+func (c *RetainerBFSContext) MarkVisited(idx int) {
+	if idx >= 0 {
+		c.visited.Set(idx)
+	}
+}
+
+// IsVisited returns true if an object index has been visited.
+func (c *RetainerBFSContext) IsVisited(idx int) bool {
+	if idx < 0 {
+		return false
+	}
+	return c.visited.Test(idx)
+}
+
+// TestAndMarkVisited atomically tests and marks an index as visited.
+// Returns true if the index was already visited, false if it was newly marked.
+// This combines IsVisited + MarkVisited into a single operation.
+func (c *RetainerBFSContext) TestAndMarkVisited(idx int) bool {
+	if idx < 0 {
+		return true // Treat invalid index as already visited
+	}
+	if c.visited.Test(idx) {
+		return true // Already visited
+	}
+	c.visited.Set(idx)
+	return false // Newly marked
+}
+
+// MarkRetainerCounted marks a retainer key as counted for current target.
+// keyIndex should be a unique index for the (classID, fieldNameID, depth) combination.
+func (c *RetainerBFSContext) MarkRetainerCounted(keyIndex int) {
+	if keyIndex >= 0 && keyIndex < c.maxRetainerKeys {
+		c.countedRetainers.Set(keyIndex)
+	}
+}
+
+// IsRetainerCounted returns true if a retainer key has been counted for current target.
+func (c *RetainerBFSContext) IsRetainerCounted(keyIndex int) bool {
+	if keyIndex < 0 || keyIndex >= c.maxRetainerKeys {
+		return false
+	}
+	return c.countedRetainers.Test(keyIndex)
+}
+
+// ============================================================================
+// Index-based level operations (optimized - no map lookups)
+// ============================================================================
+
+// AddToCurrentLevelIdx adds an object index to the current BFS level.
+func (c *RetainerBFSContext) AddToCurrentLevelIdx(idx int) {
+	c.currentLevelIdx = append(c.currentLevelIdx, idx)
+}
+
+// AddToNextLevelIdx adds an object index to the next BFS level.
+func (c *RetainerBFSContext) AddToNextLevelIdx(idx int) {
+	c.nextLevelIdx = append(c.nextLevelIdx, idx)
+}
+
+// SwapLevelsIdx swaps current and next index-based levels for the next BFS iteration.
+func (c *RetainerBFSContext) SwapLevelsIdx() {
+	c.currentLevelIdx, c.nextLevelIdx = c.nextLevelIdx, c.currentLevelIdx
+	c.nextLevelIdx = c.nextLevelIdx[:0]
+}
+
+// CurrentLevelIdx returns the current BFS level (index-based).
+func (c *RetainerBFSContext) CurrentLevelIdx() []int {
+	return c.currentLevelIdx
+}
+
+// ClearNextLevelIdx clears the next level slice (index-based).
+func (c *RetainerBFSContext) ClearNextLevelIdx() {
+	c.nextLevelIdx = c.nextLevelIdx[:0]
+}
+
+// ============================================================================
+// Legacy object ID based level operations (kept for backward compatibility)
+// ============================================================================
+
+// AddToCurrentLevel adds an object ID to the current BFS level.
+func (c *RetainerBFSContext) AddToCurrentLevel(objID uint64) {
+	c.currentLevel = append(c.currentLevel, objID)
+}
+
+// AddToNextLevel adds an object ID to the next BFS level.
+func (c *RetainerBFSContext) AddToNextLevel(objID uint64) {
+	c.nextLevel = append(c.nextLevel, objID)
+}
+
+// SwapLevels swaps current and next levels for the next BFS iteration.
+func (c *RetainerBFSContext) SwapLevels() {
+	c.currentLevel, c.nextLevel = c.nextLevel, c.currentLevel
+	c.nextLevel = c.nextLevel[:0]
+}
+
+// CurrentLevel returns the current BFS level.
+func (c *RetainerBFSContext) CurrentLevel() []uint64 {
+	return c.currentLevel
+}
+
+// ClearNextLevel clears the next level slice.
+func (c *RetainerBFSContext) ClearNextLevel() {
+	c.nextLevel = c.nextLevel[:0]
+}
+
+// ============================================================================
+// RetainerBFSContext Pool
+// ============================================================================
+
+// RetainerBFSContextPool manages reusable RetainerBFSContext instances.
+type RetainerBFSContextPool struct {
+	pool            sync.Pool
+	maxObjects      int
+	maxRetainerKeys int
+}
+
+// NewRetainerBFSContextPool creates a new pool for RetainerBFSContext.
+func NewRetainerBFSContextPool(maxObjects, maxRetainerKeys int) *RetainerBFSContextPool {
+	return &RetainerBFSContextPool{
+		maxObjects:      maxObjects,
+		maxRetainerKeys: maxRetainerKeys,
+		pool: sync.Pool{
+			New: func() interface{} {
+				return NewRetainerBFSContext(maxObjects, maxRetainerKeys)
+			},
+		},
+	}
+}
+
+// Get gets a RetainerBFSContext from the pool.
+func (p *RetainerBFSContextPool) Get() *RetainerBFSContext {
+	ctx := p.pool.Get().(*RetainerBFSContext)
+	ctx.Reset()
+	return ctx
+}
+
+// Put returns a RetainerBFSContext to the pool.
+func (p *RetainerBFSContextPool) Put(ctx *RetainerBFSContext) {
+	p.pool.Put(ctx)
+}

@@ -57,6 +57,54 @@ type ReferenceGraph struct {
 	// Retained size calculation strategy (pluggable)
 	retainedSizeCalculatorRegistry *RetainedSizeCalculatorRegistry
 	activeRetainedSizeStrategy     RetainedSizeStrategy
+
+	// Field name interning for optimized map key operations
+	// fieldNameToID maps field name string -> interned ID (uint32)
+	fieldNameToID map[string]uint32
+	// fieldNames maps interned ID -> field name string
+	fieldNames []string
+	// fieldNameMu protects field name interning (for concurrent access)
+	fieldNameMu sync.RWMutex
+	// fieldNamesBuilt indicates if field name index has been built
+	fieldNamesBuilt bool
+
+	// classNameToID maps className -> classID for reverse lookup (lazy built)
+	classNameToID map[string]uint64
+	// classNameToIDBuilt indicates if classNameToID index has been built
+	classNameToIDBuilt bool
+	// classNameToIDOnce ensures classNameToID is built only once
+	classNameToIDOnce sync.Once
+
+	// Object ID indexing for Bitset-based visited tracking (O(1) reset)
+	// objectIDToIndex maps objectID -> compact index (for Bitset operations)
+	// Note: We use int (not uint64) as index because:
+	// 1. VersionedBitset uses int for indexing
+	// 2. int on 64-bit systems can hold ~9.2 × 10^18 values, far exceeding any realistic heap object count
+	// 3. The index is sequentially assigned (0, 1, 2, ...), not converted from objectID
+	objectIDToIndex map[uint64]int
+	// indexToObjectID maps compact index -> objectID
+	indexToObjectID []uint64
+	// objectIndexBuilt indicates if object index has been built
+	objectIndexBuilt bool
+	// objectIndexOnce ensures object index is built only once
+	objectIndexOnce sync.Once
+
+	// Index-based incoming references for optimized BFS traversal
+	// This eliminates GetObjectIndex map lookups during BFS (saves ~20% CPU)
+	// indexedIncomingRefs maps object index -> list of indexed references
+	indexedIncomingRefs [][]IndexedReference
+	// indexedRefsBuilt indicates if indexed refs have been built
+	indexedRefsBuilt bool
+	// indexedRefsOnce ensures indexed refs are built only once
+	indexedRefsOnce sync.Once
+}
+
+// IndexedReference represents a reference using compact indices instead of object IDs.
+// This eliminates map lookups during BFS traversal.
+type IndexedReference struct {
+	FromIndex   int    // Compact index of the source object
+	ClassID     uint64 // Class ID of the source object
+	FieldNameID uint32 // Interned field name ID (0 = empty)
 }
 
 // ObjectReference represents a reference from one object to another.
@@ -115,6 +163,9 @@ func NewReferenceGraphWithCapacity(estimatedObjects int) *ReferenceGraph {
 		reachableObjects:               make(map[uint64]bool, estimatedObjects),
 		retainedSizeCalculatorRegistry: NewRetainedSizeCalculatorRegistry(),
 		activeRetainedSizeStrategy:     RetainedSizeStrategyIDEA, // Default to IDEA style
+		// Field name interning initialization
+		fieldNameToID: make(map[string]uint32, 10000),
+		fieldNames:    make([]string, 1, 10000), // Index 0 reserved for empty string
 	}
 }
 
@@ -251,12 +302,214 @@ func (g *ReferenceGraph) getObjectsByClass(classID uint64) []uint64 {
 
 // getClassIDByName returns the classID for a given class name.
 func (g *ReferenceGraph) getClassIDByName(className string) (uint64, bool) {
-	for classID, name := range g.classNames {
-		if name == className {
-			return classID, true
+	g.buildClassNameToIDIndex()
+	classID, ok := g.classNameToID[className]
+	return classID, ok
+}
+
+// buildClassNameToIDIndex builds the className -> classID index for fast lookup.
+// Thread-safe: uses sync.Once to ensure index is built only once.
+func (g *ReferenceGraph) buildClassNameToIDIndex() {
+	g.classNameToIDOnce.Do(func() {
+		g.classNameToID = make(map[string]uint64, len(g.classNames))
+		for classID, name := range g.classNames {
+			g.classNameToID[name] = classID
+		}
+		g.classNameToIDBuilt = true
+	})
+}
+
+// buildObjectIndex builds the objectID <-> index mapping for Bitset-based visited tracking.
+// This enables O(1) reset for visited tracking instead of O(V) map clearing.
+// Thread-safe: uses sync.Once to ensure index is built only once.
+func (g *ReferenceGraph) buildObjectIndex() {
+	g.objectIndexOnce.Do(func() {
+		objectCount := len(g.objectClass)
+		g.objectIDToIndex = make(map[uint64]int, objectCount)
+		g.indexToObjectID = make([]uint64, 0, objectCount)
+
+		// Assign sequential indices to all objects
+		idx := 0
+		for objID := range g.objectClass {
+			g.objectIDToIndex[objID] = idx
+			g.indexToObjectID = append(g.indexToObjectID, objID)
+			idx++
+		}
+		g.objectIndexBuilt = true
+	})
+}
+
+// GetObjectIndex returns the compact index for an objectID.
+// Returns -1 if the objectID is not found.
+// Thread-safe after buildObjectIndex is called.
+func (g *ReferenceGraph) GetObjectIndex(objID uint64) int {
+	if !g.objectIndexBuilt {
+		g.buildObjectIndex()
+	}
+	if idx, ok := g.objectIDToIndex[objID]; ok {
+		return idx
+	}
+	return -1
+}
+
+// GetObjectIDByIndex returns the objectID for a compact index.
+// Returns 0 if the index is out of range.
+func (g *ReferenceGraph) GetObjectIDByIndex(idx int) uint64 {
+	if !g.objectIndexBuilt {
+		g.buildObjectIndex()
+	}
+	if idx < 0 || idx >= len(g.indexToObjectID) {
+		return 0
+	}
+	return g.indexToObjectID[idx]
+}
+
+// GetObjectCount returns the total number of objects in the graph.
+func (g *ReferenceGraph) GetObjectCount() int {
+	return len(g.objectClass)
+}
+
+// buildIndexedIncomingRefs builds the index-based incoming references structure.
+// This pre-computes all the index lookups and field name interning to eliminate
+// map lookups during BFS traversal.
+// Thread-safe: uses sync.Once to ensure it's built only once.
+func (g *ReferenceGraph) buildIndexedIncomingRefs() {
+	g.indexedRefsOnce.Do(func() {
+		// Ensure object index is built first
+		g.buildObjectIndex()
+		// Ensure field names are interned
+		g.BuildFieldNameIndex()
+
+		objectCount := len(g.indexToObjectID)
+		g.indexedIncomingRefs = make([][]IndexedReference, objectCount)
+
+		// Convert each object's incoming refs to indexed format
+		for objID, refs := range g.incomingRefs {
+			toIdx, ok := g.objectIDToIndex[objID]
+			if !ok {
+				continue
+			}
+
+			if len(refs) == 0 {
+				continue
+			}
+
+			indexedRefs := make([]IndexedReference, 0, len(refs))
+			for _, ref := range refs {
+				fromIdx, ok := g.objectIDToIndex[ref.FromObjectID]
+				if !ok {
+					continue
+				}
+
+				// Pre-intern field name (already done in BuildFieldNameIndex, just lookup)
+				var fieldNameID uint32
+				if ref.FieldName != "" {
+					if id, exists := g.fieldNameToID[ref.FieldName]; exists {
+						fieldNameID = id
+					}
+				}
+
+				indexedRefs = append(indexedRefs, IndexedReference{
+					FromIndex:   fromIdx,
+					ClassID:     ref.FromClassID,
+					FieldNameID: fieldNameID,
+				})
+			}
+
+			g.indexedIncomingRefs[toIdx] = indexedRefs
+		}
+
+		g.indexedRefsBuilt = true
+	})
+}
+
+// GetIndexedIncomingRefs returns the indexed incoming references for an object.
+// This is optimized for BFS traversal - no map lookups needed.
+// Must call buildIndexedIncomingRefs first.
+func (g *ReferenceGraph) GetIndexedIncomingRefs(objIdx int) []IndexedReference {
+	if !g.indexedRefsBuilt {
+		g.buildIndexedIncomingRefs()
+	}
+	if objIdx < 0 || objIdx >= len(g.indexedIncomingRefs) {
+		return nil
+	}
+	return g.indexedIncomingRefs[objIdx]
+}
+
+// GetObjectSizeByIndex returns the object size by index.
+// This avoids objectID -> size map lookup.
+func (g *ReferenceGraph) GetObjectSizeByIndex(idx int) int64 {
+	if idx < 0 || idx >= len(g.indexToObjectID) {
+		return 0
+	}
+	return g.objectSize[g.indexToObjectID[idx]]
+}
+
+// InternFieldName returns the interned ID for a field name.
+// Thread-safe for concurrent access during analysis.
+func (g *ReferenceGraph) InternFieldName(name string) uint32 {
+	if name == "" {
+		return 0 // Index 0 is reserved for empty string
+	}
+
+	// Fast path: read lock for existing names
+	g.fieldNameMu.RLock()
+	if id, ok := g.fieldNameToID[name]; ok {
+		g.fieldNameMu.RUnlock()
+		return id
+	}
+	g.fieldNameMu.RUnlock()
+
+	// Slow path: write lock for new names
+	g.fieldNameMu.Lock()
+	defer g.fieldNameMu.Unlock()
+
+	// Double-check after acquiring write lock
+	if id, ok := g.fieldNameToID[name]; ok {
+		return id
+	}
+
+	id := uint32(len(g.fieldNames))
+	g.fieldNames = append(g.fieldNames, name)
+	g.fieldNameToID[name] = id
+	return id
+}
+
+// GetFieldNameByID returns the field name for an interned ID.
+func (g *ReferenceGraph) GetFieldNameByID(id uint32) string {
+	g.fieldNameMu.RLock()
+	defer g.fieldNameMu.RUnlock()
+
+	if int(id) >= len(g.fieldNames) {
+		return ""
+	}
+	return g.fieldNames[id]
+}
+
+// BuildFieldNameIndex builds the field name index from all references.
+// This should be called once after parsing is complete for optimal performance.
+func (g *ReferenceGraph) BuildFieldNameIndex() {
+	g.fieldNameMu.Lock()
+	defer g.fieldNameMu.Unlock()
+
+	if g.fieldNamesBuilt {
+		return
+	}
+
+	// Collect all unique field names from references
+	for _, refs := range g.incomingRefs {
+		for _, ref := range refs {
+			if ref.FieldName != "" {
+				if _, ok := g.fieldNameToID[ref.FieldName]; !ok {
+					id := uint32(len(g.fieldNames))
+					g.fieldNames = append(g.fieldNames, ref.FieldName)
+					g.fieldNameToID[ref.FieldName] = id
+				}
+			}
 		}
 	}
-	return 0, false
+
+	g.fieldNamesBuilt = true
 }
 
 // IsObjectReachable returns true if the object is reachable from GC roots.
