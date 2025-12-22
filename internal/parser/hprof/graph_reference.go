@@ -97,6 +97,33 @@ type ReferenceGraph struct {
 	indexedRefsBuilt bool
 	// indexedRefsOnce ensures indexed refs are built only once
 	indexedRefsOnce sync.Once
+
+	// Index-based object metadata for O(1) access (eliminates map lookups in hot paths)
+	// objectClassByIndex maps compact index -> classID (built with object index)
+	objectClassByIndex []uint64
+	// objectSizeByIndex maps compact index -> size (built with object index)
+	objectSizeByIndex []int64
+	// dominatorByIndex maps compact index -> dominator index (-1 = super root, -2 = not found)
+	dominatorByIndex []int
+	// dominatorByIndexBuilt indicates if dominator index has been built
+	dominatorByIndexBuilt bool
+
+	// Index-based outgoing references for O(1) access
+	// outgoingRefsByIndex maps object index -> list of target indices
+	outgoingRefsByIndex [][]IndexedOutRef
+	// outgoingRefsByIndexBuilt indicates if outgoing refs index has been built
+	outgoingRefsByIndexBuilt bool
+
+	// Index-based incoming references for O(1) access (for isChildNotDominatedDueToObjectArray)
+	// incomingRefsByIndex maps object index -> list of source indices
+	incomingRefsByIndex [][]IndexedOutRef
+	// incomingRefsByIndexBuilt indicates if incoming refs index has been built
+	incomingRefsByIndexBuilt bool
+}
+
+// IndexedOutRef represents an outgoing/incoming reference using compact index.
+type IndexedOutRef struct {
+	ToIndex int // Target/source object index
 }
 
 // IndexedReference represents a reference using compact indices instead of object IDs.
@@ -321,18 +348,24 @@ func (g *ReferenceGraph) buildClassNameToIDIndex() {
 
 // buildObjectIndex builds the objectID <-> index mapping for Bitset-based visited tracking.
 // This enables O(1) reset for visited tracking instead of O(V) map clearing.
+// Also builds index-based class and size arrays for O(1) access in hot paths.
 // Thread-safe: uses sync.Once to ensure index is built only once.
 func (g *ReferenceGraph) buildObjectIndex() {
 	g.objectIndexOnce.Do(func() {
 		objectCount := len(g.objectClass)
 		g.objectIDToIndex = make(map[uint64]int, objectCount)
 		g.indexToObjectID = make([]uint64, 0, objectCount)
+		// Build index-based class and size arrays for O(1) access
+		g.objectClassByIndex = make([]uint64, objectCount)
+		g.objectSizeByIndex = make([]int64, objectCount)
 
-		// Assign sequential indices to all objects
+		// Assign sequential indices to all objects and build metadata arrays
 		idx := 0
-		for objID := range g.objectClass {
+		for objID, classID := range g.objectClass {
 			g.objectIDToIndex[objID] = idx
 			g.indexToObjectID = append(g.indexToObjectID, objID)
+			g.objectClassByIndex[idx] = classID
+			g.objectSizeByIndex[idx] = g.objectSize[objID]
 			idx++
 		}
 		g.objectIndexBuilt = true
@@ -362,6 +395,100 @@ func (g *ReferenceGraph) GetObjectIDByIndex(idx int) uint64 {
 		return 0
 	}
 	return g.indexToObjectID[idx]
+}
+
+// buildDominatorByIndex builds the index-based dominator array.
+// Must be called after dominator tree is computed and object index is built.
+func (g *ReferenceGraph) buildDominatorByIndex() {
+	if g.dominatorByIndexBuilt {
+		return
+	}
+	g.buildObjectIndex()
+
+	objectCount := len(g.indexToObjectID)
+	g.dominatorByIndex = make([]int, objectCount)
+
+	for idx := 0; idx < objectCount; idx++ {
+		objID := g.indexToObjectID[idx]
+		domObjID := g.dominators[objID]
+		if domObjID == superRootID {
+			g.dominatorByIndex[idx] = -1 // super root
+		} else if domObjID == 0 {
+			g.dominatorByIndex[idx] = -2 // not found
+		} else if domIdx, ok := g.objectIDToIndex[domObjID]; ok {
+			g.dominatorByIndex[idx] = domIdx
+		} else {
+			g.dominatorByIndex[idx] = -2 // dominator not in index
+		}
+	}
+	g.dominatorByIndexBuilt = true
+}
+
+// buildOutgoingRefsByIndex builds the index-based outgoing references array.
+// Must be called after object index is built.
+func (g *ReferenceGraph) buildOutgoingRefsByIndex() {
+	if g.outgoingRefsByIndexBuilt {
+		return
+	}
+	g.buildObjectIndex()
+
+	objectCount := len(g.indexToObjectID)
+	g.outgoingRefsByIndex = make([][]IndexedOutRef, objectCount)
+
+	for objID, refs := range g.outgoingRefs {
+		fromIdx, ok := g.objectIDToIndex[objID]
+		if !ok {
+			continue
+		}
+		if len(refs) == 0 {
+			continue
+		}
+
+		indexedRefs := make([]IndexedOutRef, 0, len(refs))
+		for _, ref := range refs {
+			toIdx, ok := g.objectIDToIndex[ref.ToObjectID]
+			if !ok {
+				continue
+			}
+			indexedRefs = append(indexedRefs, IndexedOutRef{ToIndex: toIdx})
+		}
+		g.outgoingRefsByIndex[fromIdx] = indexedRefs
+	}
+	g.outgoingRefsByIndexBuilt = true
+}
+
+// buildIncomingRefsByIndex builds the index-based incoming references array.
+// Must be called after object index is built.
+func (g *ReferenceGraph) buildIncomingRefsByIndex() {
+	if g.incomingRefsByIndexBuilt {
+		return
+	}
+	g.buildObjectIndex()
+
+	objectCount := len(g.indexToObjectID)
+	g.incomingRefsByIndex = make([][]IndexedOutRef, objectCount)
+
+	for objID, refs := range g.incomingRefs {
+		toIdx, ok := g.objectIDToIndex[objID]
+		if !ok {
+			continue
+		}
+		if len(refs) == 0 {
+			continue
+		}
+
+		indexedRefs := make([]IndexedOutRef, 0, len(refs))
+		for _, ref := range refs {
+			fromIdx, ok := g.objectIDToIndex[ref.FromObjectID]
+			if !ok {
+				continue
+			}
+			// Note: For incoming refs, we store the source index in ToIndex field
+			indexedRefs = append(indexedRefs, IndexedOutRef{ToIndex: fromIdx})
+		}
+		g.incomingRefsByIndex[toIdx] = indexedRefs
+	}
+	g.incomingRefsByIndexBuilt = true
 }
 
 // GetObjectCount returns the total number of objects in the graph.
@@ -437,12 +564,28 @@ func (g *ReferenceGraph) GetIndexedIncomingRefs(objIdx int) []IndexedReference {
 }
 
 // GetObjectSizeByIndex returns the object size by index.
-// This avoids objectID -> size map lookup.
+// This uses the precomputed array for O(1) access, avoiding map lookup.
 func (g *ReferenceGraph) GetObjectSizeByIndex(idx int) int64 {
-	if idx < 0 || idx >= len(g.indexToObjectID) {
+	if !g.objectIndexBuilt {
+		g.buildObjectIndex()
+	}
+	if idx < 0 || idx >= len(g.objectSizeByIndex) {
 		return 0
 	}
-	return g.objectSize[g.indexToObjectID[idx]]
+	return g.objectSizeByIndex[idx]
+}
+
+// GetObjectClassIDByIndex returns the class ID for an object by index.
+// This uses the precomputed array for O(1) access, avoiding map lookup.
+// Returns (classID, true) if found, (0, false) otherwise.
+func (g *ReferenceGraph) GetObjectClassIDByIndex(idx int) (uint64, bool) {
+	if !g.objectIndexBuilt {
+		g.buildObjectIndex()
+	}
+	if idx < 0 || idx >= len(g.objectClassByIndex) {
+		return 0, false
+	}
+	return g.objectClassByIndex[idx], true
 }
 
 // InternFieldName returns the interned ID for a field name.

@@ -197,6 +197,7 @@ func (s *LevelDominatorState) BuildFromReferenceGraph(g *ReferenceGraph) {
 }
 
 // buildFromReferenceGraphSequential builds graph sequentially for small graphs.
+// Optimized to avoid map.Clear overhead by using versioned slice-based seen tracking.
 func (s *LevelDominatorState) buildFromReferenceGraphSequential(g *ReferenceGraph, objIDs []uint64, gcRootSet map[uint64]bool) {
 	// Count edges for pre-allocation
 	edgeCounts := make([]int32, s.nodeCount)
@@ -210,18 +211,26 @@ func (s *LevelDominatorState) buildFromReferenceGraphSequential(g *ReferenceGrap
 		}
 	}
 
-	// Count object edges - reuse seen map
-	seen := make(map[int32]bool, 16)
+	// Count object edges - use versioned slice for O(1) reset
+	seenVersion := make([]uint32, s.nodeCount)
+	currentVersion := uint32(1)
+
 	for _, objID := range objIDs {
 		fromIdx := s.objToIdx[objID]
-		// Clear seen map
-		for k := range seen {
-			delete(seen, k)
+		// Increment version to "clear" the seen set (O(1) reset)
+		currentVersion++
+		if currentVersion == 0 {
+			// Handle overflow by resetting the slice
+			for i := range seenVersion {
+				seenVersion[i] = 0
+			}
+			currentVersion = 1
 		}
+
 		for _, ref := range g.outgoingRefs[objID] {
 			if toIdx, ok := s.objToIdx[ref.ToObjectID]; ok {
-				if !seen[toIdx] {
-					seen[toIdx] = true
+				if seenVersion[toIdx] != currentVersion {
+					seenVersion[toIdx] = currentVersion
 					edgeCounts[fromIdx]++
 					predCounts[toIdx]++
 				}
@@ -248,19 +257,30 @@ func (s *LevelDominatorState) buildFromReferenceGraphSequential(g *ReferenceGrap
 		}
 	}
 
-	// Add object edges - reuse seen map
-	for k := range seen {
-		delete(seen, k)
+	// Add object edges - reset version for second pass
+	currentVersion++
+	if currentVersion == 0 {
+		for i := range seenVersion {
+			seenVersion[i] = 0
+		}
+		currentVersion = 1
 	}
+
 	for _, objID := range objIDs {
 		fromIdx := s.objToIdx[objID]
-		for k := range seen {
-			delete(seen, k)
+		// Increment version to "clear" the seen set (O(1) reset)
+		currentVersion++
+		if currentVersion == 0 {
+			for i := range seenVersion {
+				seenVersion[i] = 0
+			}
+			currentVersion = 1
 		}
+
 		for _, ref := range g.outgoingRefs[objID] {
 			if toIdx, ok := s.objToIdx[ref.ToObjectID]; ok {
-				if !seen[toIdx] {
-					seen[toIdx] = true
+				if seenVersion[toIdx] != currentVersion {
+					seenVersion[toIdx] = currentVersion
 					s.successorTargets[succWritePos[fromIdx]] = toIdx
 					succWritePos[fromIdx]++
 					s.predecessorTargets[predWritePos[toIdx]] = fromIdx
@@ -272,6 +292,7 @@ func (s *LevelDominatorState) buildFromReferenceGraphSequential(g *ReferenceGrap
 }
 
 // buildFromReferenceGraphParallel builds graph in parallel for large graphs.
+// Optimized to avoid map.Clear overhead by using versioned slice-based seen tracking.
 func (s *LevelDominatorState) buildFromReferenceGraphParallel(g *ReferenceGraph, objIDs []uint64, gcRootSet map[uint64]bool, numWorkers int) {
 	// Phase 1: Parallel edge counting
 	edgeCounts := make([]int32, s.nodeCount)
@@ -309,17 +330,27 @@ func (s *LevelDominatorState) buildFromReferenceGraphParallel(g *ReferenceGraph,
 		go func(workerID int, chunk []uint64) {
 			defer wg.Done()
 			localCounts := localEdgeCounts[workerID]
-			seen := make(map[int32]bool, 16)
+			// Use versioned slice instead of map for O(1) reset
+			// seenVersion tracks the current "generation" - increment to reset
+			seenVersion := make([]uint32, s.nodeCount)
+			currentVersion := uint32(1)
 
 			for _, objID := range chunk {
 				fromIdx := s.objToIdx[objID]
-				for k := range seen {
-					delete(seen, k)
+				// Increment version to "clear" the seen set (O(1) reset)
+				currentVersion++
+				if currentVersion == 0 {
+					// Handle overflow by resetting the slice
+					for i := range seenVersion {
+						seenVersion[i] = 0
+					}
+					currentVersion = 1
 				}
+
 				for _, ref := range g.outgoingRefs[objID] {
 					if toIdx, ok := s.objToIdx[ref.ToObjectID]; ok {
-						if !seen[toIdx] {
-							seen[toIdx] = true
+						if seenVersion[toIdx] != currentVersion {
+							seenVersion[toIdx] = currentVersion
 							localCounts[fromIdx]++
 							predCounts[toIdx].Add(1)
 						}
@@ -379,17 +410,26 @@ func (s *LevelDominatorState) buildFromReferenceGraphParallel(g *ReferenceGraph,
 		wg.Add(1)
 		go func(chunk []uint64) {
 			defer wg.Done()
-			seen := make(map[int32]bool, 16)
+			// Use versioned slice instead of map for O(1) reset
+			seenVersion := make([]uint32, s.nodeCount)
+			currentVersion := uint32(1)
 
 			for _, objID := range chunk {
 				fromIdx := s.objToIdx[objID]
-				for k := range seen {
-					delete(seen, k)
+				// Increment version to "clear" the seen set (O(1) reset)
+				currentVersion++
+				if currentVersion == 0 {
+					// Handle overflow by resetting the slice
+					for i := range seenVersion {
+						seenVersion[i] = 0
+					}
+					currentVersion = 1
 				}
+
 				for _, ref := range g.outgoingRefs[objID] {
 					if toIdx, ok := s.objToIdx[ref.ToObjectID]; ok {
-						if !seen[toIdx] {
-							seen[toIdx] = true
+						if seenVersion[toIdx] != currentVersion {
+							seenVersion[toIdx] = currentVersion
 							pos := succWritePos[fromIdx].Add(1) - 1
 							s.successorTargets[pos] = toIdx
 							pos = predWritePos[toIdx].Add(1) - 1

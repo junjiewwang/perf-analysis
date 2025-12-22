@@ -630,7 +630,15 @@ func (g *ReferenceGraph) computeStrategyRetainedSizes() {
 }
 
 // buildRetainedSizeContext creates a RetainedSizeContext from the current graph state.
+// This method ensures object index is built for O(1) index-based access.
 func (g *ReferenceGraph) buildRetainedSizeContext() *RetainedSizeContext {
+	// Ensure object index is built for index-based access
+	g.buildObjectIndex()
+	// Build index-based structures for hot path optimization
+	g.buildDominatorByIndex()
+	g.buildOutgoingRefsByIndex()
+	g.buildIncomingRefsByIndex()
+
 	return &RetainedSizeContext{
 		GetObjectSize: func(objectID uint64) int64 {
 			return g.objectSize[objectID]
@@ -651,6 +659,50 @@ func (g *ReferenceGraph) buildRetainedSizeContext() *RetainedSizeContext {
 		GetIncomingRefs: func(objectID uint64) []ObjectReference {
 			return g.incomingRefs[objectID]
 		},
+		// Index-based accessors for O(1) access in hot paths
+		GetObjectIndex: func(objectID uint64) int {
+			if idx, ok := g.objectIDToIndex[objectID]; ok {
+				return idx
+			}
+			return -1
+		},
+		GetObjectIDByIndex: func(idx int) uint64 {
+			if idx < 0 || idx >= len(g.indexToObjectID) {
+				return 0
+			}
+			return g.indexToObjectID[idx]
+		},
+		GetObjectClassIDByIdx: func(idx int) (uint64, bool) {
+			if idx < 0 || idx >= len(g.objectClassByIndex) {
+				return 0, false
+			}
+			return g.objectClassByIndex[idx], true
+		},
+		GetObjectSizeByIdx: func(idx int) int64 {
+			if idx < 0 || idx >= len(g.objectSizeByIndex) {
+				return 0
+			}
+			return g.objectSizeByIndex[idx]
+		},
+		GetDominatorByIdx: func(idx int) int {
+			if idx < 0 || idx >= len(g.dominatorByIndex) {
+				return -2
+			}
+			return g.dominatorByIndex[idx]
+		},
+		GetOutgoingRefsByIdx: func(idx int) []IndexedOutRef {
+			if idx < 0 || idx >= len(g.outgoingRefsByIndex) {
+				return nil
+			}
+			return g.outgoingRefsByIndex[idx]
+		},
+		GetIncomingRefsByIdx: func(idx int) []IndexedOutRef {
+			if idx < 0 || idx >= len(g.incomingRefsByIndex) {
+				return nil
+			}
+			return g.incomingRefsByIndex[idx]
+		},
+		ObjectCount: len(g.objectClass),
 		ForEachObject: func(fn func(objectID uint64)) {
 			for objID := range g.objectClass {
 				fn(objID)

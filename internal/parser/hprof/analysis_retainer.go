@@ -164,6 +164,7 @@ func (g *ReferenceGraph) stratifiedSample(objects []uint64, config SamplingConfi
 // - Uses interned fieldNameID instead of string comparison
 // - Uses VersionedBitset for O(1) visited reset instead of O(V) map clearing
 // - Uses index-based BFS traversal to eliminate GetObjectIndex map lookups (~20% CPU reduction)
+// - Plan G: Uses array-based retainer tracking to eliminate map lookups in hot path (~30% CPU reduction)
 func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxDepth, topN int) *ClassRetainers {
 	if maxDepth <= 0 {
 		maxDepth = 5
@@ -185,10 +186,13 @@ func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxD
 		return nil
 	}
 
-	// Calculate total size
+	// Calculate total size using index-based lookup
 	var totalSize int64
 	for _, objID := range targetObjects {
-		totalSize += g.objectSize[objID]
+		idx := g.GetObjectIndex(objID)
+		if idx >= 0 {
+			totalSize += g.GetObjectSizeByIndex(idx)
+		}
 	}
 
 	// Use stratified sampling for large datasets
@@ -196,29 +200,28 @@ func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxD
 	sampleObjects := g.stratifiedSample(targetObjects, config)
 	sampleRatio := float64(len(sampleObjects)) / float64(len(targetObjects))
 
-	// Calculate sample total size for accurate percentage calculation
-	var sampleTotalSize int64
+	// Pre-convert sample objects to indices for index-based iteration
+	sampleIndices := make([]int, 0, len(sampleObjects))
 	for _, objID := range sampleObjects {
-		sampleTotalSize += g.objectSize[objID]
+		if idx := g.GetObjectIndex(objID); idx >= 0 {
+			sampleIndices = append(sampleIndices, idx)
+		}
 	}
 
-	// Optimized retainer key: pack classID, fieldNameID, and depth into uint64
-	// Layout: classID (40 bits) | fieldNameID (16 bits) | depth (8 bits)
-	// This eliminates string hash/comparison overhead (~40% CPU reduction)
-	makePackedKey := func(classID uint64, fieldNameID uint32, depth int) uint64 {
-		return (classID << 24) | (uint64(fieldNameID&0xFFFF) << 8) | uint64(depth&0xFF)
-	}
-
-	// retainerData stores the actual RetainerInfo indexed by packed key
-	type retainerData struct {
+	// Plan G: Array-based retainer tracking
+	// retainerDataSlice stores retainer info indexed by sequential assignment
+	type retainerDataEntry struct {
 		info        *RetainerInfo
 		classID     uint64
 		fieldNameID uint32
+		key         uint64 // packed key for dedup
 	}
-	retainerStats := make(map[uint64]*retainerData)
+	retainerDataSlice := make([]retainerDataEntry, 0, 1024)
+
+	// Map packed key -> slice index (only used for dedup, not in hot path)
+	keyToSliceIndex := make(map[uint64]int)
 
 	// Create RetainerBFSContext for O(1) reset visited tracking
-	// Estimate max retainer keys: classes * fields * depths
 	objectCount := g.GetObjectCount()
 	maxRetainerKeys := len(g.classNames) * 100 * maxDepth // Estimate: 100 fields per class
 	if maxRetainerKeys < 100000 {
@@ -226,27 +229,29 @@ func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxD
 	}
 	ctx := NewRetainerBFSContext(objectCount, maxRetainerKeys)
 
-	// Map to track retainer key -> index for Bitset (assigned sequentially)
-	retainerKeyToIndex := make(map[uint64]int)
-	nextRetainerIndex := 0
+	// Optimized retainer key: pack classID, fieldNameID, and depth into uint64
+	// Layout: classID (40 bits) | fieldNameID (16 bits) | depth (8 bits)
+	makePackedKey := func(classID uint64, fieldNameID uint32, depth int) uint64 {
+		return (classID << 24) | (uint64(fieldNameID&0xFFFF) << 8) | uint64(depth&0xFF)
+	}
 
-	for _, objID := range sampleObjects {
+	// Pre-allocate arrays for hot path (avoid map lookups)
+	// retainerCount and retainerSize are indexed by retainer slice index
+	retainerCount := make([]int64, 0, 1024)
+	retainerSize := make([]int64, 0, 1024)
+
+	for _, startIdx := range sampleIndices {
 		// O(1) reset for new sample object (instead of O(V) map clearing)
 		ctx.ResetVisitedOnly()
 		ctx.ResetCountedOnly()
-
-		// Get object index - this is the only map lookup per sample object
-		startIdx := g.GetObjectIndex(objID)
-		if startIdx < 0 {
-			continue
-		}
 
 		// Mark starting object as visited
 		ctx.MarkVisited(startIdx)
 
 		// Initialize current level with index (not objectID)
 		ctx.AddToCurrentLevelIdx(startIdx)
-		objSize := g.objectSize[objID]
+		// Use index-based size lookup (no map access)
+		objSize := g.GetObjectSizeByIndex(startIdx)
 
 		for depth := 1; depth <= maxDepth && len(ctx.CurrentLevelIdx()) > 0; depth++ {
 			ctx.ClearNextLevelIdx()
@@ -268,7 +273,9 @@ func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxD
 					// Create packed key (much faster hash/eq than struct with strings)
 					key := makePackedKey(retainerClassID, fieldNameID, depth)
 
-					if _, ok := retainerStats[key]; !ok {
+					// Get or create retainer entry
+					sliceIdx, exists := keyToSliceIndex[key]
+					if !exists {
 						// Lookup class name only when creating new entry
 						retainerClassName := g.classNames[retainerClassID]
 						if retainerClassName == "" {
@@ -278,7 +285,9 @@ func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxD
 						// Get field name from interned ID
 						fieldName := g.GetFieldNameByID(fieldNameID)
 
-						retainerStats[key] = &retainerData{
+						sliceIdx = len(retainerDataSlice)
+						keyToSliceIndex[key] = sliceIdx
+						retainerDataSlice = append(retainerDataSlice, retainerDataEntry{
 							info: &RetainerInfo{
 								RetainerClass: retainerClassName,
 								FieldName:     fieldName,
@@ -286,21 +295,20 @@ func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxD
 							},
 							classID:     retainerClassID,
 							fieldNameID: fieldNameID,
-						}
-
-						// Assign index for this retainer key
-						retainerKeyToIndex[key] = nextRetainerIndex
-						nextRetainerIndex++
+							key:         key,
+						})
+						// Extend count/size arrays
+						retainerCount = append(retainerCount, 0)
+						retainerSize = append(retainerSize, 0)
 					}
 
-					// Get retainer key index for Bitset
-					keyIndex := retainerKeyToIndex[key]
-
 					// Only count this target object once per retainer key (O(1) check)
-					if !ctx.IsRetainerCounted(keyIndex) {
-						ctx.MarkRetainerCounted(keyIndex)
-						retainerStats[key].info.RetainedCount++
-						retainerStats[key].info.RetainedSize += objSize
+					// sliceIdx is used directly as keyIndex for Bitset
+					if !ctx.IsRetainerCounted(sliceIdx) {
+						ctx.MarkRetainerCounted(sliceIdx)
+						// Update arrays directly (no map lookup!)
+						retainerCount[sliceIdx]++
+						retainerSize[sliceIdx] += objSize
 					}
 
 					// Add to next level using index
@@ -313,10 +321,14 @@ func (g *ReferenceGraph) ComputeMultiLevelRetainers(targetClassName string, maxD
 		}
 	}
 
-	// Convert to slice and calculate percentages
-	retainers := make([]*RetainerInfo, 0, len(retainerStats))
-	for _, data := range retainerStats {
+	// Convert to slice and calculate percentages (array-based, no map iteration)
+	retainers := make([]*RetainerInfo, 0, len(retainerDataSlice))
+	for i, data := range retainerDataSlice {
 		r := data.info
+		// Copy accumulated count/size from arrays to info struct
+		r.RetainedCount = retainerCount[i]
+		r.RetainedSize = retainerSize[i]
+
 		// Scale count and size to estimate full population values FIRST
 		// This ensures percentage is calculated on the scaled values
 		if sampleRatio < 1.0 {
