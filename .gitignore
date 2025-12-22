@@ -5,3 +5,6 @@ configs/build/
 data
 *.hprof
 .codebuddy
+pprof/
+pprof-report/
+!pkg/pprof/

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/viper"
+
+	"github.com/perf-analysis/pkg/pprof"
 )
 
 // Config holds all configuration for the application.
@@ -19,6 +21,7 @@ type Config struct {
 	Scheduler SchedulerConfig `mapstructure:"scheduler"`
 	Sources   []SourceConfig  `mapstructure:"sources"`
 	Log       LogConfig       `mapstructure:"log"`
+	Pprof     *pprof.Config   `mapstructure:"pprof"`
 }
 
 // SourceConfig holds configuration for a task source.
@@ -175,6 +178,23 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.output_path", "./logs")
 	v.SetDefault("log.format", "text")
+
+	// Pprof defaults
+	v.SetDefault("pprof.enabled", false)
+	v.SetDefault("pprof.mode", "http")
+	v.SetDefault("pprof.output_dir", "./pprof")
+	v.SetDefault("pprof.profiles", []string{"cpu", "heap", "goroutine"})
+	v.SetDefault("pprof.file.interval", "30s")
+	v.SetDefault("pprof.file.cpu_duration", "10s")
+	v.SetDefault("pprof.file.cpu_rate", 100)
+	v.SetDefault("pprof.file.max_file_size", 104857600)
+	v.SetDefault("pprof.file.max_files", 10)
+	v.SetDefault("pprof.file.auto_rotate", true)
+	v.SetDefault("pprof.http.addr", ":6060")
+	v.SetDefault("pprof.http.path", "/debug/pprof")
+	v.SetDefault("pprof.http.enable_ui", true)
+	v.SetDefault("pprof.http.save_to_file", false)
+	v.SetDefault("pprof.http.default_seconds", 30)
 }
 
 // Validate validates the configuration.

@@ -85,3 +85,35 @@ log:
   level: info  # debug, info, warn, error
   output_path: ./logs
   format: text  # text or json
+
+# Pprof configuration (for service self-profiling)
+pprof:
+  enabled: false
+  mode: http  # file or http
+  output_dir: ./pprof
+  profiles:
+    - cpu
+    - heap
+    - goroutine
+  # File mode configuration (for periodic snapshots)
+  file:
+    interval: 30s
+    cpu_duration: 10s
+    cpu_rate: 100
+    max_file_size: 104857600  # 100MB
+    max_files: 10
+    auto_rotate: true
+  # HTTP mode configuration (for on-demand profiling)
+  http:
+    addr: ":6060"
+    path: "/debug/pprof"
+    enable_ui: true
+    save_to_file: false
+    default_seconds: 30
+    # Authentication (optional)
+    # auth:
+    #   enabled: true
+    #   username: admin
+    #   password: secret
+    #   # Or use token-based auth
+    #   # token: your-secret-token
