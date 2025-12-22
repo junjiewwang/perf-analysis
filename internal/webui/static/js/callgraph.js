@@ -65,30 +65,307 @@ const CallGraph = (function() {
         return false;
     }
 
-    function getNodeWidth(name) {
-        if (!name) return 150;
-        // Strip allocation marker for width calculation
+    // Configuration for multi-line node display
+    // Prioritizes showing complete method names for better readability
+    const NODE_CONFIG = {
+        maxLineWidth: 28,      // Max characters per line (shorter for better fit)
+        maxLines: 3,           // Max number of lines
+        charWidth: 6.5,        // Approximate character width in pixels
+        lineHeight: 13,        // Line height in pixels
+        paddingX: 12,          // Horizontal padding
+        paddingY: 6,           // Vertical padding
+        minWidth: 80,
+        maxWidth: 220          // Smaller max width for better graph layout
+    };
+
+    // Detect the type of function name and parse accordingly
+    function parseMethodName(name) {
+        if (!name) return { type: 'simple', parts: [''] };
+        
+        // Type 1: File path with function (e.g., /usr/lib/xxx/libc.so.6 or libc.so.6::malloc)
+        if (name.includes('/')) {
+            // Extract filename from path
+            const pathParts = name.split('/');
+            const filename = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2] || name;
+            
+            // Check if there's a function after :: 
+            if (filename.includes('::')) {
+                const [lib, func] = filename.split('::');
+                return { 
+                    type: 'native_lib', 
+                    library: lib,
+                    method: func,
+                    path: pathParts.slice(0, -1).join('/')
+                };
+            }
+            
+            return { 
+                type: 'path', 
+                filename: filename,
+                path: pathParts.slice(0, -1).join('/')
+            };
+        }
+        
+        // Type 2: C++ style with :: (e.g., Namespace::Class::method)
+        if (name.includes('::')) {
+            const parts = name.split('::');
+            if (parts.length >= 2) {
+                const method = parts[parts.length - 1];
+                const classOrNs = parts.slice(0, -1).join('::');
+                return {
+                    type: 'cpp',
+                    namespace: classOrNs,
+                    method: method
+                };
+            }
+        }
+        
+        // Type 3: Java style with . (e.g., com.example.Class.method)
+        if (name.includes('.')) {
+            const parts = name.split('.');
+            if (parts.length >= 2) {
+                const method = parts[parts.length - 1];
+                const className = parts[parts.length - 2];
+                const packageParts = parts.slice(0, -2);
+                return {
+                    type: 'java',
+                    package: packageParts,
+                    className: className,
+                    method: method
+                };
+            }
+        }
+        
+        // Type 4: Simple name
+        return { type: 'simple', name: name };
+    }
+
+    // Split name into multiple lines for display
+    // Strategy: Show most important info (class + method) prominently
+    function getMultiLineDisplayName(name) {
+        if (!name) return { lines: [''], width: NODE_CONFIG.minWidth };
+        
         const cleanName = Utils.stripAllocationMarker(name);
-        const charWidth = 7;
-        const padding = 20;
-        return Math.min(300, Math.max(150, cleanName.length * charWidth + padding));
+        const parsed = parseMethodName(cleanName);
+        const maxLen = NODE_CONFIG.maxLineWidth;
+        
+        let lines = [];
+        let maxLineLen = 0;
+        
+        switch (parsed.type) {
+            case 'native_lib': {
+                // Line 1: Path (abbreviated)
+                if (parsed.path) {
+                    let pathDisplay = parsed.path;
+                    if (pathDisplay.length > maxLen) {
+                        // Show only last directory
+                        const dirs = parsed.path.split('/').filter(d => d);
+                        pathDisplay = '…/' + (dirs[dirs.length - 1] || '');
+                    }
+                    if (pathDisplay.length > maxLen) {
+                        pathDisplay = pathDisplay.substring(0, maxLen - 1) + '…';
+                    }
+                    lines.push(pathDisplay);
+                    maxLineLen = Math.max(maxLineLen, pathDisplay.length);
+                }
+                
+                // Line 2: Library name
+                let libDisplay = parsed.library;
+                if (libDisplay.length > maxLen) {
+                    libDisplay = libDisplay.substring(0, maxLen - 1) + '…';
+                }
+                lines.push(libDisplay);
+                maxLineLen = Math.max(maxLineLen, libDisplay.length);
+                
+                // Line 3: Function name
+                if (parsed.method) {
+                    let methodDisplay = '→ ' + parsed.method;
+                    if (methodDisplay.length > maxLen) {
+                        methodDisplay = '→ ' + parsed.method.substring(0, maxLen - 3) + '…';
+                    }
+                    lines.push(methodDisplay);
+                    maxLineLen = Math.max(maxLineLen, methodDisplay.length);
+                }
+                break;
+            }
+            
+            case 'path': {
+                // Line 1: Path (abbreviated)
+                if (parsed.path) {
+                    let pathDisplay = parsed.path;
+                    if (pathDisplay.length > maxLen) {
+                        const dirs = parsed.path.split('/').filter(d => d);
+                        pathDisplay = '…/' + (dirs[dirs.length - 1] || '');
+                    }
+                    if (pathDisplay.length > maxLen) {
+                        pathDisplay = pathDisplay.substring(0, maxLen - 1) + '…';
+                    }
+                    lines.push(pathDisplay);
+                    maxLineLen = Math.max(maxLineLen, pathDisplay.length);
+                }
+                
+                // Line 2: Filename
+                let fileDisplay = parsed.filename;
+                if (fileDisplay.length > maxLen) {
+                    fileDisplay = fileDisplay.substring(0, maxLen - 1) + '…';
+                }
+                lines.push(fileDisplay);
+                maxLineLen = Math.max(maxLineLen, fileDisplay.length);
+                break;
+            }
+            
+            case 'cpp': {
+                // Line 1: Namespace/class (abbreviated)
+                let nsDisplay = parsed.namespace;
+                if (nsDisplay.length > maxLen) {
+                    // Try to abbreviate
+                    const nsParts = nsDisplay.split('::');
+                    if (nsParts.length > 1) {
+                        nsDisplay = nsParts.map((p, i) => i < nsParts.length - 1 ? p.substring(0, 3) : p).join('::');
+                    }
+                }
+                if (nsDisplay.length > maxLen) {
+                    nsDisplay = nsDisplay.substring(0, maxLen - 1) + '…';
+                }
+                lines.push(nsDisplay);
+                maxLineLen = Math.max(maxLineLen, nsDisplay.length);
+                
+                // Line 2: Method name
+                let methodDisplay = '→ ' + parsed.method;
+                if (methodDisplay.length > maxLen) {
+                    methodDisplay = '→ ' + parsed.method.substring(0, maxLen - 3) + '…';
+                }
+                lines.push(methodDisplay);
+                maxLineLen = Math.max(maxLineLen, methodDisplay.length);
+                break;
+            }
+            
+            case 'java': {
+                // Line 1: Abbreviated package (if exists)
+                if (parsed.package.length > 0) {
+                    let pkgDisplay;
+                    if (parsed.package.length <= 2) {
+                        pkgDisplay = parsed.package.join('.');
+                    } else {
+                        // Abbreviate: io.netty.channel -> i.n.channel
+                        pkgDisplay = parsed.package.slice(0, -1).map(p => p.charAt(0)).join('.') + '.' + parsed.package[parsed.package.length - 1];
+                    }
+                    
+                    if (pkgDisplay.length > maxLen) {
+                        pkgDisplay = parsed.package.map(p => p.charAt(0)).join('.');
+                    }
+                    if (pkgDisplay.length > maxLen) {
+                        pkgDisplay = pkgDisplay.substring(0, maxLen - 1) + '…';
+                    }
+                    
+                    lines.push(pkgDisplay);
+                    maxLineLen = Math.max(maxLineLen, pkgDisplay.length);
+                }
+                
+                // Line 2: Class name
+                let classDisplay = parsed.className;
+                if (classDisplay.length > maxLen) {
+                    classDisplay = classDisplay.substring(0, maxLen - 1) + '…';
+                }
+                lines.push(classDisplay);
+                maxLineLen = Math.max(maxLineLen, classDisplay.length);
+                
+                // Line 3: Method name
+                let methodDisplay = '→ ' + parsed.method;
+                if (methodDisplay.length > maxLen) {
+                    methodDisplay = '→ ' + parsed.method.substring(0, maxLen - 3) + '…';
+                }
+                lines.push(methodDisplay);
+                maxLineLen = Math.max(maxLineLen, methodDisplay.length);
+                break;
+            }
+            
+            default: {
+                // Simple name - try to fit or split
+                let displayName = parsed.name || cleanName;
+                
+                if (displayName.length <= maxLen) {
+                    lines.push(displayName);
+                    maxLineLen = displayName.length;
+                } else {
+                    // Split long names across lines
+                    let remaining = displayName;
+                    while (remaining.length > 0 && lines.length < NODE_CONFIG.maxLines) {
+                        if (remaining.length <= maxLen) {
+                            lines.push(remaining);
+                            maxLineLen = Math.max(maxLineLen, remaining.length);
+                            break;
+                        }
+                        // Try to break at reasonable points
+                        let breakPoint = maxLen;
+                        const breakChars = ['_', ':', '<', '>', '(', '-'];
+                        for (let i = maxLen - 1; i > maxLen - 10 && i > 0; i--) {
+                            if (breakChars.includes(remaining[i])) {
+                                breakPoint = i + 1;
+                                break;
+                            }
+                        }
+                        const line = remaining.substring(0, breakPoint);
+                        lines.push(line);
+                        maxLineLen = Math.max(maxLineLen, line.length);
+                        remaining = remaining.substring(breakPoint);
+                    }
+                    if (remaining.length > 0 && lines.length > 0) {
+                        const lastLine = lines[lines.length - 1];
+                        if (lastLine.length >= maxLen - 1) {
+                            lines[lines.length - 1] = lastLine.substring(0, maxLen - 1) + '…';
+                        } else {
+                            lines[lines.length - 1] = lastLine + '…';
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        
+        // Calculate width based on longest line
+        const width = Math.min(
+            NODE_CONFIG.maxWidth,
+            Math.max(NODE_CONFIG.minWidth, maxLineLen * NODE_CONFIG.charWidth + NODE_CONFIG.paddingX * 2)
+        );
+        
+        return { lines, width };
+    }
+
+    function getNodeWidth(name) {
+        return getMultiLineDisplayName(name).width;
+    }
+
+    function getNodeHeight(name) {
+        const { lines } = getMultiLineDisplayName(name);
+        return lines.length * NODE_CONFIG.lineHeight + NODE_CONFIG.paddingY * 2;
+    }
+
+    // Internal function for display name calculation (used by getNodeWidth)
+    function getDisplayNameInternal(cleanName, maxLen) {
+        if (!cleanName) return '';
+        const parts = cleanName.split('.');
+        if (parts.length >= 2) {
+            const className = parts[parts.length - 2] || '';
+            const methodName = parts[parts.length - 1] || '';
+            const combined = className + '::' + methodName;
+            if (combined.length <= maxLen) return combined;
+            // Try shorter class name
+            const shortClass = className.length > 20 ? className.substring(0, 18) + '..' : className;
+            const shortCombined = shortClass + '::' + methodName;
+            if (shortCombined.length <= maxLen) return shortCombined;
+            if (methodName.length <= maxLen) return methodName;
+            return methodName.substring(0, maxLen - 2) + '..';
+        }
+        if (cleanName.length <= maxLen) return cleanName;
+        return cleanName.substring(0, maxLen - 2) + '..';
     }
 
     function getDisplayName(name, maxLen) {
         if (!name) return '';
         // Strip allocation marker for display
         const cleanName = Utils.stripAllocationMarker(name);
-        const parts = cleanName.split('.');
-        if (parts.length >= 2) {
-            const className = parts[parts.length - 2] || '';
-            const methodName = parts[parts.length - 1] || '';
-            const combined = className + '.' + methodName;
-            if (combined.length <= maxLen) return combined;
-            if (methodName.length <= maxLen) return methodName;
-            return methodName.substring(0, maxLen - 2) + '..';
-        }
-        if (cleanName.length <= maxLen) return cleanName;
-        return cleanName.substring(0, maxLen - 2) + '..';
+        return getDisplayNameInternal(cleanName, maxLen);
     }
 
     function getShortName(name) {
@@ -129,9 +406,10 @@ const CallGraph = (function() {
         const angle = Math.atan2(dy, dx);
         const sourceHalfWidth = getNodeWidth(d.source.name) / 2;
         const targetHalfWidth = getNodeWidth(d.target.name) / 2;
-        const halfHeight = 15;
-        const sourceIntersect = getNodeBoundaryPoint(sourceX, sourceY, sourceHalfWidth, halfHeight, angle);
-        const targetIntersect = getNodeBoundaryPoint(targetX, targetY, targetHalfWidth, halfHeight, angle + Math.PI);
+        const sourceHalfHeight = getNodeHeight(d.source.name) / 2;
+        const targetHalfHeight = getNodeHeight(d.target.name) / 2;
+        const sourceIntersect = getNodeBoundaryPoint(sourceX, sourceY, sourceHalfWidth, sourceHalfHeight, angle);
+        const targetIntersect = getNodeBoundaryPoint(targetX, targetY, targetHalfWidth, targetHalfHeight, angle + Math.PI);
         return `M ${sourceIntersect.x},${sourceIntersect.y} L ${targetIntersect.x},${targetIntersect.y}`;
     }
 
@@ -739,10 +1017,14 @@ const CallGraph = (function() {
             }));
 
             simulation = d3.forceSimulation(nodes)
-                .force('link', d3.forceLink(links).id(d => d.index).distance(100).strength(0.5))
-                .force('charge', d3.forceManyBody().strength(-300))
+                .force('link', d3.forceLink(links).id(d => d.index).distance(120).strength(0.5))
+                .force('charge', d3.forceManyBody().strength(-400))
                 .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(100));
+                .force('collision', d3.forceCollide().radius(d => {
+                    const w = getNodeWidth(d.name);
+                    const h = getNodeHeight(d.name);
+                    return Math.max(w, h) / 2 + 15;
+                }));
 
             // Create arrow markers
             const defs = svg.append('defs');
@@ -803,19 +1085,61 @@ const CallGraph = (function() {
                 .domain([0, 10, 50])
                 .range(['#f8d568', '#f5a623', '#e74c3c']);
 
+            // Draw node rectangles with dynamic height
             node.append('rect')
                 .attr('width', d => getNodeWidth(d.name))
-                .attr('height', 30)
+                .attr('height', d => getNodeHeight(d.name))
                 .attr('x', d => -getNodeWidth(d.name) / 2)
-                .attr('y', -15)
+                .attr('y', d => -getNodeHeight(d.name) / 2)
                 .attr('rx', 4)
                 .attr('fill', d => colorScale(d.selfPct || 0));
 
-            node.append('text')
-                .attr('text-anchor', 'middle')
-                .attr('dy', 4)
-                .text(d => getDisplayName(d.name, 35))
-                .attr('fill', '#333');
+            // Draw multi-line text
+            // Line 1: package path (small, gray)
+            // Line 2: class name (medium, dark)
+            // Line 3: method name with arrow (bold, black)
+            node.each(function(d) {
+                const nodeGroup = d3.select(this);
+                const { lines } = getMultiLineDisplayName(d.name);
+                const lineHeight = NODE_CONFIG.lineHeight;
+                const startY = -((lines.length - 1) * lineHeight) / 2;
+                
+                lines.forEach((line, i) => {
+                    // Determine line type: 0=package, 1=class, 2=method (or last line)
+                    const isMethodLine = (lines.length === 3 && i === 2) || (lines.length < 3 && i === lines.length - 1);
+                    const isClassLine = lines.length === 3 && i === 1;
+                    const isPackageLine = lines.length === 3 && i === 0;
+                    
+                    let fontSize = '10px';
+                    let fontWeight = '400';
+                    let fillColor = '#555';
+                    
+                    if (isMethodLine) {
+                        fontSize = '10px';
+                        fontWeight = '600';
+                        fillColor = '#1a1a1a';
+                    } else if (isClassLine) {
+                        fontSize = '10px';
+                        fontWeight = '500';
+                        fillColor = '#333';
+                    } else if (isPackageLine) {
+                        fontSize = '9px';
+                        fontWeight = '400';
+                        fillColor = '#777';
+                    }
+                    
+                    nodeGroup.append('text')
+                        .attr('class', 'node-text')
+                        .attr('text-anchor', 'middle')
+                        .attr('x', 0)
+                        .attr('y', startY + i * lineHeight)
+                        .attr('dy', '0.35em')
+                        .text(line)
+                        .attr('fill', fillColor)
+                        .style('font-size', fontSize)
+                        .style('font-weight', fontWeight);
+                });
+            });
 
             const tooltip = document.getElementById('nodeTooltip');
             node.on('mouseover', function(event, d) {
