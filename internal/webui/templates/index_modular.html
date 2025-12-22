@@ -280,6 +280,35 @@
                 <span>🖱️ Hover on nodes for details</span>
                 <span>⌨️ Arrow keys to navigate matches</span>
             </div>
+            <!-- Thread Selector -->
+            <div class="thread-selector-container" id="threadSelectorContainer">
+                <span class="thread-selector-label"><span class="icon">🧵</span>Thread View:</span>
+                <div class="thread-selector-wrapper" id="threadSelectorWrapper">
+                    <div class="thread-selector-trigger" onclick="toggleThreadDropdown()">
+                        <span class="thread-selected-text" id="threadSelectedText">
+                            <span class="global-icon">🌐</span> Global View (All Threads)
+                        </span>
+                        <span class="thread-selector-arrow">▼</span>
+                    </div>
+                    <div class="thread-dropdown-container">
+                        <div class="thread-search-box">
+                            <input type="text" 
+                                   class="thread-search-input" 
+                                   id="threadSearchInput" 
+                                   placeholder="Search threads by name, group, or TID..."
+                                   oninput="handleThreadSearch(this.value)"
+                                   onkeydown="handleThreadSearchKeydown(event)">
+                        </div>
+                        <div class="thread-dropdown" id="threadDropdown">
+                            <!-- Dropdown items will be populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+                <span class="thread-info-badge">
+                    <span>Threads</span>
+                    <span class="count" id="threadCount">0</span>
+                </span>
+            </div>
             <div class="controls">
                 <input type="text" id="callgraphSearchInput" placeholder="Search function name..." onkeyup="handleCallGraphSearchKeyup(event)">
                 <button onclick="searchCallGraph()">🔍 Search</button>

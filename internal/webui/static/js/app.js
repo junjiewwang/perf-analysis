@@ -101,6 +101,10 @@ window.toggleViewMode = () => CallGraph.toggleViewMode();
 window.navigateCallGraphMatch = (dir) => CallGraph.navigateMatch(dir);
 window.toggleCallGraphFilter = (type) => CallGraph.toggleFilter(type);
 window.toggleCallChainSidebar = (show) => CallGraph.toggleSidebar(show);
+window.selectCallGraphThread = (tid) => CallGraph.selectThread(tid);
+window.toggleThreadDropdown = (show) => CallGraph.toggleThreadDropdown(show);
+window.handleThreadSearch = (value) => CallGraph.handleThreadSearch(value);
+window.handleThreadSearchKeydown = (event) => CallGraph.handleThreadSearchKeydown(event);
 window.handleCallGraphSearchKeyup = (event) => {
     if (event.key === 'Enter') CallGraph.search();
     else if (event.key === 'ArrowDown') { event.preventDefault(); CallGraph.navigateMatch(1); }

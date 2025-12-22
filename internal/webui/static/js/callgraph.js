@@ -33,6 +33,11 @@ const CallGraph = (function() {
     let bridgeEdgeSelection = null;
     let linkContainer = null;
 
+    // Thread selector state
+    let threadCallGraphs = [];
+    let selectedThreadTid = null; // null means global view
+    let hasThreadData = false;
+
     // Performance limits
     const MAX_MATCHES = 200;
     const MAX_CHAIN_DEPTH = 50;
@@ -427,6 +432,14 @@ const CallGraph = (function() {
                     }
                 });
             }
+            
+            // Setup click outside to close thread dropdown
+            document.addEventListener('click', (e) => {
+                const wrapper = document.getElementById('threadSelectorWrapper');
+                if (wrapper && !wrapper.contains(e.target)) {
+                    this.toggleThreadDropdown(false);
+                }
+            });
         },
 
         async load(taskId, type = '') {
@@ -436,11 +449,248 @@ const CallGraph = (function() {
             try {
                 const data = await API.getCallGraph(taskId, type);
                 originalData = data;
+                
+                // Extract thread call graphs if available
+                threadCallGraphs = [];
+                hasThreadData = false;
+                selectedThreadTid = null;
+                
+                if (data.analysis && data.analysis.threadCallGraphs && data.analysis.threadCallGraphs.length > 0) {
+                    threadCallGraphs = data.analysis.threadCallGraphs;
+                    hasThreadData = true;
+                }
+                
+                // Update thread selector UI
+                this.updateThreadSelector();
+                
                 this.render(data);
             } catch (err) {
                 console.error('Failed to load call graph:', err);
                 container.innerHTML = '<div class="loading">Failed to load call graph: ' + err.message + '</div>';
             }
+        },
+        
+        // Update thread selector dropdown
+        updateThreadSelector() {
+            const container = document.getElementById('threadSelectorContainer');
+            const countBadge = document.getElementById('threadCount');
+            const dropdown = document.getElementById('threadDropdown');
+            const selectedText = document.getElementById('threadSelectedText');
+            
+            if (!container || !dropdown) return;
+            
+            if (!hasThreadData || threadCallGraphs.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            container.style.display = 'flex';
+            
+            // Update thread count badge
+            if (countBadge) {
+                countBadge.textContent = threadCallGraphs.length;
+            }
+            
+            // Reset selected text
+            if (selectedText) {
+                selectedText.innerHTML = '<span class="global-icon">🌐</span> Global View (All Threads)';
+            }
+            
+            // Build dropdown items
+            this.renderThreadDropdownItems('');
+        },
+        
+        // Render filtered thread dropdown items
+        renderThreadDropdownItems(filter) {
+            const dropdown = document.getElementById('threadDropdown');
+            if (!dropdown) return;
+            
+            const filterLower = filter.toLowerCase();
+            let html = '';
+            
+            // Global view option (always show unless filter doesn't match)
+            if (!filter || 'global'.includes(filterLower) || 'all threads'.includes(filterLower)) {
+                html += `<div class="thread-dropdown-item global-item" data-tid="" onclick="selectCallGraphThread('')">
+                    <span class="item-icon">🌐</span>
+                    <span class="item-text">Global View (All Threads)</span>
+                </div>`;
+            }
+            
+            // Filter and render thread items
+            const filteredThreads = threadCallGraphs.filter(tcg => {
+                if (!filter) return true;
+                const name = (tcg.threadName || `Thread-${tcg.tid}`).toLowerCase();
+                const group = (tcg.threadGroup || '').toLowerCase();
+                const tid = String(tcg.tid);
+                return name.includes(filterLower) || group.includes(filterLower) || tid.includes(filterLower);
+            });
+            
+            if (filteredThreads.length > 0) {
+                html += '<div class="thread-dropdown-group-label">Threads by CPU Usage</div>';
+                
+                filteredThreads.forEach(tcg => {
+                    const pct = tcg.percentage ? tcg.percentage.toFixed(1) : '0.0';
+                    const samples = tcg.totalSamples || 0;
+                    const displayName = tcg.threadName || `Thread-${tcg.tid}`;
+                    const groupInfo = tcg.threadGroup ? `[${tcg.threadGroup}]` : '';
+                    const isSelected = selectedThreadTid === tcg.tid;
+                    
+                    html += `<div class="thread-dropdown-item ${isSelected ? 'selected' : ''}" data-tid="${tcg.tid}" onclick="selectCallGraphThread('${tcg.tid}')" title="TID: ${tcg.tid}, Samples: ${samples}">
+                        <div class="item-main">
+                            <span class="item-icon">🧵</span>
+                            <span class="item-text">${this.escapeHtml(displayName)}</span>
+                            ${groupInfo ? `<span class="item-group">${this.escapeHtml(groupInfo)}</span>` : ''}
+                        </div>
+                        <span class="item-pct">${pct}%</span>
+                    </div>`;
+                });
+            }
+            
+            if (!html) {
+                html = '<div class="thread-dropdown-empty">No threads match your search</div>';
+            }
+            
+            dropdown.innerHTML = html;
+        },
+        
+        // Escape HTML for safe rendering
+        escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        },
+        
+        // Toggle thread dropdown visibility
+        toggleThreadDropdown(show) {
+            const wrapper = document.getElementById('threadSelectorWrapper');
+            const input = document.getElementById('threadSearchInput');
+            if (!wrapper) return;
+            
+            if (show === undefined) {
+                show = !wrapper.classList.contains('open');
+            }
+            
+            if (show) {
+                wrapper.classList.add('open');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+                // Re-render with current filter
+                this.renderThreadDropdownItems(input ? input.value : '');
+            } else {
+                wrapper.classList.remove('open');
+            }
+        },
+        
+        // Handle thread search input
+        handleThreadSearch(value) {
+            this.renderThreadDropdownItems(value);
+        },
+        
+        // Handle keyboard navigation in thread dropdown
+        handleThreadSearchKeydown(event) {
+            const dropdown = document.getElementById('threadDropdown');
+            if (!dropdown) return;
+            
+            const items = dropdown.querySelectorAll('.thread-dropdown-item:not(.disabled)');
+            const currentIndex = Array.from(items).findIndex(item => item.classList.contains('highlighted'));
+            
+            switch (event.key) {
+                case 'ArrowDown':
+                    event.preventDefault();
+                    if (currentIndex < items.length - 1) {
+                        items.forEach(item => item.classList.remove('highlighted'));
+                        items[currentIndex + 1].classList.add('highlighted');
+                        items[currentIndex + 1].scrollIntoView({ block: 'nearest' });
+                    } else if (currentIndex === -1 && items.length > 0) {
+                        items[0].classList.add('highlighted');
+                    }
+                    break;
+                case 'ArrowUp':
+                    event.preventDefault();
+                    if (currentIndex > 0) {
+                        items.forEach(item => item.classList.remove('highlighted'));
+                        items[currentIndex - 1].classList.add('highlighted');
+                        items[currentIndex - 1].scrollIntoView({ block: 'nearest' });
+                    }
+                    break;
+                case 'Enter':
+                    event.preventDefault();
+                    const highlighted = dropdown.querySelector('.thread-dropdown-item.highlighted');
+                    if (highlighted) {
+                        highlighted.click();
+                    } else if (items.length > 0) {
+                        items[0].click();
+                    }
+                    break;
+                case 'Escape':
+                    event.preventDefault();
+                    this.toggleThreadDropdown(false);
+                    break;
+            }
+        },
+        
+        // Handle thread selection change
+        selectThread(tid) {
+            const selectedText = document.getElementById('threadSelectedText');
+            const input = document.getElementById('threadSearchInput');
+            
+            if (tid === '' || tid === null || tid === undefined) {
+                selectedThreadTid = null;
+                // Update display
+                if (selectedText) {
+                    selectedText.innerHTML = '<span class="global-icon">🌐</span> Global View (All Threads)';
+                }
+                // Clear search input
+                if (input) input.value = '';
+                // Close dropdown
+                this.toggleThreadDropdown(false);
+                // Render global view
+                if (originalData) {
+                    this.clearSearch();
+                    this.render(originalData);
+                }
+            } else {
+                selectedThreadTid = parseInt(tid);
+                // Find the selected thread
+                const tcg = threadCallGraphs.find(t => t.tid === selectedThreadTid);
+                if (tcg) {
+                    // Update display
+                    if (selectedText) {
+                        const displayName = tcg.threadName || `Thread-${tcg.tid}`;
+                        const pct = tcg.percentage ? tcg.percentage.toFixed(1) : '0.0';
+                        selectedText.innerHTML = `<span class="thread-icon">🧵</span> ${this.escapeHtml(displayName)} <span class="selected-pct">(${pct}%)</span>`;
+                    }
+                    // Clear search input
+                    if (input) input.value = '';
+                    // Close dropdown
+                    this.toggleThreadDropdown(false);
+                    // Render thread call graph
+                    this.clearSearch();
+                    this.renderThreadCallGraph(tcg);
+                }
+            }
+        },
+        
+        // Render a thread-specific call graph
+        renderThreadCallGraph(tcg) {
+            const container = document.getElementById('callgraph');
+            container.innerHTML = '';
+            
+            if (!tcg || !tcg.nodes || tcg.nodes.length === 0) {
+                container.innerHTML = '<div class="loading">No call graph data for this thread</div>';
+                return;
+            }
+            
+            // Create a data object compatible with render()
+            const threadData = {
+                nodes: tcg.nodes,
+                edges: tcg.edges,
+                totalSamples: tcg.totalSamples
+            };
+            
+            this.render(threadData);
         },
 
         render(data) {
@@ -942,6 +1192,21 @@ const CallGraph = (function() {
 
         getNodes() {
             return nodes;
+        },
+        
+        // Get thread info for external access
+        getThreadInfo() {
+            return {
+                hasThreadData,
+                threadCount: threadCallGraphs.length,
+                selectedThreadTid,
+                threads: threadCallGraphs.map(t => ({
+                    tid: t.tid,
+                    name: t.threadName,
+                    group: t.threadGroup,
+                    percentage: t.percentage
+                }))
+            };
         }
     };
 })();
