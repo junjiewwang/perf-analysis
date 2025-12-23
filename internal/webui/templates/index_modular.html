@@ -152,17 +152,17 @@
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 📊 Class Histogram
             </button>
-            <button @click="showPanel('flamegraph')" x-show="analysisType === 'cpu' || analysisType === 'alloc'"
+            <button @click="showPanel('flamegraph')" x-show="analysisType === 'cpu' || analysisType === 'alloc' || analysisType === 'pprof-all'"
                 :class="{'tab-active': activePanel === 'flamegraph'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 🔥 Flame Graph
             </button>
-            <button @click="showPanel('callgraph')" x-show="analysisType === 'cpu' || analysisType === 'alloc'"
+            <button @click="showPanel('callgraph')" x-show="analysisType === 'cpu' || analysisType === 'alloc' || (analysisType === 'pprof-all' && pprofSubType === 'cpu')"
                 :class="{'tab-active': activePanel === 'callgraph'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 📈 Call Graph
             </button>
-            <button @click="showPanel('topfuncs')" x-show="analysisType === 'cpu' || analysisType === 'alloc'"
+            <button @click="showPanel('topfuncs')" x-show="analysisType === 'cpu' || analysisType === 'alloc' || analysisType === 'pprof-all'"
                 :class="{'tab-active': activePanel === 'topfuncs'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 📋 Top Functions
@@ -171,6 +171,12 @@
                 :class="{'tab-active': activePanel === 'threads'}"
                 class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
                 🧵 Threads
+            </button>
+            <!-- pprof-all: Leak Detection Tab -->
+            <button @click="showPanel('leakreport')" x-show="analysisType === 'pprof-all'"
+                :class="{'tab-active': activePanel === 'leakreport'}"
+                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                🔍 Leak Detection
             </button>
             <!-- Heap Tabs -->
             <button @click="showPanel('heaptreemap')" x-show="analysisType === 'heap'"
@@ -258,6 +264,14 @@
                 </div>
             </div>
 
+            <!-- pprof-all: Profile Type Cards (only shown in pprof-all mode) -->
+            <div id="pprofProfileCards" x-show="analysisType === 'pprof-all'" x-cloak class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"></div>
+
+            <!-- pprof-all: Leak Reports Summary (only shown in pprof-all mode) -->
+            <div id="pprofLeakReports" x-show="analysisType === 'pprof-all'" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="text-gray-500 text-sm">Loading leak reports...</div>
+            </div>
+
             <!-- Top Functions Card -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -281,6 +295,22 @@
                         </thead>
                         <tbody id="topFuncsPreview" class="divide-y divide-gray-100"></tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Leak Report Panel (pprof-all only) -->
+        <div x-show="activePanel === 'leakreport'" x-cloak class="space-y-5">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div class="flex items-center gap-3 mb-5">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center text-white text-lg">🔍</div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-800">Leak Detection Report</h2>
+                        <p class="text-sm text-gray-500">Memory and goroutine leak analysis based on profile comparison</p>
+                    </div>
+                </div>
+                <div id="leakReportDetail" class="space-y-6">
+                    <div class="text-gray-500 text-center py-8">Loading leak detection data...</div>
                 </div>
             </div>
         </div>
@@ -526,7 +556,9 @@
                         class="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">
                         📊 Functions
                     </button>
+                    <!-- Threads view is only available for Java analysis (cpu/alloc), not for pprof -->
                     <button id="topFuncsViewThreads" onclick="TopFuncsPanel.setView('threads')" 
+                        x-show="analysisType === 'cpu' || analysisType === 'alloc'"
                         class="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">
                         🧵 Threads
                     </button>
@@ -933,7 +965,8 @@
                 currentTask: '',
                 loading: false,
                 activePanel: 'overview',
-                analysisType: 'cpu', // 'cpu' or 'heap'
+                analysisType: 'cpu', // 'cpu', 'heap', 'alloc', or 'pprof-all'
+                pprofSubType: 'cpu', // For pprof-all mode: 'cpu', 'heap', 'goroutine', 'block', 'mutex'
                 summaryData: null,
 
                 // Initialize
@@ -942,6 +975,11 @@
                     FlameGraph.init();
                     CallGraph.init();
                     HeapAnalysis.init();
+
+                    // Listen for pprof sub-type changes
+                    window.addEventListener('pprof-subtype-change', (e) => {
+                        this.loadPProfSubType(e.detail);
+                    });
 
                     // Load tasks
                     await this.loadTasks();
@@ -967,10 +1005,19 @@
                 async loadTask(taskId) {
                     this.currentTask = taskId;
                     this.loading = true;
+                    
+                    // Reset TopFuncsPanel cached data when task changes
+                    if (typeof TopFuncsPanel !== 'undefined' && TopFuncsPanel.reset) {
+                        TopFuncsPanel.reset();
+                    }
+                    
                     try {
                         await this.loadSummary(taskId);
                         if (this.analysisType === 'heap') {
                             HeapAnalysis.renderAnalysis(this.summaryData);
+                        } else if (this.analysisType === 'pprof-all') {
+                            // For pprof-all, load the default sub-type (cpu)
+                            await this.loadPProfSubType(this.pprofSubType || 'cpu');
                         } else {
                             // Determine flame graph / call graph type based on analysis type
                             const graphType = this.analysisType === 'alloc' ? 'memory' : 'cpu';
@@ -1005,7 +1052,14 @@
                     const taskTypeName = metadata.task_type_name || taskType;
                     const mode = metadata.mode || '';
 
-                    if (taskTypeName === 'java_heap' || taskType === 'java_heap' ||
+                    // Check for pprof-all mode first
+                    if (mode === 'pprof-all' || taskType === 'pprof_all' || data.profile_sets) {
+                        this.analysisType = 'pprof-all';
+                        // Initialize pprof sub-type to cpu by default
+                        if (!this.pprofSubType) {
+                            this.pprofSubType = 'cpu';
+                        }
+                    } else if (taskTypeName === 'java_heap' || taskType === 'java_heap' ||
                         (data.data && data.data.total_heap_size !== undefined)) {
                         this.analysisType = 'heap';
                     } else if (mode === 'java-alloc' || taskTypeName === 'java_alloc' ||
@@ -1021,14 +1075,23 @@
                     const data = this.summaryData;
                     if (!data) return;
 
+                    // Hide pprof-all specific elements by default
+                    this.hidePProfAllElements();
+
                     if (this.analysisType === 'heap') {
                         HeapAnalysis.renderOverview(data);
                         this.renderTaskMetadata(data.metadata);
                         return;
                     }
 
+                    if (this.analysisType === 'pprof-all') {
+                        this.renderPProfAllOverview(data);
+                        this.renderTaskMetadata(data.metadata);
+                        return;
+                    }
+
                     // Stats for CPU/Allocation analysis
-                    document.getElementById('totalSamples').textContent = data.total_records || 0;
+                    document.getElementById('totalSamples').textContent = Utils.formatNumber(data.total_records || 0);
                     document.getElementById('topFuncsCount').textContent = (data.top_items || []).length || Object.keys(data.top_funcs || {}).length;
                     document.getElementById('threadsCount').textContent = (data.threads || []).length;
                     document.getElementById('taskUUID').textContent = data.task_uuid || '-';
@@ -1036,6 +1099,218 @@
                     this.renderTaskMetadata(data.metadata);
                     this.renderTopFunctions(data);
                     this.renderThreads(data);
+                },
+
+                // Clear pprof-all specific elements content
+                // Note: Visibility is controlled by Alpine.js x-show directive
+                hidePProfAllElements() {
+                    const profileCards = document.getElementById('pprofProfileCards');
+                    const leakReports = document.getElementById('pprofLeakReports');
+                    
+                    if (profileCards) {
+                        profileCards.innerHTML = '';
+                    }
+                    if (leakReports) {
+                        leakReports.innerHTML = '';
+                    }
+                },
+
+                // Render pprof-all overview
+                renderPProfAllOverview(data) {
+                    // Update stats
+                    document.getElementById('totalSamples').textContent = Utils.formatNumber(data.total_records || 0);
+                    document.getElementById('topFuncsCount').textContent = (data.top_items || []).length;
+                    
+                    // Count profile types as "threads" for pprof-all
+                    const profileSets = data.profile_sets || {};
+                    const profileCount = Object.keys(profileSets).filter(k => profileSets[k]?.total_samples > 0).length;
+                    document.getElementById('threadsCount').textContent = profileCount + ' profiles';
+                    document.getElementById('taskUUID').textContent = data.task_uuid || '-';
+
+                    // Render top functions if available
+                    this.renderTopFunctions(data);
+
+                    // Render pprof-specific overview cards
+                    this.renderPProfProfileCards(profileSets);
+                    this.renderPProfLeakReports(data.leak_reports || {});
+                },
+
+                // Render pprof profile cards
+                renderPProfProfileCards(profileSets) {
+                    const container = document.getElementById('pprofProfileCards');
+                    if (!container) return;
+
+                    const profileIcons = {
+                        'cpu': '🔥',
+                        'heap': '📦',
+                        'goroutine': '🧵',
+                        'block': '⏸️',
+                        'mutex': '🔒',
+                        'allocs': '📈'
+                    };
+
+                    const profileNames = {
+                        'cpu': 'CPU Profile',
+                        'heap': 'Heap Memory',
+                        'goroutine': 'Goroutines',
+                        'block': 'Block Profile',
+                        'mutex': 'Mutex Profile',
+                        'allocs': 'Allocations'
+                    };
+
+                    let html = '';
+                    for (const [type, data] of Object.entries(profileSets)) {
+                        if (!data || data.total_samples === 0) continue;
+                        const icon = profileIcons[type] || '📊';
+                        const name = profileNames[type] || type;
+                        const isActive = this.pprofSubType === type;
+                        
+                        html += `
+                            <div class="pprof-profile-card ${isActive ? 'active' : ''} cursor-pointer p-4 bg-white rounded-xl border-2 ${isActive ? 'border-primary' : 'border-gray-100'} hover:border-primary/50 transition-all"
+                                 onclick="window.dispatchEvent(new CustomEvent('pprof-subtype-change', {detail: '${type}'}))">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-2xl">${icon}</span>
+                                    <div>
+                                        <div class="font-semibold text-gray-800">${name}</div>
+                                        <div class="text-sm text-gray-500">${Utils.formatNumber(data.total_samples)} samples</div>
+                                        <div class="text-xs text-gray-400">${data.file_count} file(s)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    container.innerHTML = html;
+                    // Visibility is controlled by Alpine.js x-show directive
+                },
+
+                // Render pprof leak reports
+                renderPProfLeakReports(leakReports, highlightType = null) {
+                    const container = document.getElementById('pprofLeakReports');
+                    if (!container) return;
+
+                    if (Object.keys(leakReports).length === 0) {
+                        container.innerHTML = '<div class="text-gray-500 text-sm">No leak detection data available</div>';
+                        return;
+                    }
+
+                    const severityColors = {
+                        'none': 'bg-green-100 text-green-800',
+                        'low': 'bg-yellow-100 text-yellow-800',
+                        'medium': 'bg-orange-100 text-orange-800',
+                        'high': 'bg-red-100 text-red-800',
+                        'critical': 'bg-red-200 text-red-900'
+                    };
+
+                    const severityIcons = {
+                        'none': '✅',
+                        'low': '⚠️',
+                        'medium': '🔶',
+                        'high': '🔴',
+                        'critical': '🚨'
+                    };
+
+                    // Sort entries to show highlighted type first
+                    let entries = Object.entries(leakReports);
+                    if (highlightType) {
+                        entries = entries.sort((a, b) => {
+                            if (a[0] === highlightType) return -1;
+                            if (b[0] === highlightType) return 1;
+                            return 0;
+                        });
+                    }
+
+                    let html = '';
+                    for (const [type, report] of entries) {
+                        const severity = report.severity || 'none';
+                        const colorClass = severityColors[severity] || severityColors['none'];
+                        const icon = severityIcons[severity] || '📊';
+                        const typeName = type === 'heap' ? 'Memory Leak' : 'Goroutine Leak';
+                        const isHighlighted = highlightType === type;
+                        
+                        html += `
+                            <div class="p-4 bg-white rounded-xl border-2 ${isHighlighted ? 'border-primary shadow-md' : 'border-gray-100'} shadow-sm transition-all">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-semibold text-gray-800">${typeName}</span>
+                                    <span class="px-2 py-1 rounded-full text-xs font-medium ${colorClass}">${icon} ${severity.toUpperCase()}</span>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-2">${report.conclusion || 'No conclusion'}</p>
+                                <div class="flex items-center gap-4 text-xs text-gray-500">
+                                    <span>Growth: ${report.growth_percent?.toFixed(2) || 0}%</span>
+                                    <span>Items: ${report.items_count || 0}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    container.innerHTML = html;
+                    // Visibility is controlled by Alpine.js x-show directive
+                },
+
+                // Load pprof sub-type data
+                async loadPProfSubType(subType) {
+                    this.pprofSubType = subType;
+                    
+                    // Clear TopFuncsPanel thread groups data when sub-type changes
+                    // This forces a reload when the user switches to threads view
+                    if (typeof TopFuncsPanel !== 'undefined' && TopFuncsPanel.reset) {
+                        TopFuncsPanel.reset();
+                    }
+                    
+                    // Re-render profile cards to update active state
+                    if (this.summaryData?.profile_sets) {
+                        this.renderPProfProfileCards(this.summaryData.profile_sets);
+                    }
+
+                    // Map sub-type to flame graph type
+                    const fgTypeMap = {
+                        'cpu': 'cpu',
+                        'heap': 'pprof-heap-inuse',
+                        'goroutine': 'goroutine',
+                        'block': 'block',
+                        'mutex': 'mutex'
+                    };
+                    const fgType = fgTypeMap[subType] || 'cpu';
+
+                    // Load flame graph and call graph for the selected sub-type
+                    await Promise.all([
+                        FlameGraph.load(this.currentTask, fgType),
+                        subType === 'cpu' ? CallGraph.load(this.currentTask, 'cpu') : Promise.resolve()
+                    ]);
+
+                    // Update Top Functions from the loaded flame graph data
+                    this.updateTopFunctionsFromFlameGraph();
+
+                    // Update Leak Reports to show the current profile type
+                    this.updateLeakReportsForSubType(subType);
+                },
+
+                // Update Top Functions display from flame graph data
+                updateTopFunctionsFromFlameGraph() {
+                    const topFuncs = FlameGraph.getTopFunctions();
+                    if (topFuncs && topFuncs.length > 0) {
+                        // Convert to the format expected by renderTopFunctions
+                        const data = {
+                            top_items: topFuncs.map(f => ({
+                                name: f.name,
+                                percentage: f.percentage || 0,
+                                samples: f.samples || 0
+                            }))
+                        };
+                        this.renderTopFunctions(data);
+                    }
+                },
+
+                // Update Leak Reports to highlight the current profile type
+                updateLeakReportsForSubType(subType) {
+                    const leakReports = this.summaryData?.leak_reports || {};
+                    
+                    // Update the leak report cards to highlight the current sub-type
+                    const container = document.getElementById('pprofLeakReports');
+                    if (!container) return;
+
+                    // Re-render with the current sub-type highlighted
+                    this.renderPProfLeakReports(leakReports, subType);
                 },
 
                 // Render task metadata
@@ -1223,7 +1498,131 @@
                                 }
                             });
                         });
+                    } else if (panelId === 'topfuncs') {
+                        // 当切换到 Top Functions 面板时，如果当前是 threads 视图，触发数据重新加载
+                        this.$nextTick(() => {
+                            requestAnimationFrame(() => {
+                                if (typeof TopFuncsPanel !== 'undefined') {
+                                    const currentView = TopFuncsPanel.getView();
+                                    if (currentView === 'threads') {
+                                        // 检查是否有缓存数据，如果没有则重新加载
+                                        const threadData = TopFuncsPanel.getThreadGroupsData();
+                                        if (!threadData || threadData.length === 0) {
+                                            TopFuncsPanel.loadThreadGroups();
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                    } else if (panelId === 'leakreport') {
+                        // 加载泄漏检测报告
+                        this.$nextTick(() => {
+                            requestAnimationFrame(() => {
+                                this.loadLeakReportDetail();
+                            });
+                        });
                     }
+                },
+
+                // Load detailed leak report
+                async loadLeakReportDetail() {
+                    const container = document.getElementById('leakReportDetail');
+                    if (!container) return;
+
+                    try {
+                        const response = await fetch(`/api/pprof/leak-report?task=${this.currentTask}`);
+                        if (!response.ok) throw new Error('Failed to load leak report');
+                        
+                        const data = await response.json();
+                        const leakReports = data.leak_reports || {};
+
+                        if (Object.keys(leakReports).length === 0) {
+                            container.innerHTML = '<div class="text-gray-500 text-center py-8">No leak detection data available. Make sure you have multiple profile snapshots for comparison.</div>';
+                            return;
+                        }
+
+                        let html = '';
+                        for (const [type, report] of Object.entries(leakReports)) {
+                            const typeName = type === 'heap' ? 'Memory Leak Analysis' : 'Goroutine Leak Analysis';
+                            const icon = type === 'heap' ? '📦' : '🧵';
+                            
+                            html += this.renderLeakReportSection(typeName, icon, report);
+                        }
+
+                        container.innerHTML = html;
+                    } catch (err) {
+                        console.error('Failed to load leak report:', err);
+                        container.innerHTML = '<div class="text-red-500 text-center py-8">Failed to load leak detection data</div>';
+                    }
+                },
+
+                // Render a single leak report section
+                renderLeakReportSection(title, icon, report) {
+                    const severityColors = {
+                        'none': 'bg-green-100 text-green-800 border-green-200',
+                        'low': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+                        'medium': 'bg-orange-100 text-orange-800 border-orange-200',
+                        'high': 'bg-red-100 text-red-800 border-red-200',
+                        'critical': 'bg-red-200 text-red-900 border-red-300'
+                    };
+                    const severity = report.severity || 'none';
+                    const colorClass = severityColors[severity] || severityColors['none'];
+
+                    let growthItemsHtml = '';
+                    if (report.growth_items && report.growth_items.length > 0) {
+                        growthItemsHtml = `
+                            <div class="mt-4">
+                                <h4 class="text-sm font-semibold text-gray-700 mb-2">Growth Items (${report.growth_items.length})</h4>
+                                <div class="space-y-2 max-h-64 overflow-y-auto">
+                                    ${report.growth_items.map(item => `
+                                        <div class="p-3 bg-gray-50 rounded-lg">
+                                            <div class="flex items-center justify-between">
+                                                <span class="font-mono text-sm text-gray-800 truncate" title="${Utils.escapeHtml(item.name)}">${Utils.escapeHtml(item.name)}</span>
+                                                <span class="text-sm font-semibold ${item.growth_percent > 50 ? 'text-red-600' : 'text-orange-600'}">+${item.growth_percent?.toFixed(1) || 0}%</span>
+                                            </div>
+                                            <div class="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                                                <span>Baseline: ${Utils.formatBytes(item.baseline_value)}</span>
+                                                <span>Current: ${Utils.formatBytes(item.current_value)}</span>
+                                                <span>Growth: ${Utils.formatBytes(item.growth_value)}</span>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    return `
+                        <div class="border ${colorClass} rounded-xl p-5">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-2xl">${icon}</span>
+                                    <h3 class="text-lg font-semibold text-gray-800">${title}</h3>
+                                </div>
+                                <span class="px-3 py-1 rounded-full text-sm font-medium ${colorClass}">${severity.toUpperCase()}</span>
+                            </div>
+                            <p class="text-gray-700 mb-4">${report.conclusion || 'No conclusion available'}</p>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div class="p-3 bg-white/50 rounded-lg">
+                                    <div class="text-gray-500">Baseline</div>
+                                    <div class="font-semibold">${Utils.formatBytes(report.baseline_total)}</div>
+                                </div>
+                                <div class="p-3 bg-white/50 rounded-lg">
+                                    <div class="text-gray-500">Current</div>
+                                    <div class="font-semibold">${Utils.formatBytes(report.current_total)}</div>
+                                </div>
+                                <div class="p-3 bg-white/50 rounded-lg">
+                                    <div class="text-gray-500">Growth</div>
+                                    <div class="font-semibold ${report.total_growth > 0 ? 'text-red-600' : 'text-green-600'}">${report.total_growth > 0 ? '+' : ''}${Utils.formatBytes(report.total_growth)}</div>
+                                </div>
+                                <div class="p-3 bg-white/50 rounded-lg">
+                                    <div class="text-gray-500">Growth %</div>
+                                    <div class="font-semibold ${report.total_growth_percent > 0 ? 'text-red-600' : 'text-green-600'}">${report.total_growth_percent?.toFixed(2) || 0}%</div>
+                                </div>
+                            </div>
+                            ${growthItemsHtml}
+                        </div>
+                    `;
                 },
 
                 // Search in flame graph
@@ -1242,10 +1641,10 @@
                 getModeClass(modeName) {
                     const modeMap = {
                         'java-cpu': 'java', 'java-alloc': 'memory', 'java-heap': 'heap',
-                        'cpu': 'generic', 'go-pprof': 'pprof',
+                        'cpu': 'generic', 'go-pprof': 'pprof', 'pprof-all': 'pprof',
                         // Legacy fallbacks
                         'java': 'java', 'generic': 'generic', 'pprof_mem': 'pprof',
-                        'memleak': 'memory', 'java_heap': 'heap'
+                        'memleak': 'memory', 'java_heap': 'heap', 'pprof_all': 'pprof'
                     };
                     return modeMap[modeName] || 'generic';
                 },
@@ -1253,10 +1652,10 @@
                 getModeIcon(modeName) {
                     const iconMap = {
                         'java-cpu': '☕🔥', 'java-alloc': '☕📈', 'java-heap': '☕📦',
-                        'cpu': '🔥', 'go-pprof': '🐹',
+                        'cpu': '🔥', 'go-pprof': '🐹', 'pprof-all': '🐹',
                         // Legacy fallbacks
                         'java': '☕', 'generic': '🔧', 'pprof_mem': '🐹', 'memleak': '💾',
-                        'java_heap': '📦'
+                        'java_heap': '📦', 'pprof_all': '🐹'
                     };
                     return iconMap[modeName] || '📊';
                 },

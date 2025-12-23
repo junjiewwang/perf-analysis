@@ -528,6 +528,15 @@ const TopFuncsPanel = (function() {
     return {
         // Set view mode
         setView: function(view) {
+            // Check if threads view is allowed (only for Java cpu/alloc analysis)
+            if (view === 'threads') {
+                const analysisType = typeof App !== 'undefined' && App.getAnalysisType ? App.getAnalysisType() : null;
+                if (analysisType === 'pprof-all') {
+                    console.log('[TopFuncsPanel] Threads view not available in pprof mode, switching to table');
+                    view = 'table';
+                }
+            }
+            
             currentView = view;
             const tableView = document.getElementById('topFuncsTableView');
             const chartView = document.getElementById('topFuncsChartView');
@@ -802,6 +811,35 @@ const TopFuncsPanel = (function() {
             } else if (currentView === 'threads' && threadGroupsData.length > 0) {
                 this.updateThreadChart();
             }
+        },
+
+        // Reset/clear all cached data (called when task changes)
+        reset: function() {
+            funcsData = [];
+            threadGroupsData = [];
+            // Dispose chart instances
+            if (chartInstance) {
+                chartInstance.dispose();
+                chartInstance = null;
+            }
+            if (threadPieInstance) {
+                threadPieInstance.dispose();
+                threadPieInstance = null;
+            }
+            if (threadBarInstance) {
+                threadBarInstance.dispose();
+                threadBarInstance = null;
+            }
+            // Reset view to table (safe default for all analysis types)
+            currentView = 'table';
+            this.setView('table');
+            console.log('[TopFuncsPanel] Data reset, view reset to table');
+        },
+
+        // Force reload thread groups data
+        reloadThreadGroups: function() {
+            threadGroupsData = [];
+            this.loadThreadGroups();
         }
     };
 })();
