@@ -91,6 +91,11 @@ window.clearSearch = () => FlameGraph.clearSearch();
 window.resetFlameGraph = () => FlameGraph.reset();
 window.toggleFlameFilter = (type) => FlameGraph.toggleFilter(type);
 window.handleSearchKeyup = (event) => { if (event.key === 'Enter') FlameGraph.search(); };
+// Flame Graph Thread Selector bindings
+window.selectFlameThread = (tid) => FlameGraph.selectThread(tid);
+window.toggleFlameThreadDropdown = (show) => FlameGraph.toggleThreadDropdown(show);
+window.handleFlameThreadSearch = (value) => FlameGraph.handleThreadSearch(value);
+window.handleFlameThreadSearchKeydown = (event) => FlameGraph.handleThreadSearchKeydown(event);
 
 // Call Graph bindings
 window.searchCallGraph = () => CallGraph.search();

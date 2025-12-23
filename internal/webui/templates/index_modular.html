@@ -217,6 +217,35 @@
                 <span>💡 Click to zoom in, double-click to zoom out</span>
                 <span>🔍 Use search to highlight functions</span>
             </p>
+            <!-- Thread Selector for Flame Graph -->
+            <div class="thread-selector-container" id="flameThreadSelectorContainer" style="display: none;">
+                <span class="thread-selector-label"><span class="icon">🧵</span>Thread View:</span>
+                <div class="thread-selector-wrapper" id="flameThreadSelectorWrapper">
+                    <div class="thread-selector-trigger" onclick="toggleFlameThreadDropdown()">
+                        <span class="thread-selected-text" id="flameThreadSelectedText">
+                            <span class="global-icon">🌐</span> Global View (All Threads)
+                        </span>
+                        <span class="thread-selector-arrow">▼</span>
+                    </div>
+                    <div class="thread-dropdown-container">
+                        <div class="thread-search-box">
+                            <input type="text" 
+                                   class="thread-search-input" 
+                                   id="flameThreadSearchInput" 
+                                   placeholder="Search threads by name, group, or TID..."
+                                   oninput="handleFlameThreadSearch(this.value)"
+                                   onkeydown="handleFlameThreadSearchKeydown(event)">
+                        </div>
+                        <div class="thread-dropdown" id="flameThreadDropdown">
+                            <!-- Dropdown items will be populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+                <span class="thread-info-badge">
+                    <span>Threads</span>
+                    <span class="count" id="flameThreadCount">0</span>
+                </span>
+            </div>
             <!-- Controls: Tailwind 替换 -->
             <div class="flex flex-wrap items-center gap-2.5 mb-4">
                 <input type="text" id="searchInput" 

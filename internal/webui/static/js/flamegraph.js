@@ -12,6 +12,12 @@ const FlameGraph = (function() {
     let flameFilters = new Set();
     let isInverted = true;
 
+    // Thread selector state
+    let threadFlameGraphs = [];      // Threads with flame_root data
+    let selectedThreadTid = null;    // Current selected thread TID, null = global view
+    let hasThreadData = false;       // Whether thread flame graph data is available
+    let originalApiData = null;      // Original API response data
+
     // System function patterns for filtering
     const SYSTEM_PATTERNS = {
         jvm: [
@@ -331,8 +337,25 @@ const FlameGraph = (function() {
 
             try {
                 const data = await API.getFlameGraph(taskId, type);
+                originalApiData = data;
                 flameGraphData = transformFlameData(data);
                 originalFlameGraphData = deepCloneFlameData(flameGraphData);
+
+                // Extract thread flame graphs if available
+                threadFlameGraphs = [];
+                hasThreadData = false;
+                selectedThreadTid = null;
+
+                if (data.thread_analysis && data.thread_analysis.threads) {
+                    // Filter threads that have flame_root data
+                    threadFlameGraphs = data.thread_analysis.threads
+                        .filter(t => t.flame_root && t.flame_root.children && t.flame_root.children.length > 0)
+                        .sort((a, b) => (b.samples || 0) - (a.samples || 0));
+                    hasThreadData = threadFlameGraphs.length > 0;
+                }
+
+                // Update thread selector UI
+                this.updateThreadSelector();
 
                 if (!flameGraphData || flameGraphData.value === 0) {
                     container.innerHTML = '<div class="loading">No flame graph data available</div>';
@@ -559,6 +582,194 @@ const FlameGraph = (function() {
 
         getData() {
             return flameGraphData;
+        },
+
+        // Thread selector methods
+        updateThreadSelector() {
+            const container = document.getElementById('flameThreadSelectorContainer');
+            const countBadge = document.getElementById('flameThreadCount');
+            const dropdown = document.getElementById('flameThreadDropdown');
+            const selectedText = document.getElementById('flameThreadSelectedText');
+
+            if (!container) return;
+
+            if (!hasThreadData || threadFlameGraphs.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'flex';
+
+            if (countBadge) {
+                countBadge.textContent = threadFlameGraphs.length;
+            }
+
+            // Render dropdown items
+            this.renderThreadDropdownItems('');
+        },
+
+        renderThreadDropdownItems(filter) {
+            const dropdown = document.getElementById('flameThreadDropdown');
+            if (!dropdown) return;
+
+            const filterLower = (filter || '').toLowerCase();
+            let html = '';
+
+            // Global view option (always show)
+            if (!filter || 'global'.includes(filterLower) || 'all threads'.includes(filterLower)) {
+                const isSelected = selectedThreadTid === null;
+                html += `<div class="thread-dropdown-item global-item ${isSelected ? 'selected' : ''}" data-tid="" onclick="selectFlameThread('')">
+                    <span class="item-icon">🌐</span>
+                    <span class="item-text">Global View (All Threads)</span>
+                </div>`;
+            }
+
+            // Filter threads
+            const filteredThreads = threadFlameGraphs.filter(t => {
+                if (!filter) return true;
+                const name = (t.name || `Thread-${t.tid}`).toLowerCase();
+                const group = (t.group || '').toLowerCase();
+                const tid = String(t.tid);
+                return name.includes(filterLower) || group.includes(filterLower) || tid.includes(filterLower);
+            });
+
+            // Render thread items
+            filteredThreads.forEach(t => {
+                const pct = t.percentage ? t.percentage.toFixed(1) : '0.0';
+                const displayName = t.name || `Thread-${t.tid}`;
+                const groupInfo = t.group ? `[${t.group}]` : '';
+                const samples = t.samples ? t.samples.toLocaleString() : '0';
+                const isSelected = selectedThreadTid === t.tid;
+
+                html += `<div class="thread-dropdown-item ${isSelected ? 'selected' : ''}" data-tid="${t.tid}" 
+                             onclick="selectFlameThread('${t.tid}')" 
+                             title="TID: ${t.tid}, Samples: ${samples}">
+                    <div class="item-main">
+                        <span class="item-icon">🧵</span>
+                        <span class="item-text">${Utils.escapeHtml(displayName)}</span>
+                        ${groupInfo ? `<span class="item-group">${Utils.escapeHtml(groupInfo)}</span>` : ''}
+                    </div>
+                    <span class="item-pct">${pct}%</span>
+                </div>`;
+            });
+
+            if (filteredThreads.length === 0 && filter) {
+                html += `<div class="thread-dropdown-empty">No threads match "${Utils.escapeHtml(filter)}"</div>`;
+            }
+
+            dropdown.innerHTML = html;
+        },
+
+        toggleThreadDropdown(show) {
+            const wrapper = document.getElementById('flameThreadSelectorWrapper');
+            const input = document.getElementById('flameThreadSearchInput');
+            if (!wrapper) return;
+
+            if (show === undefined) {
+                show = !wrapper.classList.contains('open');
+            }
+
+            if (show) {
+                wrapper.classList.add('open');
+                if (input) {
+                    input.value = '';
+                    input.focus();
+                }
+                this.renderThreadDropdownItems('');
+
+                // Close dropdown when clicking outside
+                setTimeout(() => {
+                    document.addEventListener('click', this._closeDropdownHandler = (e) => {
+                        if (!wrapper.contains(e.target)) {
+                            this.toggleThreadDropdown(false);
+                        }
+                    });
+                }, 0);
+            } else {
+                wrapper.classList.remove('open');
+                if (this._closeDropdownHandler) {
+                    document.removeEventListener('click', this._closeDropdownHandler);
+                    this._closeDropdownHandler = null;
+                }
+            }
+        },
+
+        handleThreadSearch(value) {
+            this.renderThreadDropdownItems(value);
+        },
+
+        handleThreadSearchKeydown(event) {
+            if (event.key === 'Escape') {
+                this.toggleThreadDropdown(false);
+            } else if (event.key === 'Enter') {
+                // Select first visible item
+                const dropdown = document.getElementById('flameThreadDropdown');
+                const firstItem = dropdown?.querySelector('.thread-dropdown-item');
+                if (firstItem) {
+                    const tid = firstItem.getAttribute('data-tid');
+                    this.selectThread(tid);
+                }
+            }
+        },
+
+        selectThread(tid) {
+            const selectedText = document.getElementById('flameThreadSelectedText');
+
+            if (tid === '' || tid === null || tid === undefined) {
+                // Switch to global view
+                selectedThreadTid = null;
+                if (selectedText) {
+                    selectedText.innerHTML = '<span class="global-icon">🌐</span> Global View (All Threads)';
+                }
+                this.toggleThreadDropdown(false);
+
+                // Restore global flame graph
+                if (originalApiData) {
+                    flameGraphData = transformFlameData(originalApiData);
+                    originalFlameGraphData = deepCloneFlameData(flameGraphData);
+                    flameFilters.clear();
+                    this.clearFiltersUI();
+                    this.clearSearch();
+                    this.render();
+                }
+            } else {
+                // Switch to specific thread
+                selectedThreadTid = parseInt(tid);
+                const thread = threadFlameGraphs.find(t => t.tid === selectedThreadTid);
+
+                if (thread && thread.flame_root) {
+                    const displayName = thread.name || `Thread-${thread.tid}`;
+                    const pct = thread.percentage ? thread.percentage.toFixed(1) : '0.0';
+
+                    if (selectedText) {
+                        selectedText.innerHTML = `<span class="thread-icon">🧵</span> ${Utils.escapeHtml(displayName)} <span class="selected-pct">(${pct}%)</span>`;
+                    }
+                    this.toggleThreadDropdown(false);
+
+                    // Render thread-specific flame graph
+                    flameGraphData = transformFlameData({ root: thread.flame_root });
+                    originalFlameGraphData = deepCloneFlameData(flameGraphData);
+                    flameFilters.clear();
+                    this.clearFiltersUI();
+                    this.clearSearch();
+                    this.render();
+                }
+            }
+        },
+
+        clearFiltersUI() {
+            const chips = document.querySelectorAll('#flameFilterSection .filter-chip');
+            chips.forEach(chip => chip.classList.remove('active'));
+        },
+
+        // Check if thread data is available
+        hasThreads() {
+            return hasThreadData;
+        },
+
+        // Get current selected thread
+        getSelectedThread() {
+            return selectedThreadTid;
         }
     };
 })();
