@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Perf Analysis - Visualization</title>
+    <!-- Theme CSS (load first for CSS variables) -->
+    <link rel="stylesheet" href="/static/css/theme.css">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -11,13 +13,32 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: '#667eea',
-                        secondary: '#764ba2',
-                        accent: '#f093fb',
-                        success: '#00c853',
-                        warning: '#ff9800',
-                        danger: '#f44336',
-                    }
+                        // Use CSS variables for theme support
+                        primary: 'rgb(var(--color-primary) / <alpha-value>)',
+                        'primary-hover': 'rgb(var(--color-primary-hover) / <alpha-value>)',
+                        secondary: 'rgb(var(--color-secondary) / <alpha-value>)',
+                        accent: 'rgb(var(--color-accent) / <alpha-value>)',
+                        success: 'rgb(var(--color-success) / <alpha-value>)',
+                        warning: 'rgb(var(--color-warning) / <alpha-value>)',
+                        danger: 'rgb(var(--color-danger) / <alpha-value>)',
+                        info: 'rgb(var(--color-info) / <alpha-value>)',
+                    },
+                    backgroundColor: {
+                        base: 'rgb(var(--color-bg-base) / <alpha-value>)',
+                        card: 'rgb(var(--color-bg-card) / <alpha-value>)',
+                        elevated: 'rgb(var(--color-bg-elevated) / <alpha-value>)',
+                        muted: 'rgb(var(--color-bg-muted) / <alpha-value>)',
+                    },
+                    textColor: {
+                        base: 'rgb(var(--color-text-base) / <alpha-value>)',
+                        secondary: 'rgb(var(--color-text-secondary) / <alpha-value>)',
+                        muted: 'rgb(var(--color-text-muted) / <alpha-value>)',
+                        inverted: 'rgb(var(--color-text-inverted) / <alpha-value>)',
+                    },
+                    borderColor: {
+                        theme: 'rgb(var(--color-border) / <alpha-value>)',
+                        'theme-light': 'rgb(var(--color-border-light) / <alpha-value>)',
+                    },
                 }
             }
         }
@@ -31,33 +52,86 @@
     <script src="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.css">
+    <!-- Tippy.js for tooltips -->
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css">
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/themes/light-border.css">
     <!-- Application Styles -->
     <link rel="stylesheet" href="/static/css/main.css">
     <link rel="stylesheet" href="/static/css/flamegraph.css">
     <link rel="stylesheet" href="/static/css/callgraph.css">
     <link rel="stylesheet" href="/static/css/heap.css">
     <link rel="stylesheet" href="/static/css/threads.css">
+    <!-- Theme Manager (load early) -->
+    <script src="/static/js/theme.js"></script>
 </head>
-<body class="bg-gray-100 text-gray-800" x-data="appState()" x-init="init()">
+<body class="bg-base text-base" x-data="appState()" x-init="init()">
     <!-- Header -->
-    <header class="bg-gradient-to-r from-primary to-secondary text-white px-8 py-5 shadow-lg">
+    <header class="bg-gradient-theme text-inverted px-8 py-5 shadow-lg">
         <div class="flex items-center justify-between">
             <div>
                 <h1 class="text-2xl font-semibold">🔥 Perf Analysis Viewer</h1>
                 <p class="text-sm opacity-90 mt-1">Interactive performance profiling visualization</p>
             </div>
-            <div class="flex items-center gap-3">
-                <label class="text-sm">Task:</label>
-                <select x-model="currentTask" @change="loadTask($event.target.value)"
-                    class="px-3 py-2 rounded-md border border-white/30 bg-white/10 text-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/50">
-                    <template x-if="tasks.length === 0">
-                        <option value="" class="text-gray-800 bg-white" x-text="loading ? 'Loading...' : 'No tasks found'"></option>
-                    </template>
-                    <template x-for="(task, idx) in tasks" :key="task.id">
-                        <option :value="task.id" class="text-gray-800 bg-white" x-text="task.id + (idx === 0 ? ' (latest)' : '')"></option>
-                    </template>
-                </select>
-                <span x-show="loading" class="animate-spin text-lg">⏳</span>
+            <div class="flex items-center gap-4">
+                <!-- Task Selector -->
+                <div class="flex items-center gap-3">
+                    <label class="text-sm">Task:</label>
+                    <select x-model="currentTask" @change="loadTask($event.target.value)"
+                        class="px-3 py-2 rounded-md border border-white/30 bg-white/10 text-white text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/50">
+                        <template x-if="tasks.length === 0">
+                            <option value="" class="text-gray-800 bg-white" x-text="loading ? 'Loading...' : 'No tasks found'"></option>
+                        </template>
+                        <template x-for="(task, idx) in tasks" :key="task.id">
+                            <option :value="task.id" class="text-gray-800 bg-white" x-text="task.id + (idx === 0 ? ' (latest)' : '')"></option>
+                        </template>
+                    </select>
+                    <span x-show="loading" class="animate-spin text-lg">⏳</span>
+                </div>
+                <!-- Theme Picker -->
+                <div class="theme-picker relative">
+                    <button class="theme-picker-trigger p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors flex items-center gap-2" 
+                            onclick="ThemeManager.togglePicker()" 
+                            title="Change theme">
+                        <span id="themeIcon" class="text-lg">☀️</span>
+                        <svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    <div class="theme-picker-dropdown absolute right-0 top-full mt-2 bg-card rounded-lg shadow-lg border border-theme overflow-hidden z-50 min-w-[160px] hidden" id="themePickerDropdown">
+                        <div class="p-2 border-b border-theme-light">
+                            <span class="text-xs text-muted font-medium uppercase tracking-wider">Theme</span>
+                        </div>
+                        <div class="p-1">
+                            <button class="theme-option w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors text-left text-base" 
+                                    data-theme-option="light" onclick="ThemeManager.setTheme('light')">
+                                <span class="text-lg">☀️</span>
+                                <span class="text-sm">Light</span>
+                            </button>
+                            <button class="theme-option w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors text-left text-base" 
+                                    data-theme-option="dark" onclick="ThemeManager.setTheme('dark')">
+                                <span class="text-lg">🌙</span>
+                                <span class="text-sm">Dark</span>
+                            </button>
+                            <button class="theme-option w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors text-left text-base" 
+                                    data-theme-option="purple" onclick="ThemeManager.setTheme('purple')">
+                                <span class="text-lg">💜</span>
+                                <span class="text-sm">Purple</span>
+                            </button>
+                            <button class="theme-option w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors text-left text-base" 
+                                    data-theme-option="ocean" onclick="ThemeManager.setTheme('ocean')">
+                                <span class="text-lg">🌊</span>
+                                <span class="text-sm">Ocean</span>
+                            </button>
+                            <button class="theme-option w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors text-left text-base" 
+                                    data-theme-option="sunset" onclick="ThemeManager.setTheme('sunset')">
+                                <span class="text-lg">🌅</span>
+                                <span class="text-sm">Sunset</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </header>
@@ -799,12 +873,54 @@
     <!-- Node Tooltip -->
     <div id="nodeTooltip" class="node-tooltip fixed bg-black/85 text-white px-4 py-2.5 rounded-lg text-sm max-w-[400px] break-all pointer-events-none z-[1000] hidden"></div>
 
-    <!-- Alpine.js x-cloak style -->
+    <!-- Alpine.js x-cloak style & Theme Picker -->
     <style>
         [x-cloak] { display: none !important; }
+        
+        /* Tab active state - uses CSS variables */
         .tab-btn.tab-active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-            color: white !important;
+            background: var(--gradient-primary) !important;
+            color: rgb(var(--color-text-inverted)) !important;
+        }
+        
+        /* Theme picker dropdown */
+        .theme-picker-dropdown {
+            display: none;
+        }
+        .theme-picker-dropdown.show {
+            display: block;
+            animation: fadeIn 0.15s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Theme option active state */
+        .theme-option.active {
+            background: rgb(var(--color-bg-active));
+        }
+        .theme-option.active::before {
+            content: '✓';
+            position: absolute;
+            right: 12px;
+            color: rgb(var(--color-primary));
+            font-weight: bold;
+        }
+        .theme-option {
+            position: relative;
+        }
+        
+        /* Dark mode specific overrides for third-party components */
+        [data-theme="dark"] .d3-flame-graph text {
+            fill: rgb(var(--color-text-base)) !important;
+        }
+        [data-theme="dark"] .tippy-box[data-theme~='flame'] {
+            background: rgb(var(--color-bg-card));
+            color: rgb(var(--color-text-base));
+        }
+        [data-theme="dark"] .tippy-box[data-theme~='flame'] > .tippy-arrow::before {
+            border-right-color: rgb(var(--color-bg-card));
         }
     </style>
 

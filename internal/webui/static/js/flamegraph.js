@@ -54,96 +54,260 @@ const FlameGraph = (function() {
         ]
     };
 
-    // Create custom tooltip for flame graph
-    // d3-flamegraph requires a tooltip object with show(d) and hide() methods
+    // Custom tooltip using Tippy.js with mouse-following behavior
+    // d3-flamegraph requires tooltip to be a function (for svg.call) with show/hide methods
+    let flameTooltipInstance = null;
+    let tippyInstance = null;
+    
+    // Mouse position tracking for tooltip follow
+    let mouseX = 0;
+    let mouseY = 0;
+    let isTooltipVisible = false;
+    let mouseMoveHandler = null;
+    let currentTooltipData = null;
+    
     function createFlameTooltip() {
-        let tooltipEl = null;
-        
-        function ensureTooltipElement() {
-            if (!tooltipEl) {
-                tooltipEl = d3.select('body')
-                    .append('div')
-                    .attr('class', 'flame-tooltip')
-                    .style('position', 'absolute')
-                    .style('z-index', '10000')
-                    .style('visibility', 'hidden')
-                    .style('background', 'rgba(0, 0, 0, 0.9)')
-                    .style('color', 'white')
-                    .style('padding', '8px 12px')
-                    .style('border-radius', '6px')
-                    .style('font-size', '12px')
-                    .style('font-family', 'monospace')
-                    .style('max-width', '500px')
-                    .style('word-wrap', 'break-word')
-                    .style('pointer-events', 'none')
-                    .style('box-shadow', '0 2px 8px rgba(0,0,0,0.3)');
-            }
-            return tooltipEl;
+        // Return existing instance if already created
+        if (flameTooltipInstance) {
+            return flameTooltipInstance;
         }
         
-        // Track mouse position for tooltip positioning
-        let mouseX = 0, mouseY = 0;
-        document.addEventListener('mousemove', function(e) {
-            mouseX = e.pageX;
-            mouseY = e.pageY;
-        });
+        // Create a virtual element for Tippy to attach to (follows mouse)
+        const virtualElement = {
+            getBoundingClientRect: () => ({
+                width: 0,
+                height: 0,
+                top: mouseY,
+                left: mouseX,
+                right: mouseX,
+                bottom: mouseY
+            })
+        };
         
-        return {
-            // d3-flamegraph calls show(d, element) where element is the DOM node
-            show: function(d, element) {
-                const el = ensureTooltipElement();
-                const name = d.data.name || '';
-                const value = d.value || 0;
-                
-                // Format function name with allocation info
-                const formatted = Utils.formatFunctionName(name, { showBadge: false });
-                const displayName = formatted.displayName;
-                
-                // Calculate percentage
-                let percentage = 0;
-                if (flameGraphData && flameGraphData.value > 0) {
-                    percentage = (value / flameGraphData.value * 100).toFixed(2);
-                }
-                
-                // Build tooltip HTML
-                let html = `<div style="font-weight: bold; margin-bottom: 4px;">${Utils.escapeHtml(displayName)}</div>`;
-                
-                // Show allocation type badge if applicable
-                if (formatted.isAllocation) {
-                    const allocLabel = formatted.allocationType === 'instance' 
-                        ? '📦 Instance Allocation (object count)' 
-                        : '📊 Size Allocation (bytes)';
-                    const bgColor = formatted.allocationType === 'instance' 
-                        ? 'rgba(52, 152, 219, 0.3)' 
-                        : 'rgba(155, 89, 182, 0.3)';
-                    html += `<div style="background: ${bgColor}; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-bottom: 4px; display: inline-block;">${allocLabel}</div><br>`;
-                }
-                
-                html += `<div style="color: #ccc;">Samples: <span style="color: #fff;">${value.toLocaleString()}</span></div>`;
-                html += `<div style="color: #ccc;">Percentage: <span style="color: #fff;">${percentage}%</span></div>`;
-                
-                el.html(html)
-                    .style('visibility', 'visible');
-                
-                // Position tooltip near mouse using tracked position
-                el.style('top', (mouseY + 15) + 'px')
-                    .style('left', (mouseX + 15) + 'px');
-            },
+        // Build tooltip HTML content
+        function buildTooltipContent(d) {
+            const name = d.data.name || '';
+            const value = d.value || 0;
+            const self = d.data.self || 0;
+            const module = d.data.module || '';
             
-            hide: function() {
-                const el = ensureTooltipElement();
-                el.style('visibility', 'hidden');
+            // Parse function name for structured display
+            const parsed = Utils.parseMethodName(name);
+            const formatted = Utils.formatFunctionName(name, { showBadge: false });
+            
+            // Calculate percentages
+            let totalPct = 0, selfPct = 0;
+            if (flameGraphData && flameGraphData.value > 0) {
+                totalPct = (value / flameGraphData.value * 100);
+                selfPct = (self / flameGraphData.value * 100);
+            }
+            
+            // Build tooltip HTML
+            let html = '<div class="flame-tippy-content">';
+            
+            // Function name section
+            html += '<div class="tippy-func-section">';
+            if (parsed.method) {
+                html += `<div class="tippy-func-name">${Utils.escapeHtml(parsed.method)}</div>`;
+            } else {
+                html += `<div class="tippy-func-name">${Utils.escapeHtml(name)}</div>`;
+            }
+            if (parsed.class) {
+                html += `<div class="tippy-class-name">${Utils.escapeHtml(parsed.class)}</div>`;
+            }
+            if (parsed.package) {
+                let pkgDisplay = parsed.package;
+                if (pkgDisplay.length > 50) {
+                    pkgDisplay = '...' + pkgDisplay.slice(-47);
+                }
+                html += `<div class="tippy-package">${Utils.escapeHtml(pkgDisplay)}</div>`;
+            }
+            html += '</div>';
+            
+            // Allocation badge
+            if (formatted.isAllocation) {
+                const allocLabel = formatted.allocationType === 'instance' ? 'Instance' : 'Size';
+                const allocClass = formatted.allocationType === 'instance' ? 'instance' : 'size';
+                html += `<div class="tippy-alloc-badge tippy-alloc-${allocClass}">${allocLabel} Allocation</div>`;
+            }
+            
+            // Stats section
+            html += '<div class="tippy-stats">';
+            html += `<div class="tippy-stat-row">`;
+            html += `<span class="tippy-stat-label">Total</span>`;
+            html += `<span class="tippy-stat-value">${value.toLocaleString()}</span>`;
+            html += `<span class="tippy-stat-pct">${totalPct.toFixed(2)}%</span>`;
+            html += `</div>`;
+            
+            if (self > 0) {
+                html += `<div class="tippy-stat-row">`;
+                html += `<span class="tippy-stat-label">Self</span>`;
+                html += `<span class="tippy-stat-value">${self.toLocaleString()}</span>`;
+                html += `<span class="tippy-stat-pct">${selfPct.toFixed(2)}%</span>`;
+                html += `</div>`;
+                // Progress bar
+                const barWidth = Math.min(100, Math.max(0, selfPct));
+                html += `<div class="tippy-progress"><div class="tippy-progress-fill" style="width:${barWidth}%"></div></div>`;
+            }
+            html += '</div>';
+            
+            // Module
+            if (module) {
+                html += `<div class="tippy-module">${Utils.escapeHtml(module)}</div>`;
+            }
+            
+            // Hint
+            html += '<div class="tippy-hint">Click to zoom · Right-click to zoom out</div>';
+            
+            html += '</div>';
+            return html;
+        }
+        
+        // Update tooltip position based on current mouse coordinates
+        function updateTooltipPosition() {
+            if (tippyInstance && isTooltipVisible) {
+                tippyInstance.setProps({
+                    getReferenceClientRect: () => ({
+                        width: 0,
+                        height: 0,
+                        top: mouseY,
+                        left: mouseX,
+                        right: mouseX,
+                        bottom: mouseY
+                    })
+                });
+            }
+        }
+        
+        // Throttled mouse move handler using requestAnimationFrame
+        let rafId = null;
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            // Use RAF for smooth updates without overwhelming the browser
+            if (!rafId) {
+                rafId = requestAnimationFrame(() => {
+                    updateTooltipPosition();
+                    rafId = null;
+                });
+            }
+        }
+        
+        // Create the tooltip function that d3 will call
+        function tooltip(selection) {
+            // Initialize Tippy instance if not exists
+            if (!tippyInstance && typeof tippy !== 'undefined') {
+                tippyInstance = tippy(document.body, {
+                    getReferenceClientRect: () => virtualElement.getBoundingClientRect(),
+                    appendTo: document.body,
+                    content: '',
+                    allowHTML: true,
+                    placement: 'right-start',
+                    trigger: 'manual',
+                    interactive: false,
+                    arrow: true,
+                    theme: 'flame',
+                    maxWidth: 400,
+                    offset: [10, 15], // Offset from mouse cursor
+                    animation: 'shift-away',
+                    duration: [100, 75], // Faster show/hide for mouse following
+                    hideOnClick: false,
+                    popperOptions: {
+                        modifiers: [
+                            {
+                                name: 'flip',
+                                options: {
+                                    fallbackPlacements: ['left-start', 'top', 'bottom']
+                                }
+                            },
+                            {
+                                name: 'preventOverflow',
+                                options: {
+                                    boundary: 'viewport',
+                                    padding: 10
+                                }
+                            }
+                        ]
+                    }
+                });
+            }
+            
+            // Setup mouse move listener on the flame graph container
+            const container = document.getElementById('flamegraph');
+            if (container && !mouseMoveHandler) {
+                mouseMoveHandler = handleMouseMove;
+                container.addEventListener('mousemove', mouseMoveHandler, { passive: true });
+            }
+        }
+        
+        // Attach show method
+        tooltip.show = function(d, element) {
+            if (!tippyInstance) {
+                tooltip(); // Initialize if needed
+            }
+            
+            if (tippyInstance) {
+                currentTooltipData = d;
+                isTooltipVisible = true;
+                
+                // Set content and show at current mouse position
+                tippyInstance.setContent(buildTooltipContent(d));
+                tippyInstance.setProps({
+                    getReferenceClientRect: () => ({
+                        width: 0,
+                        height: 0,
+                        top: mouseY,
+                        left: mouseX,
+                        right: mouseX,
+                        bottom: mouseY
+                    })
+                });
+                tippyInstance.show();
             }
         };
+        
+        // Attach hide method
+        tooltip.hide = function() {
+            isTooltipVisible = false;
+            currentTooltipData = null;
+            if (tippyInstance) {
+                tippyInstance.hide();
+            }
+        };
+        
+        // Attach destroy method
+        tooltip.destroy = function() {
+            isTooltipVisible = false;
+            currentTooltipData = null;
+            
+            // Remove mouse move listener
+            const container = document.getElementById('flamegraph');
+            if (container && mouseMoveHandler) {
+                container.removeEventListener('mousemove', mouseMoveHandler);
+                mouseMoveHandler = null;
+            }
+            
+            if (tippyInstance) {
+                tippyInstance.destroy();
+                tippyInstance = null;
+            }
+        };
+        
+        flameTooltipInstance = tooltip;
+        return tooltip;
     }
 
     // Transform flame graph data to d3-flamegraph format
+    // Preserves self, module, and other metadata for tooltip display
     function transformFlameData(data) {
         if (!data) return null;
         const node = data.root || data;
         const result = {
             name: node.func || node.name || 'root',
             value: node.value || 0,
+            self: node.self || 0,
+            module: node.module || '',
             children: []
         };
         if (node.children && Array.isArray(node.children)) {
@@ -158,6 +322,8 @@ const FlameGraph = (function() {
         return {
             name: node.name,
             value: node.value,
+            self: node.self || 0,
+            module: node.module || '',
             children: node.children ? node.children.map(c => deepCloneFlameData(c)) : []
         };
     }
@@ -302,14 +468,49 @@ const FlameGraph = (function() {
         // Also search without allocation marker for better UX
         const termClean = Utils.stripAllocationMarker(term).toLowerCase();
         let matchCount = 0;
+        
         d3.select('#flamegraph').selectAll('.d3-flame-graph g').each(function() {
             const g = d3.select(this);
-            const titleEl = g.select('title');
-            const name = titleEl.empty() ? '' : titleEl.text();
+            
+            // Try multiple ways to get the function name:
+            // 1. From __data__ (d3 bound data) - most reliable
+            // 2. From title element
+            // 3. From text element
+            let name = '';
+            
+            // Method 1: Get from d3 bound data (most reliable for d3-flamegraph)
+            const data = g.datum();
+            if (data && data.data && data.data.name) {
+                name = data.data.name;
+            } else if (data && data.name) {
+                name = data.name;
+            }
+            
+            // Method 2: Fallback to title element
+            if (!name) {
+                const titleEl = g.select('title');
+                if (!titleEl.empty()) {
+                    name = titleEl.text();
+                }
+            }
+            
+            // Method 3: Fallback to text element
+            if (!name) {
+                const textEl = g.select('text');
+                if (!textEl.empty()) {
+                    name = textEl.text();
+                }
+            }
+            
+            if (!name) {
+                g.classed('search-match', false);
+                return;
+            }
+            
             const nameLower = name.toLowerCase();
             // Match original name or name without allocation marker
             const nameClean = Utils.stripAllocationMarker(name).toLowerCase();
-            if (name && (nameLower.includes(termLower) || nameClean.includes(termClean))) {
+            if (nameLower.includes(termLower) || nameClean.includes(termClean)) {
                 g.classed('search-match', true);
                 matchCount++;
             } else {
@@ -410,7 +611,7 @@ const FlameGraph = (function() {
                 .onClick(this.handleClick.bind(this))
                 .tooltip(createFlameTooltip());
 
-            // Color scheme
+            // Color scheme - read base hue from CSS variables for theme support
             flameChart.setColorMapper(function(d, originalColor) {
                 const name = d.data.name || '';
                 let hash = 0;
@@ -418,7 +619,13 @@ const FlameGraph = (function() {
                     hash = ((hash << 5) - hash) + name.charCodeAt(i);
                     hash |= 0;
                 }
-                const hue = 30 + (Math.abs(hash) % 30);
+                
+                // Read flame color settings from CSS variables
+                const style = getComputedStyle(document.documentElement);
+                const baseHue = parseInt(style.getPropertyValue('--color-flame-base-hue')) || 30;
+                const hueRange = parseInt(style.getPropertyValue('--color-flame-hue-range')) || 30;
+                
+                const hue = baseHue + (Math.abs(hash) % hueRange);
                 const saturation = 70 + (Math.abs(hash >> 8) % 30);
                 const lightness = 50 + (Math.abs(hash >> 16) % 20);
                 return `hsl(${hue}, ${saturation}%, ${lightness}%)`;

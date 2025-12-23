@@ -12,13 +12,26 @@ const TopFuncsPanel = (function() {
     let funcsData = [];
     let threadGroupsData = [];
 
-    // Color palette for charts
-    const COLORS = [
-        '#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe',
-        '#00f2fe', '#43e97b', '#38f9d7', '#fa709a', '#fee140',
-        '#30cfd0', '#330867', '#a8edea', '#fed6e3', '#5ee7df',
-        '#b490ca', '#5c258d', '#4389a2', '#93a5cf', '#e4efe9'
-    ];
+    // Color palette for charts - uses theme-aware colors when available
+    function getThemeColors() {
+        if (typeof ThemeManager !== 'undefined') {
+            // Try to get colors from theme
+            const primary = ThemeManager.getColorHex('primary') || '#667eea';
+            const secondary = ThemeManager.getColorHex('secondary') || '#764ba2';
+            return [
+                primary, secondary, '#f093fb', '#f5576c', '#4facfe',
+                '#00f2fe', '#43e97b', '#38f9d7', '#fa709a', '#fee140',
+                '#30cfd0', '#330867', '#a8edea', '#fed6e3', '#5ee7df',
+                '#b490ca', '#5c258d', '#4389a2', '#93a5cf', '#e4efe9'
+            ];
+        }
+        return [
+            '#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe',
+            '#00f2fe', '#43e97b', '#38f9d7', '#fa709a', '#fee140',
+            '#30cfd0', '#330867', '#a8edea', '#fed6e3', '#5ee7df',
+            '#b490ca', '#5c258d', '#4389a2', '#93a5cf', '#e4efe9'
+        ];
+    }
 
     // Thread group specific colors (more distinct)
     const THREAD_COLORS = [
@@ -29,8 +42,9 @@ const TopFuncsPanel = (function() {
     ];
 
     // Get color for index
-    function getColor(index, palette = COLORS) {
-        return palette[index % palette.length];
+    function getColor(index, palette = null) {
+        const colors = palette || getThemeColors();
+        return colors[index % colors.length];
     }
 
     // Truncate function name for display - keep more context
@@ -779,9 +793,26 @@ const TopFuncsPanel = (function() {
         },
 
         // Resize charts
-        resize: handleResize
+        resize: handleResize,
+        
+        // Refresh charts (called on theme change)
+        refresh: function() {
+            if (currentView === 'chart' && funcsData.length > 0) {
+                this.updateChart();
+            } else if (currentView === 'threads' && threadGroupsData.length > 0) {
+                this.updateThreadChart();
+            }
+        }
     };
 })();
 
 // Export for global access
 window.TopFuncsPanel = TopFuncsPanel;
+
+// Listen for theme changes to refresh charts
+if (typeof ThemeManager !== 'undefined') {
+    ThemeManager.onChange(function(themeId) {
+        // Refresh charts when theme changes
+        setTimeout(() => TopFuncsPanel.refresh(), 100);
+    });
+}

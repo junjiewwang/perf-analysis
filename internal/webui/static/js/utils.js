@@ -155,6 +155,169 @@ function formatFunctionNameHtml(funcName, options = {}) {
     return `${Utils.escapeHtml(formatted.displayName)} ${formatted.badge}`;
 }
 
+/**
+ * Parse method name to extract package, class, and method components.
+ * Supports Java, Go, C++, Native library, and simple function name formats.
+ * 
+ * @param {string} fullName - Full qualified function name
+ * @returns {Object} Parsed result with type, package, class, method, and display info
+ */
+function parseMethodName(fullName) {
+    if (!fullName) {
+        return { type: 'simple', package: '', class: '', method: '', fullName: '' };
+    }
+
+    // Strip allocation marker first
+    const cleanName = stripAllocationMarker(fullName);
+
+    // Pattern 1: Native library format - /path/to/lib.so::function or lib.so::function
+    const nativeLibMatch = cleanName.match(/^(.+\.so(?:\.[0-9.]+)?)::([\w_]+)$/);
+    if (nativeLibMatch) {
+        const libPath = nativeLibMatch[1];
+        const funcName = nativeLibMatch[2];
+        // Extract just the library name from path
+        const libName = libPath.split('/').pop();
+        return {
+            type: 'native_lib',
+            package: libPath.includes('/') ? libPath.substring(0, libPath.lastIndexOf('/')) : '',
+            class: libName,
+            method: funcName,
+            fullName: cleanName
+        };
+    }
+
+    // Pattern 2: Kernel or special tags - [kernel], [native], etc.
+    const tagMatch = cleanName.match(/^\[(\w+)\]\s*(.*)$/);
+    if (tagMatch) {
+        return {
+            type: 'kernel',
+            package: '',
+            class: `[${tagMatch[1]}]`,
+            method: tagMatch[2] || '',
+            fullName: cleanName
+        };
+    }
+
+    // Pattern 3: C++ style - Namespace::Class::method or std::vector<T>::push_back
+    // Also handles mangled names like _ZN...
+    if (cleanName.includes('::') && !cleanName.includes('.')) {
+        const parts = cleanName.split('::');
+        const method = parts.pop() || '';
+        const className = parts.pop() || '';
+        const namespace = parts.join('::');
+        return {
+            type: 'cpp',
+            package: namespace,
+            class: className,
+            method: method,
+            fullName: cleanName
+        };
+    }
+
+    // Pattern 4: Go style - github.com/pkg/errors.Wrap or runtime.goexit
+    // Go packages use / for path and . for final separator
+    const goMatch = cleanName.match(/^((?:[\w-]+\/)*[\w-]+(?:\/[\w-]+)*)\.(\w+)$/);
+    if (goMatch && cleanName.includes('/')) {
+        const pkgPath = goMatch[1];
+        const funcName = goMatch[2];
+        return {
+            type: 'go',
+            package: pkgPath,
+            class: pkgPath.split('/').pop() || '',
+            method: funcName,
+            fullName: cleanName
+        };
+    }
+
+    // Pattern 5: Java style - com.example.package.Class.method or Class.method
+    // Java uses dots throughout
+    if (cleanName.includes('.') && !cleanName.includes('/') && !cleanName.includes('::')) {
+        const parts = cleanName.split('.');
+        if (parts.length >= 2) {
+            const method = parts.pop() || '';
+            const className = parts.pop() || '';
+            const packagePath = parts.join('.');
+            return {
+                type: 'java',
+                package: packagePath,
+                class: className,
+                method: method,
+                fullName: cleanName
+            };
+        }
+    }
+
+    // Pattern 6: Pure file path - /usr/lib/something
+    if (cleanName.startsWith('/') && !cleanName.includes('::')) {
+        const pathParts = cleanName.split('/');
+        const fileName = pathParts.pop() || '';
+        return {
+            type: 'path',
+            package: pathParts.join('/'),
+            class: '',
+            method: fileName,
+            fullName: cleanName
+        };
+    }
+
+    // Pattern 7: Simple function name
+    return {
+        type: 'simple',
+        package: '',
+        class: '',
+        method: cleanName,
+        fullName: cleanName
+    };
+}
+
+/**
+ * Format parsed method name for display with visual hierarchy.
+ * Returns HTML string with styled package, class, and method.
+ * 
+ * @param {Object} parsed - Result from parseMethodName()
+ * @param {Object} options - Display options
+ * @returns {string} Formatted HTML string
+ */
+function formatParsedMethodName(parsed, options = {}) {
+    const { maxPackageLen = 60, maxClassLen = 40, maxMethodLen = 50 } = options;
+    
+    let html = '';
+    
+    // Package/namespace line (if exists)
+    if (parsed.package) {
+        let pkgDisplay = parsed.package;
+        if (pkgDisplay.length > maxPackageLen) {
+            pkgDisplay = '...' + pkgDisplay.slice(-maxPackageLen + 3);
+        }
+        const icon = parsed.type === 'native_lib' ? '📁' : 
+                     parsed.type === 'kernel' ? '🔧' :
+                     parsed.type === 'go' ? '🐹' :
+                     parsed.type === 'cpp' ? '⚙️' : '📦';
+        html += `<div class="tooltip-package">${icon} ${escapeHtml(pkgDisplay)}</div>`;
+    }
+    
+    // Class line (if exists)
+    if (parsed.class) {
+        let classDisplay = parsed.class;
+        if (classDisplay.length > maxClassLen) {
+            classDisplay = classDisplay.slice(0, maxClassLen - 2) + '..';
+        }
+        html += `<div class="tooltip-class">🔷 ${escapeHtml(classDisplay)}</div>`;
+    }
+    
+    // Method line
+    if (parsed.method) {
+        let methodDisplay = parsed.method;
+        if (methodDisplay.length > maxMethodLen) {
+            methodDisplay = methodDisplay.slice(0, maxMethodLen - 2) + '..';
+        }
+        const arrow = (parsed.class || parsed.package) ? '→ ' : '';
+        html += `<div class="tooltip-method">${arrow}${escapeHtml(methodDisplay)}</div>`;
+    }
+    
+    return html;
+}
+
 // Copy text to clipboard
 function copyToClipboard(text, element) {
     navigator.clipboard.writeText(text).then(() => {
@@ -355,6 +518,9 @@ const Utils = {
     stripAllocationMarker,
     formatFunctionName,
     formatFunctionNameHtml,
+    // Method name parsing utilities
+    parseMethodName,
+    formatParsedMethodName,
     SYSTEM_PATTERNS
 };
 

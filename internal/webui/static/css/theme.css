@@ -1,0 +1,216 @@
+/**
+ * Theme System - CSS Variables for unified theme management
+ * 
+ * Usage:
+ * - Colors use RGB format for Tailwind alpha support: rgb(var(--color-xxx) / <alpha>)
+ * - Switch themes by setting data-theme attribute on <html>
+ * - Supports: light (default), dark, purple, ocean
+ */
+
+/* ===== Light Theme (Default) ===== */
+:root {
+    /* Primary colors - gradient endpoints */
+    --color-primary: 102 126 234;        /* #667eea */
+    --color-primary-hover: 90 111 214;   /* slightly darker */
+    --color-secondary: 118 75 162;       /* #764ba2 */
+    --color-accent: 240 147 251;         /* #f093fb */
+    
+    /* Semantic colors */
+    --color-success: 0 200 83;           /* #00c853 */
+    --color-warning: 255 152 0;          /* #ff9800 */
+    --color-danger: 244 67 54;           /* #f44336 */
+    --color-info: 33 150 243;            /* #2196f3 */
+    
+    /* Background colors */
+    --color-bg-base: 243 244 246;        /* #f3f4f6 - page background */
+    --color-bg-card: 255 255 255;        /* #ffffff - card/panel background */
+    --color-bg-elevated: 255 255 255;    /* #ffffff - elevated elements */
+    --color-bg-hover: 249 250 251;       /* #f9fafb - hover state */
+    --color-bg-active: 243 244 246;      /* #f3f4f6 - active/selected state */
+    --color-bg-muted: 249 249 249;       /* #f9f9f9 - muted background */
+    
+    /* Text colors */
+    --color-text-base: 31 41 55;         /* #1f2937 - primary text */
+    --color-text-secondary: 75 85 99;    /* #4b5563 - secondary text */
+    --color-text-muted: 107 114 128;     /* #6b7280 - muted/placeholder */
+    --color-text-inverted: 255 255 255;  /* #ffffff - text on dark bg */
+    
+    /* Border colors */
+    --color-border: 229 231 235;         /* #e5e7eb - default border */
+    --color-border-light: 243 244 246;   /* #f3f4f6 - light border */
+    --color-border-focus: 102 126 234;   /* #667eea - focus ring */
+    
+    /* Shadow colors */
+    --color-shadow: 0 0 0;               /* black for shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(var(--color-shadow) / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(var(--color-shadow) / 0.1), 0 2px 4px -2px rgb(var(--color-shadow) / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(var(--color-shadow) / 0.1), 0 4px 6px -4px rgb(var(--color-shadow) / 0.1);
+    
+    /* Chart/Visualization colors */
+    --color-chart-1: 102 126 234;        /* primary */
+    --color-chart-2: 118 75 162;         /* secondary */
+    --color-chart-3: 0 200 83;           /* success */
+    --color-chart-4: 255 152 0;          /* warning */
+    --color-chart-5: 244 67 54;          /* danger */
+    --color-chart-6: 33 150 243;         /* info */
+    
+    /* Flame graph color palette - classic flame colors */
+    --color-flame-hot: 255 87 34;        /* #ff5722 - hottest (top frames) */
+    --color-flame-warm: 255 152 0;       /* #ff9800 - warm (mid frames) */
+    --color-flame-cool: 255 193 7;       /* #ffc107 - cooler (bottom frames) */
+    --color-flame-base-hue: 30;          /* Base hue for flame color generation */
+    --color-flame-hue-range: 30;         /* Hue variation range */
+    --gradient-flame: linear-gradient(135deg, rgb(var(--color-flame-hot)) 0%, rgb(var(--color-flame-warm)) 100%);
+    --gradient-flame-progress: linear-gradient(90deg, rgb(var(--color-flame-warm)) 0%, rgb(var(--color-flame-hot)) 100%);
+    
+    /* Flame graph specific */
+    --color-flame-match: 224 64 251;     /* #e040fb - search match highlight */
+    --color-flame-match-stroke: 123 31 162; /* #7b1fa2 */
+    
+    /* Gradient presets (as CSS values) */
+    --gradient-primary: linear-gradient(135deg, rgb(var(--color-primary)) 0%, rgb(var(--color-secondary)) 100%);
+    --gradient-header: linear-gradient(to right, rgb(var(--color-primary)) 0%, rgb(var(--color-secondary)) 100%);
+}
+
+/* ===== Dark Theme ===== */
+[data-theme="dark"] {
+    /* Primary colors - lighter for dark mode */
+    --color-primary: 129 140 248;        /* #818cf8 - indigo-400 */
+    --color-primary-hover: 165 180 252;  /* #a5b4fc - indigo-300 */
+    --color-secondary: 167 139 250;      /* #a78bfa - violet-400 */
+    --color-accent: 232 121 249;         /* #e879f9 - fuchsia-400 */
+    
+    /* Semantic colors - adjusted for dark */
+    --color-success: 74 222 128;         /* #4ade80 - green-400 */
+    --color-warning: 251 191 36;         /* #fbbf24 - amber-400 */
+    --color-danger: 248 113 113;         /* #f87171 - red-400 */
+    --color-info: 96 165 250;            /* #60a5fa - blue-400 */
+    
+    /* Background colors - dark palette */
+    --color-bg-base: 17 24 39;           /* #111827 - gray-900 */
+    --color-bg-card: 31 41 55;           /* #1f2937 - gray-800 */
+    --color-bg-elevated: 55 65 81;       /* #374151 - gray-700 */
+    --color-bg-hover: 55 65 81;          /* #374151 - gray-700 */
+    --color-bg-active: 75 85 99;         /* #4b5563 - gray-600 */
+    --color-bg-muted: 31 41 55;          /* #1f2937 - gray-800 */
+    
+    /* Text colors - light for dark bg */
+    --color-text-base: 243 244 246;      /* #f3f4f6 - gray-100 */
+    --color-text-secondary: 209 213 219; /* #d1d5db - gray-300 */
+    --color-text-muted: 156 163 175;     /* #9ca3af - gray-400 */
+    --color-text-inverted: 17 24 39;     /* #111827 - gray-900 */
+    
+    /* Border colors */
+    --color-border: 75 85 99;            /* #4b5563 - gray-600 */
+    --color-border-light: 55 65 81;      /* #374151 - gray-700 */
+    --color-border-focus: 129 140 248;   /* #818cf8 - indigo-400 */
+    
+    /* Shadow - more subtle in dark mode */
+    --color-shadow: 0 0 0;
+    --shadow-sm: 0 1px 2px 0 rgb(var(--color-shadow) / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(var(--color-shadow) / 0.4);
+    --shadow-lg: 0 10px 15px -3px rgb(var(--color-shadow) / 0.5);
+    
+    /* Chart colors - brighter for dark bg */
+    --color-chart-1: 129 140 248;
+    --color-chart-2: 167 139 250;
+    --color-chart-3: 74 222 128;
+    --color-chart-4: 251 191 36;
+    --color-chart-5: 248 113 113;
+    --color-chart-6: 96 165 250;
+    
+    /* Flame graph colors - brighter for dark mode */
+    --color-flame-hot: 255 112 67;       /* #ff7043 - brighter orange-red */
+    --color-flame-warm: 255 167 38;      /* #ffa726 - brighter orange */
+    --color-flame-cool: 255 213 79;      /* #ffd54f - brighter yellow */
+}
+
+/* ===== Purple Theme ===== */
+[data-theme="purple"] {
+    --color-primary: 139 92 246;         /* #8b5cf6 - violet-500 */
+    --color-primary-hover: 124 58 237;   /* #7c3aed - violet-600 */
+    --color-secondary: 192 132 252;      /* #c084fc - purple-400 */
+    --color-accent: 232 121 249;         /* #e879f9 - fuchsia-400 */
+    
+    --color-border-focus: 139 92 246;
+    
+    --color-chart-1: 139 92 246;
+    --color-chart-2: 192 132 252;
+}
+
+/* ===== Ocean Theme ===== */
+[data-theme="ocean"] {
+    --color-primary: 59 130 246;         /* #3b82f6 - blue-500 */
+    --color-primary-hover: 37 99 235;    /* #2563eb - blue-600 */
+    --color-secondary: 6 182 212;        /* #06b6d4 - cyan-500 */
+    --color-accent: 34 211 238;          /* #22d3ee - cyan-400 */
+    
+    --color-border-focus: 59 130 246;
+    
+    --color-chart-1: 59 130 246;
+    --color-chart-2: 6 182 212;
+}
+
+/* ===== Sunset Theme ===== */
+[data-theme="sunset"] {
+    --color-primary: 249 115 22;         /* #f97316 - orange-500 */
+    --color-primary-hover: 234 88 12;    /* #ea580c - orange-600 */
+    --color-secondary: 244 63 94;        /* #f43f5e - rose-500 */
+    --color-accent: 251 146 60;          /* #fb923c - orange-400 */
+    
+    --color-border-focus: 249 115 22;
+    
+    --color-chart-1: 249 115 22;
+    --color-chart-2: 244 63 94;
+}
+
+/* ===== Utility Classes using CSS Variables ===== */
+
+/* Background utilities */
+.bg-theme-base { background-color: rgb(var(--color-bg-base)); }
+.bg-theme-card { background-color: rgb(var(--color-bg-card)); }
+.bg-theme-elevated { background-color: rgb(var(--color-bg-elevated)); }
+.bg-theme-hover { background-color: rgb(var(--color-bg-hover)); }
+.bg-theme-muted { background-color: rgb(var(--color-bg-muted)); }
+
+/* Text utilities */
+.text-theme-base { color: rgb(var(--color-text-base)); }
+.text-theme-secondary { color: rgb(var(--color-text-secondary)); }
+.text-theme-muted { color: rgb(var(--color-text-muted)); }
+.text-theme-inverted { color: rgb(var(--color-text-inverted)); }
+
+/* Border utilities */
+.border-theme { border-color: rgb(var(--color-border)); }
+.border-theme-light { border-color: rgb(var(--color-border-light)); }
+.border-theme-focus { border-color: rgb(var(--color-border-focus)); }
+
+/* Gradient utilities */
+.bg-gradient-theme {
+    background: var(--gradient-primary);
+}
+
+.bg-gradient-header {
+    background: var(--gradient-header);
+}
+
+/* Focus ring */
+.focus-theme:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgb(var(--color-border-focus) / 0.3);
+    border-color: rgb(var(--color-border-focus));
+}
+
+/* Transition for theme switching */
+html {
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+    transition: background-color 0.3s ease, 
+                color 0.3s ease, 
+                border-color 0.3s ease,
+                box-shadow 0.3s ease !important;
+}
