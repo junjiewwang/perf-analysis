@@ -39,6 +39,41 @@ function formatDuration(ms) {
     }
 }
 
+// Format time/samples value to human readable
+// Handles both nanoseconds (pprof) and sample counts (JFR)
+function formatTime(value) {
+    if (!value || value === 0) return '';
+    
+    // If value is very large, assume it's nanoseconds
+    if (value > 1000000000) {
+        // Convert nanoseconds to appropriate unit
+        const seconds = value / 1000000000;
+        if (seconds >= 60) {
+            const minutes = Math.floor(seconds / 60);
+            const secs = (seconds % 60).toFixed(1);
+            return `${minutes}m ${secs}s`;
+        } else if (seconds >= 1) {
+            return `${seconds.toFixed(2)}s`;
+        } else {
+            const ms = seconds * 1000;
+            return `${ms.toFixed(1)}ms`;
+        }
+    } else if (value > 1000000) {
+        // Likely microseconds or large sample count
+        const ms = value / 1000000;
+        if (ms >= 1000) {
+            return `${(ms / 1000).toFixed(2)}s`;
+        }
+        return `${ms.toFixed(1)}ms`;
+    } else if (value > 1000) {
+        // Likely milliseconds or sample count
+        return `${(value / 1000).toFixed(1)}k`;
+    } else {
+        // Small value - just show as is
+        return `${value}`;
+    }
+}
+
 // Escape HTML to prevent XSS
 function escapeHtml(text) {
     if (!text) return '';
@@ -537,6 +572,7 @@ const Utils = {
     formatNumber,
     formatDateTime,
     formatDuration,
+    formatTime,
     escapeHtml,
     truncateText,
     getShortClassName,

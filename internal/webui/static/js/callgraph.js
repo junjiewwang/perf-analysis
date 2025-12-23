@@ -78,6 +78,109 @@ const CallGraph = (function() {
         maxWidth: 220          // Smaller max width for better graph layout
     };
 
+    // Position tooltip near cursor, avoiding edge overflow
+    function positionTooltip(tooltip, event) {
+        const padding = 15;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const tooltipRect = tooltip.getBoundingClientRect();
+        
+        let left = event.pageX + padding;
+        let top = event.pageY + padding;
+        
+        // Avoid right edge overflow
+        if (left + tooltipRect.width > viewportWidth - padding) {
+            left = event.pageX - tooltipRect.width - padding;
+        }
+        // Avoid bottom edge overflow
+        if (top + tooltipRect.height > viewportHeight - padding) {
+            top = event.pageY - tooltipRect.height - padding;
+        }
+        
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+    }
+
+    // Build enhanced tooltip HTML for a node
+    function buildNodeTooltip(d) {
+        const parsed = Utils.parseMethodName(d.name);
+        const formatted = Utils.formatFunctionName(d.name, { showBadge: false });
+        const selfPct = d.selfPct || 0;
+        const totalPct = d.totalPct || 0;
+        
+        // Get callers and callees count
+        const callerCount = callersMap ? (callersMap.get(d.index) || []).length : 0;
+        const calleeCount = calleesMap ? (calleesMap.get(d.index) || []).length : 0;
+        
+        let html = '<div class="cg-tooltip">';
+        
+        // Header with function name hierarchy
+        html += '<div class="cg-tooltip-header">';
+        
+        // Package/Namespace (if exists)
+        if (parsed.package) {
+            const pkgDisplay = typeof parsed.package === 'string' 
+                ? parsed.package 
+                : parsed.package.join('.');
+            html += `<div class="cg-tooltip-pkg">📦 ${Utils.escapeHtml(pkgDisplay)}</div>`;
+        }
+        
+        // Class (if exists)
+        if (parsed.class) {
+            html += `<div class="cg-tooltip-class">🔷 ${Utils.escapeHtml(parsed.class)}</div>`;
+        }
+        
+        // Method name (main)
+        const methodName = parsed.method || formatted.displayName;
+        html += `<div class="cg-tooltip-method">⚡ ${Utils.escapeHtml(methodName)}</div>`;
+        
+        html += '</div>';
+        
+        // Allocation badge (if applicable)
+        if (formatted.isAllocation) {
+            const allocIcon = formatted.allocationType === 'instance' ? '📦' : '📊';
+            const allocLabel = formatted.allocationType === 'instance' 
+                ? 'Instance Allocation' 
+                : 'Size Allocation';
+            html += `<div class="cg-tooltip-alloc">${allocIcon} ${allocLabel}</div>`;
+        }
+        
+        // Performance metrics
+        html += '<div class="cg-tooltip-metrics">';
+        
+        // Self percentage with progress bar
+        html += '<div class="cg-tooltip-metric">';
+        html += '<div class="cg-tooltip-metric-row">';
+        html += '<span class="cg-tooltip-label">Self</span>';
+        html += `<span class="cg-tooltip-value cg-tooltip-self">${selfPct.toFixed(2)}%</span>`;
+        html += '</div>';
+        html += `<div class="cg-tooltip-bar"><div class="cg-tooltip-bar-fill cg-tooltip-bar-self" style="width:${Math.min(100, selfPct)}%"></div></div>`;
+        html += '</div>';
+        
+        // Total percentage with progress bar
+        html += '<div class="cg-tooltip-metric">';
+        html += '<div class="cg-tooltip-metric-row">';
+        html += '<span class="cg-tooltip-label">Total</span>';
+        html += `<span class="cg-tooltip-value cg-tooltip-total">${totalPct.toFixed(2)}%</span>`;
+        html += '</div>';
+        html += `<div class="cg-tooltip-bar"><div class="cg-tooltip-bar-fill cg-tooltip-bar-total" style="width:${Math.min(100, totalPct)}%"></div></div>`;
+        html += '</div>';
+        
+        html += '</div>';
+        
+        // Call relationship info
+        html += '<div class="cg-tooltip-calls">';
+        html += `<span class="cg-tooltip-callers" title="Callers (who calls this function)">⬆️ ${callerCount} caller${callerCount !== 1 ? 's' : ''}</span>`;
+        html += `<span class="cg-tooltip-callees" title="Callees (functions called by this)">⬇️ ${calleeCount} callee${calleeCount !== 1 ? 's' : ''}</span>`;
+        html += '</div>';
+        
+        // Hint
+        html += '<div class="cg-tooltip-hint">Click to focus · Double-click for details</div>';
+        
+        html += '</div>';
+        return html;
+    }
+
     // Detect the type of function name and parse accordingly
     function parseMethodName(name) {
         if (!name) return { type: 'simple', parts: [''] };
@@ -482,24 +585,39 @@ const CallGraph = (function() {
         const matchSet = new Set(searchMatches.map(n => n.index));
         const currentNode = searchMatches[searchIndex];
         const visibleNodes = new Set([...matchSet, ...chainSet]);
+        
+        // Get callees of current match for highlighting
+        let calleeSet = new Set();
+        let calleeEdges = new Set();
+        if (currentNode && calleesMap) {
+            const calleeIndices = calleesMap.get(currentNode.index) || [];
+            calleeIndices.forEach(idx => {
+                calleeSet.add(idx);
+                calleeEdges.add(`${currentNode.index}-${idx}`);
+                visibleNodes.add(idx);
+            });
+        }
 
         nodeSelection
             .classed('search-match', d => matchSet.has(d.index) && !filteredNodeIndices.has(d.index))
             .classed('current-focus', d => currentNode && d.index === currentNode.index && !filteredNodeIndices.has(d.index))
-            .classed('search-chain', d => chainSet.has(d.index) && !matchSet.has(d.index) && !rootSet.has(d.index) && !filteredNodeIndices.has(d.index))
+            .classed('search-chain', d => chainSet.has(d.index) && !matchSet.has(d.index) && !rootSet.has(d.index) && !calleeSet.has(d.index) && !filteredNodeIndices.has(d.index))
             .classed('search-root', d => rootSet.has(d.index) && !matchSet.has(d.index) && !filteredNodeIndices.has(d.index))
+            .classed('search-callee', d => calleeSet.has(d.index) && !matchSet.has(d.index) && !filteredNodeIndices.has(d.index))
             .classed('search-dimmed', d => searchTerm && !visibleNodes.has(d.index) && !filteredNodeIndices.has(d.index))
             .classed('search-hidden', d => viewMode === 'focus' && searchTerm && !visibleNodes.has(d.index) && !filteredNodeIndices.has(d.index));
 
         linkSelection
             .classed('search-chain', l => chainEdges.has(`${l.source.index}-${l.target.index}`) && !filteredNodeIndices.has(l.source.index) && !filteredNodeIndices.has(l.target.index))
-            .classed('search-connected', l => (matchSet.has(l.source.index) || matchSet.has(l.target.index)) && !chainEdges.has(`${l.source.index}-${l.target.index}`) && !filteredNodeIndices.has(l.source.index) && !filteredNodeIndices.has(l.target.index))
+            .classed('search-callee-edge', l => calleeEdges.has(`${l.source.index}-${l.target.index}`) && !filteredNodeIndices.has(l.source.index) && !filteredNodeIndices.has(l.target.index))
+            .classed('search-connected', l => (matchSet.has(l.source.index) || matchSet.has(l.target.index)) && !chainEdges.has(`${l.source.index}-${l.target.index}`) && !calleeEdges.has(`${l.source.index}-${l.target.index}`) && !filteredNodeIndices.has(l.source.index) && !filteredNodeIndices.has(l.target.index))
             .classed('search-dimmed', l => {
                 if (!searchTerm) return false;
                 if (filteredNodeIndices.has(l.source.index) || filteredNodeIndices.has(l.target.index)) return false;
                 const isChain = chainEdges.has(`${l.source.index}-${l.target.index}`);
+                const isCallee = calleeEdges.has(`${l.source.index}-${l.target.index}`);
                 const isConnected = matchSet.has(l.source.index) || matchSet.has(l.target.index);
-                return !isChain && !isConnected;
+                return !isChain && !isCallee && !isConnected;
             })
             .classed('search-hidden', l => {
                 if (viewMode !== 'focus' || !searchTerm) return false;
@@ -507,6 +625,7 @@ const CallGraph = (function() {
                 return !visibleNodes.has(l.source.index) || !visibleNodes.has(l.target.index);
             })
             .attr('marker-end', l => {
+                if (calleeEdges.has(`${l.source.index}-${l.target.index}`)) return 'url(#arrowhead-callee)';
                 if (chainEdges.has(`${l.source.index}-${l.target.index}`)) return 'url(#arrowhead-chain)';
                 if (matchSet.has(l.source.index) || matchSet.has(l.target.index)) return 'url(#arrowhead-highlight)';
                 return 'url(#arrowhead)';
@@ -516,8 +635,9 @@ const CallGraph = (function() {
             bridgeEdgeSelection.classed('search-dimmed', d => {
                 if (!searchTerm) return false;
                 const isChainEdge = chainEdges.has(`${d.source.index}-${d.target.index}`);
+                const isCalleeEdge = calleeEdges.has(`${d.source.index}-${d.target.index}`);
                 const isConnected = matchSet.has(d.source.index) || matchSet.has(d.target.index);
-                return !isChainEdge && !isConnected;
+                return !isChainEdge && !isCalleeEdge && !isConnected;
             });
             bridgeEdgeSelection.classed('search-hidden', d => {
                 if (viewMode !== 'focus' || !searchTerm) return false;
@@ -535,12 +655,12 @@ const CallGraph = (function() {
 
         if (searchMatches.length > 0) {
             counter.textContent = `${searchIndex + 1} / ${searchMatches.length}`;
-            counter.style.color = '#27ae60';
+            counter.style.color = 'rgb(var(--color-success))';
             prevBtn.disabled = false;
             nextBtn.disabled = false;
         } else if (searchTerm) {
             counter.textContent = 'No match';
-            counter.style.color = '#e74c3c';
+            counter.style.color = 'rgb(var(--color-danger))';
             prevBtn.disabled = true;
             nextBtn.disabled = true;
         } else {
@@ -1026,13 +1146,15 @@ const CallGraph = (function() {
                     return Math.max(w, h) / 2 + 15;
                 }));
 
-            // Create arrow markers
+            // Create arrow markers with theme-aware colors
             const defs = svg.append('defs');
+            const arrowColors = this.getArrowColors();
             const markers = [
-                { id: 'arrowhead', fill: '#999' },
-                { id: 'arrowhead-highlight', fill: '#e040fb' },
-                { id: 'arrowhead-chain', fill: '#7c4dff' },
-                { id: 'arrowhead-bridge', fill: '#9c27b0' }
+                { id: 'arrowhead', fill: arrowColors.default },
+                { id: 'arrowhead-highlight', fill: arrowColors.highlight },
+                { id: 'arrowhead-chain', fill: arrowColors.chain },
+                { id: 'arrowhead-bridge', fill: arrowColors.bridge },
+                { id: 'arrowhead-callee', fill: arrowColors.callee }
             ];
             markers.forEach(m => {
                 defs.append('marker')
@@ -1081,9 +1203,15 @@ const CallGraph = (function() {
                         d.fy = null;
                     }));
 
+            // Get theme-aware colors from CSS variables
+            const rootStyle = getComputedStyle(document.documentElement);
+            const flameCool = rootStyle.getPropertyValue('--color-flame-cool').trim() || '255 213 79';
+            const flameWarm = rootStyle.getPropertyValue('--color-flame-warm').trim() || '255 167 38';
+            const flameHot = rootStyle.getPropertyValue('--color-flame-hot').trim() || '255 112 67';
+            
             const colorScale = d3.scaleLinear()
                 .domain([0, 10, 50])
-                .range(['#f8d568', '#f5a623', '#e74c3c']);
+                .range([`rgb(${flameCool})`, `rgb(${flameWarm})`, `rgb(${flameHot})`]);
 
             // Draw node rectangles with dynamic height
             node.append('rect')
@@ -1098,6 +1226,7 @@ const CallGraph = (function() {
             // Line 1: package path (small, gray)
             // Line 2: class name (medium, dark)
             // Line 3: method name with arrow (bold, black)
+            // Use CSS classes for theme-aware colors
             node.each(function(d) {
                 const nodeGroup = d3.select(this);
                 const { lines } = getMultiLineDisplayName(d.name);
@@ -1112,30 +1241,29 @@ const CallGraph = (function() {
                     
                     let fontSize = '10px';
                     let fontWeight = '400';
-                    let fillColor = '#555';
+                    let textClass = 'node-text node-text-secondary';
                     
                     if (isMethodLine) {
                         fontSize = '10px';
                         fontWeight = '600';
-                        fillColor = '#1a1a1a';
+                        textClass = 'node-text node-text-primary';
                     } else if (isClassLine) {
                         fontSize = '10px';
                         fontWeight = '500';
-                        fillColor = '#333';
+                        textClass = 'node-text node-text-base';
                     } else if (isPackageLine) {
                         fontSize = '9px';
                         fontWeight = '400';
-                        fillColor = '#777';
+                        textClass = 'node-text node-text-muted';
                     }
                     
                     nodeGroup.append('text')
-                        .attr('class', 'node-text')
+                        .attr('class', textClass)
                         .attr('text-anchor', 'middle')
                         .attr('x', 0)
                         .attr('y', startY + i * lineHeight)
                         .attr('dy', '0.35em')
                         .text(line)
-                        .attr('fill', fillColor)
                         .style('font-size', fontSize)
                         .style('font-weight', fontWeight);
                 });
@@ -1146,23 +1274,11 @@ const CallGraph = (function() {
                 d3.select(this).classed('highlighted', true);
                 link.classed('highlighted', l => l.source.index === d.index || l.target.index === d.index);
                 tooltip.style.display = 'block';
-                // Format function name with allocation info
-                const formatted = Utils.formatFunctionName(d.name, { showBadge: false });
-                let tooltipHtml = `<b>${Utils.escapeHtml(formatted.displayName)}</b>`;
-                if (formatted.isAllocation) {
-                    const allocLabel = formatted.allocationType === 'instance' 
-                        ? '📦 Instance Allocation' 
-                        : '📊 Size Allocation';
-                    tooltipHtml += `<br><span style="color: #3498db; font-size: 11px;">${allocLabel}</span>`;
-                }
-                tooltipHtml += `<br>Self: ${(d.selfPct || 0).toFixed(2)}%<br>Total: ${(d.totalPct || 0).toFixed(2)}%`;
-                tooltip.innerHTML = tooltipHtml;
-                tooltip.style.left = (event.pageX + 10) + 'px';
-                tooltip.style.top = (event.pageY + 10) + 'px';
+                tooltip.innerHTML = buildNodeTooltip(d);
+                positionTooltip(tooltip, event);
             })
             .on('mousemove', function(event) {
-                tooltip.style.left = (event.pageX + 10) + 'px';
-                tooltip.style.top = (event.pageY + 10) + 'px';
+                positionTooltip(tooltip, event);
             })
             .on('mouseout', function() {
                 d3.select(this).classed('highlighted', false);
@@ -1181,6 +1297,9 @@ const CallGraph = (function() {
             filteredNodeIndices = new Set();
             bridgeEdges = [];
             bridgeEdgeSelection = null;
+
+            // Build adjacency maps for tooltip caller/callee info
+            buildAdjacencyMaps();
 
             if (filters.size > 0) {
                 setTimeout(() => {
@@ -1500,12 +1619,89 @@ const CallGraph = (function() {
                 html += `</div>`;
             }
 
+            // Callees section - show next level calls with percentage
+            const calleesData = this.collectCallees(currentMatch);
+            if (calleesData.length > 0) {
+                html += `<div class="callchain-section">`;
+                html += `<div class="callchain-section-title">📤 Callees (${calleesData.length})</div>`;
+                
+                const MAX_CALLEES_DISPLAY = 8;
+                const displayCallees = calleesData.slice(0, MAX_CALLEES_DISPLAY);
+                const othersCallees = calleesData.slice(MAX_CALLEES_DISPLAY);
+                
+                displayCallees.forEach(item => {
+                    const pctWidth = Math.min(100, Math.max(5, item.weight));
+                    const pctText = item.weight.toFixed(1);
+                    const timeText = item.selfTime ? Utils.formatTime(item.selfTime) : '';
+                    const isFiltered = filteredNodeIndices.has(item.node.index);
+                    const nodeClass = isFiltered ? 'callee filtered' : 'callee';
+                    
+                    html += `<div class="callchain-node ${nodeClass}" onclick="CallGraph.focusNode(${item.node.index})" title="${Utils.escapeHtml(item.node.name)}">
+                        <div class="callee-progress-bar">
+                            <div class="callee-progress" style="width: ${pctWidth}%"></div>
+                        </div>
+                        <div class="callee-info">
+                            <span class="callee-name">${Utils.escapeHtml(getShortName(item.node.name))}</span>
+                            <span class="callee-stats">${pctText}%${timeText ? ' · ' + timeText : ''}</span>
+                        </div>
+                    </div>`;
+                });
+                
+                // Show collapsed "others" if there are more callees
+                if (othersCallees.length > 0) {
+                    const othersWeight = othersCallees.reduce((sum, c) => sum + c.weight, 0);
+                    html += `<div class="callchain-node callee-others" onclick="CallGraph.toggleCalleesExpand()">
+                        <span class="others-label">+ ${othersCallees.length} more</span>
+                        <span class="others-pct">${othersWeight.toFixed(1)}%</span>
+                    </div>`;
+                }
+                
+                html += `</div>`;
+            }
+
             content.innerHTML = html;
         },
 
         focusNode(index) {
             const node = nodes[index];
             if (node) focusOnNode(node);
+        },
+
+        // Collect callees (next level calls) for a given node with weight info
+        collectCallees(matchNode) {
+            if (!matchNode || !calleesMap) return [];
+            
+            const calleeIndices = calleesMap.get(matchNode.index) || [];
+            if (calleeIndices.length === 0) return [];
+            
+            const calleesWithWeight = calleeIndices.map(calleeIdx => {
+                const calleeNode = nodes[calleeIdx];
+                if (!calleeNode) return null;
+                
+                // Find the edge to get weight
+                const edge = links.find(l => 
+                    l.source.index === matchNode.index && 
+                    l.target.index === calleeIdx
+                );
+                
+                return {
+                    node: calleeNode,
+                    weight: edge?.weight || calleeNode.totalPct || 0,
+                    selfTime: calleeNode.selfTime || 0,
+                    totalTime: calleeNode.totalTime || 0
+                };
+            }).filter(item => item !== null);
+            
+            // Sort by weight descending
+            calleesWithWeight.sort((a, b) => b.weight - a.weight);
+            
+            return calleesWithWeight;
+        },
+        
+        // Toggle expanded view of callees (for future enhancement)
+        toggleCalleesExpand() {
+            // For now, just show a message - can be enhanced to expand inline
+            console.log('Expand callees - feature can be enhanced');
         },
 
         searchFor(funcName) {
@@ -1516,6 +1712,24 @@ const CallGraph = (function() {
 
         getNodes() {
             return nodes;
+        },
+        
+        // Get theme-aware arrow colors from CSS variables
+        getArrowColors() {
+            const rootStyle = getComputedStyle(document.documentElement);
+            const textMuted = rootStyle.getPropertyValue('--color-text-muted').trim() || '156 163 175';
+            const flameMatch = rootStyle.getPropertyValue('--color-flame-match').trim() || '224 64 251';
+            const primary = rootStyle.getPropertyValue('--color-primary').trim() || '102 126 234';
+            const secondary = rootStyle.getPropertyValue('--color-secondary').trim() || '118 75 162';
+            const warning = rootStyle.getPropertyValue('--color-warning').trim() || '255 152 0';
+            
+            return {
+                default: `rgb(${textMuted})`,
+                highlight: `rgb(${flameMatch})`,
+                chain: `rgb(${primary})`,
+                bridge: `rgb(${secondary})`,
+                callee: `rgb(${warning})`
+            };
         },
         
         // Get thread info for external access

@@ -200,6 +200,99 @@
     border-color: rgb(var(--color-border-focus));
 }
 
+/* ===== Dark Mode Aware Component Classes ===== */
+
+/* Card/Panel component - replaces bg-white */
+.card-theme {
+    background-color: rgb(var(--color-bg-card));
+    border-color: rgb(var(--color-border));
+}
+
+/* Table header background - replaces bg-gray-50 */
+.table-header-theme {
+    background-color: rgb(var(--color-bg-muted));
+}
+
+/* Table row hover - replaces hover:bg-gray-50 */
+.table-row-hover:hover {
+    background-color: rgb(var(--color-bg-hover));
+}
+
+/* Input/Select theme */
+.input-theme {
+    background-color: rgb(var(--color-bg-card));
+    border-color: rgb(var(--color-border));
+    color: rgb(var(--color-text-base));
+}
+
+.input-theme:focus {
+    border-color: rgb(var(--color-primary));
+    box-shadow: 0 0 0 3px rgb(var(--color-primary) / 0.1);
+}
+
+.input-theme::placeholder {
+    color: rgb(var(--color-text-muted));
+}
+
+/* Button secondary theme - replaces bg-gray-200 */
+.btn-secondary-theme {
+    background-color: rgb(var(--color-bg-muted));
+    color: rgb(var(--color-text-base));
+    border-color: rgb(var(--color-border));
+}
+
+.btn-secondary-theme:hover {
+    background-color: rgb(var(--color-bg-hover));
+}
+
+/* Tab button theme - replaces bg-white */
+.tab-btn-theme {
+    background-color: rgb(var(--color-bg-card));
+    color: rgb(var(--color-text-base));
+    border: 1px solid rgb(var(--color-border));
+}
+
+.tab-btn-theme:hover {
+    background-color: rgb(var(--color-bg-hover));
+}
+
+/* Filter chip theme */
+.filter-chip-theme {
+    background-color: rgb(var(--color-bg-card));
+    border-color: rgb(var(--color-border));
+    color: rgb(var(--color-text-base));
+}
+
+.filter-chip-theme:hover {
+    border-color: rgb(var(--color-primary));
+    background-color: rgb(var(--color-primary) / 0.05);
+}
+
+/* Stat card decorative corner */
+.stat-card-corner {
+    background: linear-gradient(135deg, rgb(var(--color-primary) / 0.1) 0%, rgb(var(--color-secondary) / 0.1) 100%);
+}
+
+/* Info card hover effect */
+.info-card-hover:hover {
+    background: linear-gradient(135deg, rgb(var(--color-primary) / 0.05) 0%, rgb(var(--color-secondary) / 0.05) 100%);
+}
+
+/* Legend item */
+.legend-theme {
+    color: rgb(var(--color-text-muted));
+}
+
+/* Loading text */
+.loading-theme {
+    color: rgb(var(--color-text-muted));
+}
+
+/* Tips text */
+.tips-theme {
+    color: rgb(var(--color-text-muted));
+}
+
 /* Transition for theme switching */
 html {
     transition: background-color 0.3s ease, color 0.3s ease;

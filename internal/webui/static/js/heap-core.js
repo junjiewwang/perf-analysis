@@ -365,13 +365,21 @@ const HeapCore = (function() {
         const notification = document.createElement('div');
         notification.className = `heap-notification ${type}`;
         notification.innerHTML = `<span>${message}</span>`;
+        
+        // Get theme-aware colors
+        const rootStyle = getComputedStyle(document.documentElement);
+        const successColor = `rgb(${rootStyle.getPropertyValue('--color-success').trim() || '0 200 83'})`;
+        const errorColor = `rgb(${rootStyle.getPropertyValue('--color-danger').trim() || '244 67 54'})`;
+        const warningColor = `rgb(${rootStyle.getPropertyValue('--color-warning').trim() || '255 152 0'})`;
+        const bgColor = type === 'success' ? successColor : type === 'error' ? errorColor : warningColor;
+        
         notification.style.cssText = `
             position: fixed;
             top: 80px;
             right: 20px;
             padding: 10px 20px;
             border-radius: 6px;
-            background: ${type === 'success' ? '#4caf50' : type === 'error' ? '#f44336' : '#ff9800'};
+            background: ${bgColor};
             color: white;
             font-size: 14px;
             z-index: 1000;

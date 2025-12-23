@@ -635,7 +635,7 @@ const FlameGraph = (function() {
                 d3.select('#flamegraph').datum(flameGraphData).call(flameChart);
             } catch (err) {
                 console.error('Error rendering flame graph:', err);
-                container.innerHTML = '<div class="loading" style="color: #e74c3c;">⚠️ Error rendering flame graph: ' + err.message + '</div>';
+                container.innerHTML = '<div class="loading" style="color: rgb(var(--color-danger));">⚠️ Error rendering flame graph: ' + err.message + '</div>';
                 return;
             }
 
@@ -686,11 +686,11 @@ const FlameGraph = (function() {
             badge.classList.remove('hidden', 'no-match');
             if (matchCount > 0) {
                 badge.innerHTML = `✓ Found ${matchCount} matching frame${matchCount > 1 ? 's' : ''}`;
-                badge.style.background = '#27ae60';
+                badge.style.background = 'rgb(var(--color-success))';
             } else {
                 badge.classList.add('no-match');
                 badge.innerHTML = `✗ No matches for "${Utils.escapeHtml(term)}"`;
-                badge.style.background = '#e74c3c';
+                badge.style.background = 'rgb(var(--color-danger))';
             }
         },
 
@@ -704,11 +704,11 @@ const FlameGraph = (function() {
                     badge.classList.remove('hidden', 'no-match');
                     if (matchCount > 0) {
                         badge.innerHTML = `✓ Found ${matchCount} matching frame${matchCount > 1 ? 's' : ''}`;
-                        badge.style.background = '#27ae60';
+                        badge.style.background = 'rgb(var(--color-success))';
                     } else {
                         badge.classList.add('no-match');
                         badge.innerHTML = `✗ No matches in current view`;
-                        badge.style.background = '#e74c3c';
+                        badge.style.background = 'rgb(var(--color-danger))';
                     }
                 });
             }
@@ -770,7 +770,7 @@ const FlameGraph = (function() {
                 const hasValue = flameGraphData.value > 0;
 
                 if (!hasValue && !hasChildren) {
-                    container.innerHTML = '<div class="loading" style="color: #e74c3c;">⚠️ All functions were filtered out. Try removing some filters.</div>';
+                    container.innerHTML = '<div class="loading" style="color: rgb(var(--color-danger));">⚠️ All functions were filtered out. Try removing some filters.</div>';
                     return;
                 }
 

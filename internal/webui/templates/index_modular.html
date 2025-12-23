@@ -143,55 +143,55 @@
             <!-- CPU Tabs -->
             <button @click="showPanel('overview')" 
                 :class="{'tab-active': activePanel === 'overview'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 📊 Overview
             </button>
             <!-- Heap: Class Histogram (moved to second position) -->
             <button @click="showPanel('heaphistogram')" x-show="analysisType === 'heap'"
                 :class="{'tab-active': activePanel === 'heaphistogram'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 📊 Class Histogram
             </button>
             <button @click="showPanel('flamegraph')" x-show="analysisType === 'cpu' || analysisType === 'alloc' || analysisType === 'pprof-all'"
                 :class="{'tab-active': activePanel === 'flamegraph'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 🔥 Flame Graph
             </button>
             <button @click="showPanel('callgraph')" x-show="analysisType === 'cpu' || analysisType === 'alloc' || (analysisType === 'pprof-all' && pprofSubType === 'cpu')"
                 :class="{'tab-active': activePanel === 'callgraph'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 📈 Call Graph
             </button>
             <button @click="showPanel('topfuncs')" x-show="analysisType === 'cpu' || analysisType === 'alloc' || analysisType === 'pprof-all'"
                 :class="{'tab-active': activePanel === 'topfuncs'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 📋 Top Functions
             </button>
             <button @click="showPanel('threads')" x-show="analysisType === 'cpu' || analysisType === 'alloc'"
                 :class="{'tab-active': activePanel === 'threads'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 🧵 Threads
             </button>
             <!-- pprof-all: Leak Detection Tab -->
             <button @click="showPanel('leakreport')" x-show="analysisType === 'pprof-all'"
                 :class="{'tab-active': activePanel === 'leakreport'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 🔍 Leak Detection
             </button>
             <!-- Heap Tabs -->
             <button @click="showPanel('heaptreemap')" x-show="analysisType === 'heap'"
                 :class="{'tab-active': activePanel === 'heaptreemap'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 🗺️ Biggest Objects
             </button>
             <button @click="showPanel('heapgcroots')" x-show="analysisType === 'heap'"
                 :class="{'tab-active': activePanel === 'heapgcroots'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 🌳 GC Roots
             </button>
             <button @click="showPanel('heapmergedpaths')" x-show="analysisType === 'heap'"
                 :class="{'tab-active': activePanel === 'heapmergedpaths'}"
-                class="tab-btn px-5 py-2.5 bg-white rounded-lg text-sm font-medium shadow-sm hover:bg-gray-100 transition-colors">
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 🔀 Merged Paths
             </button>
         </nav>
@@ -199,67 +199,67 @@
         <!-- Overview Panel: Alpine.js 控制显示 -->
         <div x-show="activePanel === 'overview'" x-cloak class="space-y-5">
             <!-- Task Metadata Card -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hidden" id="taskMetadataCard">
+            <div class="bg-card rounded-xl shadow-sm border border-theme p-6 hidden" id="taskMetadataCard">
                 <div class="flex items-center gap-3 mb-5">
                     <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-lg">📋</div>
-                    <h2 class="text-lg font-semibold text-gray-800">Task Information</h2>
+                    <h2 class="text-lg font-semibold text-base">Task Information</h2>
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
-                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Analysis Mode</span>
+                    <div class="group p-4 bg-muted hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-theme hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-muted font-semibold uppercase tracking-wider">Analysis Mode</span>
                         <div class="mt-2" id="metaTaskType">-</div>
                     </div>
-                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
-                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Profile</span>
-                        <div class="mt-2 text-sm font-medium text-gray-700" id="metaProfiler">-</div>
+                    <div class="group p-4 bg-muted hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-theme hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-muted font-semibold uppercase tracking-wider">Profile</span>
+                        <div class="mt-2 text-sm font-medium text-secondary" id="metaProfiler">-</div>
                     </div>
-                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
-                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Input File</span>
-                        <div class="mt-2 text-sm font-medium text-gray-700 font-mono truncate" id="metaInputFile" title="">-</div>
+                    <div class="group p-4 bg-muted hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-theme hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-muted font-semibold uppercase tracking-wider">Input File</span>
+                        <div class="mt-2 text-sm font-medium text-secondary font-mono truncate" id="metaInputFile" title="">-</div>
                     </div>
-                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
-                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Created At</span>
-                        <div class="mt-2 text-sm font-medium text-gray-700" id="metaCreatedAt">-</div>
+                    <div class="group p-4 bg-muted hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-theme hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-muted font-semibold uppercase tracking-wider">Created At</span>
+                        <div class="mt-2 text-sm font-medium text-secondary" id="metaCreatedAt">-</div>
                     </div>
-                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
-                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Analysis Time</span>
-                        <div class="mt-2 text-sm font-medium text-gray-700" id="metaAnalysisTime">-</div>
+                    <div class="group p-4 bg-muted hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-theme hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-muted font-semibold uppercase tracking-wider">Analysis Time</span>
+                        <div class="mt-2 text-sm font-medium text-secondary" id="metaAnalysisTime">-</div>
                     </div>
-                    <div class="group p-4 bg-gray-50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-gray-100 hover:border-primary/20 transition-all duration-200">
-                        <span class="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Task UUID</span>
-                        <div class="mt-2 text-sm font-medium text-gray-700 font-mono" id="metaTaskUUID">-</div>
+                    <div class="group p-4 bg-muted hover:bg-gradient-to-br hover:from-primary/5 hover:to-secondary/5 rounded-xl border border-theme hover:border-primary/20 transition-all duration-200">
+                        <span class="text-[10px] text-muted font-semibold uppercase tracking-wider">Task UUID</span>
+                        <div class="mt-2 text-sm font-medium text-secondary font-mono" id="metaTaskUUID">-</div>
                     </div>
                 </div>
             </div>
 
             <!-- Stats Grid -->
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="relative overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-5 group hover:shadow-md transition-shadow">
-                    <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-bl-[80px] -mr-2 -mt-2"></div>
+                <div class="relative overflow-hidden bg-card rounded-xl shadow-sm border border-theme p-5 group hover:shadow-md transition-shadow">
+                    <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-bl-[80px] -mr-2 -mt-2"></div>
                     <div class="relative">
                         <div class="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent" id="totalSamples">-</div>
-                        <div class="text-sm text-gray-500 mt-1 stat-label">Total Samples</div>
+                        <div class="text-sm text-muted mt-1 stat-label">Total Samples</div>
                     </div>
                 </div>
-                <div class="relative overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-5 group hover:shadow-md transition-shadow">
+                <div class="relative overflow-hidden bg-card rounded-xl shadow-sm border border-theme p-5 group hover:shadow-md transition-shadow">
                     <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-green-500/10 to-teal-500/10 rounded-bl-[80px] -mr-2 -mt-2"></div>
                     <div class="relative">
                         <div class="text-3xl font-bold bg-gradient-to-r from-green-600 to-teal-600 bg-clip-text text-transparent" id="topFuncsCount">-</div>
-                        <div class="text-sm text-gray-500 mt-1 stat-label">Functions Analyzed</div>
+                        <div class="text-sm text-muted mt-1 stat-label">Functions Analyzed</div>
                     </div>
                 </div>
-                <div class="relative overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-5 group hover:shadow-md transition-shadow">
+                <div class="relative overflow-hidden bg-card rounded-xl shadow-sm border border-theme p-5 group hover:shadow-md transition-shadow">
                     <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-500/10 to-amber-500/10 rounded-bl-[80px] -mr-2 -mt-2"></div>
                     <div class="relative">
                         <div class="text-3xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent" id="threadsCount">-</div>
-                        <div class="text-sm text-gray-500 mt-1 stat-label">Active Threads</div>
+                        <div class="text-sm text-muted mt-1 stat-label">Active Threads</div>
                     </div>
                 </div>
-                <div class="relative overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-5 group hover:shadow-md transition-shadow">
+                <div class="relative overflow-hidden bg-card rounded-xl shadow-sm border border-theme p-5 group hover:shadow-md transition-shadow">
                     <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-pink-500/10 to-rose-500/10 rounded-bl-[80px] -mr-2 -mt-2"></div>
                     <div class="relative">
                         <div class="text-xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent font-mono truncate" id="taskUUID">-</div>
-                        <div class="text-sm text-gray-500 mt-1">Task UUID</div>
+                        <div class="text-sm text-muted mt-1">Task UUID</div>
                     </div>
                 </div>
             </div>
@@ -269,31 +269,31 @@
 
             <!-- pprof-all: Leak Reports Summary (only shown in pprof-all mode) -->
             <div id="pprofLeakReports" x-show="analysisType === 'pprof-all'" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="text-gray-500 text-sm">Loading leak reports...</div>
+                <div class="text-muted text-sm">Loading leak reports...</div>
             </div>
 
             <!-- Top Functions Card -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div class="bg-card rounded-xl shadow-sm border border-theme overflow-hidden">
+                <div class="px-6 py-4 border-b border-theme flex items-center justify-between">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white">🔥</div>
                         <div>
-                            <h2 class="text-base font-semibold text-gray-800">Top 5 Hot Functions</h2>
-                            <p class="text-xs text-gray-400 mt-0.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
+                            <h2 class="text-base font-semibold text-base">Top 5 Hot Functions</h2>
+                            <p class="text-xs text-muted mt-0.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
                         </div>
                     </div>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead>
-                            <tr class="bg-gray-50 text-left">
-                                <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-12">#</th>
-                                <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Function</th>
-                                <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Self %</th>
-                                <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28 text-center">Actions</th>
+                            <tr class="bg-muted text-left">
+                                <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-12">#</th>
+                                <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Function</th>
+                                <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-48">Self %</th>
+                                <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-28 text-center">Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="topFuncsPreview" class="divide-y divide-gray-100"></tbody>
+                        <tbody id="topFuncsPreview" class="divide-y divide-theme"></tbody>
                     </table>
                 </div>
             </div>
@@ -301,23 +301,23 @@
 
         <!-- Leak Report Panel (pprof-all only) -->
         <div x-show="activePanel === 'leakreport'" x-cloak class="space-y-5">
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div class="bg-card rounded-xl shadow-sm border border-theme p-6">
                 <div class="flex items-center gap-3 mb-5">
                     <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center text-white text-lg">🔍</div>
                     <div>
-                        <h2 class="text-lg font-semibold text-gray-800">Leak Detection Report</h2>
-                        <p class="text-sm text-gray-500">Memory and goroutine leak analysis based on profile comparison</p>
+                        <h2 class="text-lg font-semibold text-base">Leak Detection Report</h2>
+                        <p class="text-sm text-muted">Memory and goroutine leak analysis based on profile comparison</p>
                     </div>
                 </div>
                 <div id="leakReportDetail" class="space-y-6">
-                    <div class="text-gray-500 text-center py-8">Loading leak detection data...</div>
+                    <div class="text-muted text-center py-8">Loading leak detection data...</div>
                 </div>
             </div>
         </div>
 
         <!-- Flame Graph Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'flamegraph'" x-cloak class="bg-white rounded-xl shadow-md p-5">
-            <p class="text-xs text-gray-400 mb-2.5 space-x-4">
+        <div x-show="activePanel === 'flamegraph'" x-cloak class="bg-card rounded-xl shadow-md p-5 border border-theme">
+            <p class="text-xs text-muted mb-2.5 space-x-4">
                 <span>💡 Click to zoom in, double-click to zoom out</span>
                 <span>🔍 Use search to highlight functions</span>
             </p>
@@ -355,34 +355,34 @@
                 <input type="text" id="searchInput" 
                     placeholder="Search function name (e.g. HashMap, alibaba, netty)..." 
                     onkeyup="handleSearchKeyup(event)"
-                    class="flex-1 min-w-[200px] max-w-[400px] px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+                    class="flex-1 min-w-[200px] max-w-[400px] px-4 py-2.5 border border-theme rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary bg-card text-base">
                 <button onclick="searchFlameGraph()" class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">🔍 Search</button>
-                <button onclick="clearSearch()" class="px-5 py-2.5 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">Clear</button>
-                <button onclick="resetFlameGraph()" class="px-5 py-2.5 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">Reset View</button>
+                <button onclick="clearSearch()" class="px-5 py-2.5 bg-elevated text-base rounded-lg text-sm font-medium hover:bg-muted transition-colors border border-theme">Clear</button>
+                <button onclick="resetFlameGraph()" class="px-5 py-2.5 bg-elevated text-base rounded-lg text-sm font-medium hover:bg-muted transition-colors border border-theme">Reset View</button>
                 <span id="searchResultBadge" class="search-result-badge hidden"></span>
             </div>
             <!-- Filter Section: Tailwind 替换 -->
-            <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg text-sm mb-4" id="flameFilterSection">
-                <span class="text-gray-500 font-medium whitespace-nowrap">🔧 Filter:</span>
+            <div class="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg text-sm mb-4" id="flameFilterSection">
+                <span class="text-muted font-medium whitespace-nowrap">🔧 Filter:</span>
                 <div class="flex flex-wrap gap-1.5">
-                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="jvm" onclick="toggleFlameFilter('jvm')" title="JDK/JVM internal functions">
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-card border border-theme rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors text-base" data-filter="jvm" onclick="toggleFlameFilter('jvm')" title="JDK/JVM internal functions">
                         <span class="text-[11px]">☕</span> JVM
                     </div>
-                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="gc" onclick="toggleFlameFilter('gc')" title="Garbage Collection functions">
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-card border border-theme rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors text-base" data-filter="gc" onclick="toggleFlameFilter('gc')" title="Garbage Collection functions">
                         <span class="text-[11px]">🗑️</span> GC
                     </div>
-                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="native" onclick="toggleFlameFilter('native')" title="Native/C++ runtime functions">
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-card border border-theme rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors text-base" data-filter="native" onclick="toggleFlameFilter('native')" title="Native/C++ runtime functions">
                         <span class="text-[11px]">⚙️</span> Native
                     </div>
-                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="kernel" onclick="toggleFlameFilter('kernel')" title="Linux kernel functions">
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-card border border-theme rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors text-base" data-filter="kernel" onclick="toggleFlameFilter('kernel')" title="Linux kernel functions">
                         <span class="text-[11px]">🐧</span> Kernel
                     </div>
-                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors" data-filter="reflect" onclick="toggleFlameFilter('reflect')" title="Reflection and proxy functions">
+                    <div class="filter-chip inline-flex items-center gap-1 px-2.5 py-1 bg-card border border-theme rounded-full text-xs cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors text-base" data-filter="reflect" onclick="toggleFlameFilter('reflect')" title="Reflection and proxy functions">
                         <span class="text-[11px]">🔄</span> Reflect
                     </div>
                 </div>
             </div>
-            <div id="flame-details" class="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
+            <div id="flame-details" class="flex flex-wrap gap-4 text-sm text-secondary mb-4">
                 <div class="flex items-center gap-1.5">
                     <span class="font-medium">📊 Total Samples:</span>
                     <span id="flame-total-samples">-</span>
@@ -397,16 +397,16 @@
                 </div>
                 <div class="flex items-center gap-1.5">
                     <span class="font-medium">💡 Tip:</span>
-                    <span class="text-gray-400">Click frame to zoom, right-click to zoom out</span>
+                    <span class="text-muted">Click frame to zoom, right-click to zoom out</span>
                 </div>
             </div>
             <div id="flamegraph">
-                <div class="loading text-center py-10 text-gray-500">Loading flame graph</div>
+                <div class="loading text-center py-10 text-muted">Loading flame graph</div>
             </div>
         </div>
 
         <!-- Call Graph Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'callgraph'" x-cloak class="bg-white rounded-xl shadow-md p-5">
+        <div x-show="activePanel === 'callgraph'" x-cloak class="bg-card rounded-xl shadow-md p-5 border border-theme">
             <div class="tips">
                 <span>💡 Drag nodes to reposition</span>
                 <span>🔍 Scroll to zoom</span>
@@ -536,30 +536,30 @@
         </div>
 
         <!-- Top Functions Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'topfuncs'" x-cloak class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div x-show="activePanel === 'topfuncs'" x-cloak class="bg-card rounded-xl shadow-sm border border-theme overflow-hidden">
+            <div class="px-6 py-4 border-b border-theme flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white">📋</div>
                     <div>
-                        <h2 class="text-base font-semibold text-gray-800">All Functions (sorted by self %)</h2>
-                        <p class="text-xs text-gray-400 mt-0.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
+                        <h2 class="text-base font-semibold text-base">All Functions (sorted by self %)</h2>
+                        <p class="text-xs text-muted mt-0.5">💡 Click action buttons to search in Flame Graph or Call Graph</p>
                     </div>
                 </div>
                 <!-- View Toggle -->
                 <div class="flex items-center gap-2">
-                    <span class="text-xs text-gray-500">View:</span>
+                    <span class="text-xs text-muted">View:</span>
                     <button id="topFuncsViewTable" onclick="TopFuncsPanel.setView('table')" 
                         class="px-3 py-1.5 text-xs rounded-lg bg-primary text-white transition-colors">
                         📋 Table
                     </button>
                     <button id="topFuncsViewChart" onclick="TopFuncsPanel.setView('chart')" 
-                        class="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">
+                        class="px-3 py-1.5 text-xs rounded-lg bg-muted text-secondary hover:bg-elevated transition-colors">
                         📊 Functions
                     </button>
                     <!-- Threads view is only available for Java analysis (cpu/alloc), not for pprof -->
                     <button id="topFuncsViewThreads" onclick="TopFuncsPanel.setView('threads')" 
                         x-show="analysisType === 'cpu' || analysisType === 'alloc'"
-                        class="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">
+                        class="px-3 py-1.5 text-xs rounded-lg bg-muted text-secondary hover:bg-elevated transition-colors">
                         🧵 Threads
                     </button>
                 </div>
@@ -569,14 +569,14 @@
             <div id="topFuncsTableView" class="overflow-x-auto">
                 <table class="w-full">
                     <thead>
-                        <tr class="bg-gray-50 text-left">
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-12">#</th>
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Function</th>
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Self %</th>
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28 text-center">Actions</th>
+                        <tr class="bg-muted text-left">
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-12">#</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Function</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-48">Self %</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-28 text-center">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="topFuncsAll" class="divide-y divide-gray-100"></tbody>
+                    <tbody id="topFuncsAll" class="divide-y divide-theme"></tbody>
                 </table>
             </div>
             
@@ -584,10 +584,10 @@
             <div id="topFuncsChartView" class="hidden p-4">
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center gap-4">
-                        <label class="text-xs text-gray-500">
+                        <label class="text-xs text-muted">
                             Show top 
                             <select id="topFuncsChartCount" onchange="TopFuncsPanel.updateChart()" 
-                                class="mx-1 px-2 py-1 border border-gray-300 rounded text-xs">
+                                class="mx-1 px-2 py-1 border border-theme rounded text-xs bg-card text-base">
                                 <option value="10">10</option>
                                 <option value="20" selected>20</option>
                                 <option value="30">30</option>
@@ -595,12 +595,12 @@
                             </select>
                             functions
                         </label>
-                        <label class="text-xs text-gray-500 flex items-center gap-1">
+                        <label class="text-xs text-muted flex items-center gap-1">
                             <input type="checkbox" id="topFuncsChartShowOthers" onchange="TopFuncsPanel.updateChart()" checked>
                             Group remaining as "Others"
                         </label>
                     </div>
-                    <div class="text-xs text-gray-400">
+                    <div class="text-xs text-muted">
                         💡 Click on a bar to search in Flame Graph
                     </div>
                 </div>
@@ -611,10 +611,10 @@
             <div id="topFuncsThreadsView" class="hidden p-4">
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center gap-4">
-                        <label class="text-xs text-gray-500">
+                        <label class="text-xs text-muted">
                             Show top 
                             <select id="topFuncsThreadCount" onchange="TopFuncsPanel.updateThreadChart()" 
-                                class="mx-1 px-2 py-1 border border-gray-300 rounded text-xs">
+                                class="mx-1 px-2 py-1 border border-theme rounded text-xs bg-card text-base">
                                 <option value="8">8</option>
                                 <option value="10" selected>10</option>
                                 <option value="15">15</option>
@@ -622,12 +622,12 @@
                             </select>
                             thread groups
                         </label>
-                        <label class="text-xs text-gray-500 flex items-center gap-1">
+                        <label class="text-xs text-muted flex items-center gap-1">
                             <input type="checkbox" id="topFuncsThreadShowOthers" onchange="TopFuncsPanel.updateThreadChart()" checked>
                             Group remaining as "Others"
                         </label>
                     </div>
-                    <div class="text-xs text-gray-400">
+                    <div class="text-xs text-muted">
                         💡 Click on a segment to filter threads
                     </div>
                 </div>
@@ -635,27 +635,27 @@
                     <div id="topFuncsThreadPie" style="width: 100%; height: 400px;"></div>
                     <div id="topFuncsThreadBar" style="width: 100%; height: 400px;"></div>
                 </div>
-                <div id="topFuncsThreadLegend" class="mt-4 p-3 bg-gray-50 rounded-lg">
-                    <div class="text-xs text-gray-500 mb-2">Thread Group Details</div>
+                <div id="topFuncsThreadLegend" class="mt-4 p-3 bg-muted rounded-lg">
+                    <div class="text-xs text-muted mb-2">Thread Group Details</div>
                     <div id="topFuncsThreadDetails" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 text-xs"></div>
                 </div>
             </div>
         </div>
 
         <!-- Threads Panel: Enhanced CPU Thread Analysis -->
-        <div x-show="activePanel === 'threads'" x-cloak class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div x-show="activePanel === 'threads'" x-cloak class="bg-card rounded-xl shadow-sm border border-theme overflow-hidden">
+            <div class="px-6 py-4 border-b border-theme flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white">🧵</div>
                     <div>
-                        <h2 class="text-base font-semibold text-gray-800">Thread Analysis</h2>
-                        <p class="text-xs text-gray-500" id="cpu-threads-summary">Loading thread data...</p>
+                        <h2 class="text-base font-semibold text-base">Thread Analysis</h2>
+                        <p class="text-xs text-muted" id="cpu-threads-summary">Loading thread data...</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
                     <input type="text" id="cpu-thread-search" placeholder="Search threads or functions..."
-                        class="px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-56">
-                    <select id="cpu-thread-sort" class="px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none">
+                        class="px-3 py-1.5 border border-theme rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-56 bg-card text-base">
+                    <select id="cpu-thread-sort" class="px-2 py-1.5 border border-theme rounded text-sm focus:outline-none bg-card text-base">
                         <option value="samples-desc">Samples (High to Low)</option>
                         <option value="samples-asc">Samples (Low to High)</option>
                         <option value="name-asc">Name (A-Z)</option>
@@ -672,18 +672,18 @@
             <div class="overflow-x-auto">
                 <table class="w-full" id="cpu-threads-table">
                     <thead>
-                        <tr class="bg-gray-50 text-left">
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-12">#</th>
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Thread Name</th>
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24 text-right">TID</th>
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28 text-right">Samples</th>
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Percentage</th>
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Top Function</th>
-                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28 text-center">Actions</th>
+                        <tr class="bg-muted text-left">
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-12">#</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Thread Name</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-24 text-right">TID</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-28 text-right">Samples</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-48">Percentage</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Top Function</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-muted uppercase tracking-wider w-28 text-center">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="cpu-threads-tbody" class="divide-y divide-gray-100">
-                        <tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                    <tbody id="cpu-threads-tbody" class="divide-y divide-theme">
+                        <tr><td colspan="7" class="px-6 py-8 text-center text-muted">
                             <div class="animate-spin text-2xl mb-2">⏳</div>
                             <p>Loading thread analysis data...</p>
                         </td></tr>
@@ -692,21 +692,21 @@
             </div>
             
             <!-- Pagination -->
-            <div id="cpu-threads-pagination" class="px-6 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-                <div class="text-sm text-gray-500" id="cpu-threads-page-info">Showing 0 threads</div>
+            <div id="cpu-threads-pagination" class="px-6 py-3 border-t border-theme flex items-center justify-between bg-muted">
+                <div class="text-sm text-muted" id="cpu-threads-page-info">Showing 0 threads</div>
                 <div class="flex items-center gap-1" id="cpu-threads-page-buttons"></div>
             </div>
         </div>
 
         <!-- Heap Biggest Objects Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'heaptreemap'" x-cloak class="bg-white rounded-xl shadow-md p-4">
+        <div x-show="activePanel === 'heaptreemap'" x-cloak class="bg-card rounded-xl shadow-md p-4 border border-theme">
             <div class="flex items-center justify-between mb-3 pb-2 border-b-2 border-primary">
-                <h2 class="text-base font-semibold text-gray-800">📦 Biggest Objects</h2>
+                <h2 class="text-base font-semibold text-base">📦 Biggest Objects</h2>
                 <div class="flex items-center gap-1.5">
-                    <button onclick="HeapBiggestObjects.expandAll()" class="px-2 py-1 text-[11px] bg-gray-100 hover:bg-gray-200 rounded transition-colors">
+                    <button onclick="HeapBiggestObjects.expandAll()" class="px-2 py-1 text-[11px] bg-muted hover:bg-elevated rounded transition-colors text-base">
                         Expand All
                     </button>
-                    <button onclick="HeapBiggestObjects.collapseAll()" class="px-2 py-1 text-[11px] bg-gray-100 hover:bg-gray-200 rounded transition-colors">
+                    <button onclick="HeapBiggestObjects.collapseAll()" class="px-2 py-1 text-[11px] bg-muted hover:bg-elevated rounded transition-colors text-base">
                         Collapse All
                     </button>
                     <button onclick="HeapBiggestObjects.refresh()" class="px-2 py-1 text-[11px] bg-primary text-white hover:bg-primary/90 rounded transition-colors">
@@ -714,7 +714,7 @@
                     </button>
                 </div>
             </div>
-            <p class="text-[10px] text-gray-400 mb-2">
+            <p class="text-[10px] text-muted mb-2">
                 <span>💡 Objects with largest retained memory - click to see field details</span>
                 <span class="ml-3">📊 Retained size = object size + all objects it keeps alive</span>
             </p>
@@ -723,36 +723,36 @@
             <div id="biggestObjectsSummary" class="mb-3"></div>
             
             <!-- 搜索和排序工具栏 -->
-            <div class="flex flex-wrap items-center gap-2 mb-2 p-2 bg-gray-50 rounded-lg">
+            <div class="flex flex-wrap items-center gap-2 mb-2 p-2 bg-muted rounded-lg">
                 <div class="flex-1 min-w-[180px]">
                     <input type="text" id="biggestObjectsSearch" placeholder="Search by class name or object ID..."
                         onkeyup="HeapBiggestObjects.filter(this.value)"
-                        class="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/50">
+                        class="w-full px-2 py-1.5 border border-theme rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 bg-card text-base">
                 </div>
                 <div class="flex items-center gap-1.5">
-                    <span class="text-[10px] text-gray-500">Sort by:</span>
+                    <span class="text-[10px] text-muted">Sort by:</span>
                     <button onclick="HeapBiggestObjects.sort('retained')" data-sort="retained" 
                         class="sort-btn px-2 py-1 text-[10px] rounded transition-colors bg-primary text-white">
                         Retained <span class="sort-arrow">↓</span>
                     </button>
                     <button onclick="HeapBiggestObjects.sort('shallow')" data-sort="shallow"
-                        class="sort-btn px-2 py-1 text-[10px] rounded transition-colors bg-gray-100 text-gray-700">
+                        class="sort-btn px-2 py-1 text-[10px] rounded transition-colors bg-muted text-secondary">
                         Shallow <span class="sort-arrow">↓</span>
                     </button>
                     <button onclick="HeapBiggestObjects.sort('class')" data-sort="class"
-                        class="sort-btn px-2 py-1 text-[10px] rounded transition-colors bg-gray-100 text-gray-700">
+                        class="sort-btn px-2 py-1 text-[10px] rounded transition-colors bg-muted text-secondary">
                         Class <span class="sort-arrow">↓</span>
                     </button>
                     <button onclick="HeapBiggestObjects.sort('fields')" data-sort="fields"
-                        class="sort-btn px-2 py-1 text-[10px] rounded transition-colors bg-gray-100 text-gray-700">
+                        class="sort-btn px-2 py-1 text-[10px] rounded transition-colors bg-muted text-secondary">
                         Fields <span class="sort-arrow">↓</span>
                     </button>
                 </div>
             </div>
             
             <!-- 对象列表 -->
-            <div id="biggestObjectsList" class="max-h-[calc(100vh-320px)] min-h-[400px] overflow-y-auto border border-gray-200 rounded-lg bg-white">
-                <div class="text-center py-8 text-gray-500">
+            <div id="biggestObjectsList" class="max-h-[calc(100vh-320px)] min-h-[400px] overflow-y-auto border border-theme rounded-lg bg-card">
+                <div class="text-center py-8 text-muted">
                     <div class="inline-block animate-spin rounded-full h-6 w-6 border-3 border-primary border-t-transparent"></div>
                     <p class="mt-3 text-sm">Loading biggest objects...</p>
                 </div>
@@ -760,31 +760,31 @@
         </div>
 
         <!-- Heap GC Roots Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'heapgcroots'" x-cloak class="bg-white rounded-xl shadow-md p-5">
-            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🌳 GC Roots</h2>
-            <p class="text-xs text-gray-400 mb-4 space-x-4">
+        <div x-show="activePanel === 'heapgcroots'" x-cloak class="bg-card rounded-xl shadow-md p-5 border border-theme">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-base">🌳 GC Roots</h2>
+            <p class="text-xs text-muted mb-4 space-x-4">
                 <span>💡 GC Roots are objects that are always reachable and prevent garbage collection</span>
                 <span>🔍 Click to expand and see retained objects</span>
             </p>
             <div class="flex gap-6 mb-4" id="gcRootsSummary">
                 <div class="flex flex-col items-center">
                     <span class="text-2xl font-bold text-primary" id="gcRootsTotalCount">-</span>
-                    <span class="text-sm text-gray-500">Total GC Roots</span>
+                    <span class="text-sm text-muted">Total GC Roots</span>
                 </div>
                 <div class="flex flex-col items-center">
                     <span class="text-2xl font-bold text-primary" id="gcRootsClassCount">-</span>
-                    <span class="text-sm text-gray-500">Root Classes</span>
+                    <span class="text-sm text-muted">Root Classes</span>
                 </div>
                 <div class="flex flex-col items-center">
                     <span class="text-2xl font-bold text-primary" id="gcRootsRetainedSize">-</span>
-                    <span class="text-sm text-gray-500">Total Retained Size</span>
+                    <span class="text-sm text-muted">Total Retained Size</span>
                 </div>
             </div>
             <div class="flex gap-2.5 mb-4">
                 <input type="text" id="gcRootsSearch" placeholder="Filter by class name or root type..." onkeyup="HeapGCRoots.filter()"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    class="flex-1 px-3 py-2 border border-theme rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 bg-card text-base">
                 <select id="gcRootsTypeFilter" onchange="HeapGCRoots.filter()"
-                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    class="px-3 py-2 border border-theme rounded-lg text-sm bg-card text-base focus:outline-none focus:ring-2 focus:ring-primary/50">
                     <option value="">All Types</option>
                     <option value="STICKY_CLASS">Sticky Class</option>
                     <option value="JAVA_FRAME">Java Frame</option>
@@ -811,30 +811,30 @@
                         </tr>
                     </thead>
                     <tbody id="gcRootsTableBody">
-                        <tr><td colspan="5" class="loading text-center py-10 text-gray-500">Loading GC Roots...</td></tr>
+                        <tr><td colspan="5" class="loading text-center py-10 text-muted">Loading GC Roots...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
         <!-- Heap Merged Paths Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'heapmergedpaths'" x-cloak class="bg-white rounded-xl shadow-md p-5">
-            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-gray-800">🔀 Merged Paths (Retainers)</h2>
-            <p class="text-xs text-gray-400 mb-4 space-x-4">
+        <div x-show="activePanel === 'heapmergedpaths'" x-cloak class="bg-card rounded-xl shadow-md p-5 border border-theme">
+            <h2 class="text-lg font-semibold mb-4 pb-2.5 border-b-2 border-primary text-base">🔀 Merged Paths (Retainers)</h2>
+            <p class="text-xs text-muted mb-4 space-x-4">
                 <span>💡 展示内存占用大类被哪些类持有（Retained by）</span>
                 <span>🔍 点击类名展开查看详细的持有者列表</span>
                 <span>📊 按保留内存大小排序</span>
             </p>
             <div class="merged-paths-container" id="mergedPathsContainer">
-                <div class="loading text-center py-10 text-gray-500">加载 Retainer 数据中...</div>
+                <div class="loading text-center py-10 text-muted">加载 Retainer 数据中...</div>
             </div>
         </div>
 
         <!-- Heap Histogram Panel: Alpine.js 控制显示 -->
-        <div x-show="activePanel === 'heaphistogram'" x-cloak class="bg-white rounded-xl shadow-md p-5">
+        <div x-show="activePanel === 'heaphistogram'" x-cloak class="bg-card rounded-xl shadow-md p-5 border border-theme">
             <div class="flex items-center justify-between mb-4 pb-2.5 border-b-2 border-primary">
-                <h2 class="text-lg font-semibold text-gray-800">📊 Class Histogram</h2>
-                <div class="text-sm text-gray-500" id="heapHistogramStats"></div>
+                <h2 class="text-lg font-semibold text-base">📊 Class Histogram</h2>
+                <div class="text-sm text-muted" id="heapHistogramStats"></div>
             </div>
             
             <!-- 搜索和视图切换 -->
@@ -842,13 +842,13 @@
                 <div class="flex items-center gap-2">
                     <input type="text" id="heapClassSearch" placeholder="搜索类名 (如 HashMap, byte[], String)..." 
                         onkeyup="if(event.key==='Enter') HeapHistogram.filter(this.value)"
-                        class="w-80 px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+                        class="w-80 px-4 py-2.5 border border-theme rounded-lg text-sm text-base placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary bg-card">
                     <button onclick="HeapHistogram.filter(document.getElementById('heapClassSearch').value)" 
                         class="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
                         🔍 搜索
                     </button>
                     <button onclick="HeapHistogram.clearSearch()" 
-                        class="px-5 py-2.5 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors">
+                        class="px-5 py-2.5 bg-elevated text-base rounded-lg text-sm font-medium hover:bg-muted transition-colors border border-theme">
                         清除
                     </button>
                 </div>
@@ -857,7 +857,7 @@
                         onclick="HeapHistogram.setViewMode('flat')">
                         📋 平铺视图
                     </button>
-                    <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300" id="heapViewPackage" 
+                    <button class="px-4 py-2 bg-muted text-secondary rounded-lg text-sm font-medium hover:bg-elevated" id="heapViewPackage" 
                         onclick="HeapHistogram.setViewMode('package')">
                         📦 包视图
                     </button>
@@ -869,27 +869,27 @@
                 <div id="heapFlatView">
                     <table class="w-full" id="heapHistogramTable">
                         <thead>
-                            <tr class="bg-gray-50 text-left">
-                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center w-12">#</th>
-                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider sortable cursor-pointer hover:bg-gray-100 transition-colors" 
+                            <tr class="bg-muted text-left">
+                                <th class="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider text-center w-12">#</th>
+                                <th class="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider sortable cursor-pointer hover:bg-elevated transition-colors" 
                                     data-sort="name" onclick="HeapHistogram.sort('name')">
                                     Class <span class="sort-arrow ml-1"></span>
                                 </th>
-                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-28 sortable cursor-pointer hover:bg-gray-100 transition-colors" 
+                                <th class="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider text-right w-28 sortable cursor-pointer hover:bg-elevated transition-colors" 
                                     data-sort="count" onclick="HeapHistogram.sort('count')">
                                     Count <span class="sort-arrow ml-1"></span>
                                 </th>
-                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-40 sortable cursor-pointer hover:bg-gray-100 transition-colors active" 
+                                <th class="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider text-right w-40 sortable cursor-pointer hover:bg-elevated transition-colors active" 
                                     data-sort="shallow" onclick="HeapHistogram.sort('shallow')">
                                     Shallow Size <span class="sort-arrow ml-1">▼</span>
                                 </th>
-                                <th class="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-40 sortable cursor-pointer hover:bg-gray-100 transition-colors" 
+                                <th class="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider text-right w-40 sortable cursor-pointer hover:bg-elevated transition-colors" 
                                     data-sort="retained" onclick="HeapHistogram.sort('retained')">
                                     Retained Size <span class="sort-arrow ml-1"></span>
                                 </th>
                             </tr>
                         </thead>
-                        <tbody id="heapClassTableBody" class="divide-y divide-gray-100"></tbody>
+                        <tbody id="heapClassTableBody" class="divide-y divide-theme"></tbody>
                     </table>
                     <!-- 分页控件 -->
                     <div id="heapPagination"></div>
@@ -903,7 +903,7 @@
     </main>
 
     <!-- Node Tooltip -->
-    <div id="nodeTooltip" class="node-tooltip fixed bg-black/85 text-white px-4 py-2.5 rounded-lg text-sm max-w-[400px] break-all pointer-events-none z-[1000] hidden"></div>
+    <div id="nodeTooltip" class="hidden"></div>
 
     <!-- Alpine.js x-cloak style & Theme Picker -->
     <style>
@@ -1166,14 +1166,14 @@
                         const isActive = this.pprofSubType === type;
                         
                         html += `
-                            <div class="pprof-profile-card ${isActive ? 'active' : ''} cursor-pointer p-4 bg-white rounded-xl border-2 ${isActive ? 'border-primary' : 'border-gray-100'} hover:border-primary/50 transition-all"
+                            <div class="pprof-profile-card ${isActive ? 'active' : ''} cursor-pointer p-4 bg-card rounded-xl border-2 ${isActive ? 'border-primary' : 'border-theme'} hover:border-primary/50 transition-all"
                                  onclick="window.dispatchEvent(new CustomEvent('pprof-subtype-change', {detail: '${type}'}))">
                                 <div class="flex items-center gap-3">
                                     <span class="text-2xl">${icon}</span>
                                     <div>
-                                        <div class="font-semibold text-gray-800">${name}</div>
-                                        <div class="text-sm text-gray-500">${Utils.formatNumber(data.total_samples)} samples</div>
-                                        <div class="text-xs text-gray-400">${data.file_count} file(s)</div>
+                                        <div class="font-semibold text-base">${name}</div>
+                                        <div class="text-sm text-secondary">${Utils.formatNumber(data.total_samples)} samples</div>
+                                        <div class="text-xs text-muted">${data.file_count} file(s)</div>
                                     </div>
                                 </div>
                             </div>
@@ -1190,16 +1190,16 @@
                     if (!container) return;
 
                     if (Object.keys(leakReports).length === 0) {
-                        container.innerHTML = '<div class="text-gray-500 text-sm">No leak detection data available</div>';
+                        container.innerHTML = '<div class="text-muted text-sm">No leak detection data available</div>';
                         return;
                     }
 
                     const severityColors = {
-                        'none': 'bg-green-100 text-green-800',
-                        'low': 'bg-yellow-100 text-yellow-800',
-                        'medium': 'bg-orange-100 text-orange-800',
-                        'high': 'bg-red-100 text-red-800',
-                        'critical': 'bg-red-200 text-red-900'
+                        'none': 'leak-severity-none',
+                        'low': 'leak-severity-low',
+                        'medium': 'leak-severity-medium',
+                        'high': 'leak-severity-high',
+                        'critical': 'leak-severity-critical'
                     };
 
                     const severityIcons = {
@@ -1229,13 +1229,13 @@
                         const isHighlighted = highlightType === type;
                         
                         html += `
-                            <div class="p-4 bg-white rounded-xl border-2 ${isHighlighted ? 'border-primary shadow-md' : 'border-gray-100'} shadow-sm transition-all">
+                            <div class="leak-card p-4 bg-card rounded-xl border-2 ${isHighlighted ? 'border-primary shadow-md' : 'border-theme'} shadow-sm transition-all">
                                 <div class="flex items-center justify-between mb-2">
-                                    <span class="font-semibold text-gray-800">${typeName}</span>
+                                    <span class="font-semibold text-base">${typeName}</span>
                                     <span class="px-2 py-1 rounded-full text-xs font-medium ${colorClass}">${icon} ${severity.toUpperCase()}</span>
                                 </div>
-                                <p class="text-sm text-gray-600 mb-2">${report.conclusion || 'No conclusion'}</p>
-                                <div class="flex items-center gap-4 text-xs text-gray-500">
+                                <p class="text-sm text-secondary mb-2">${report.conclusion || 'No conclusion'}</p>
+                                <div class="flex items-center gap-4 text-xs text-muted">
                                     <span>Growth: ${report.growth_percent?.toFixed(2) || 0}%</span>
                                     <span>Items: ${report.items_count || 0}</span>
                                 </div>
@@ -1364,17 +1364,17 @@
                         const escapedOriginal = Utils.escapeHtml(originalName).replace(/'/g, "\\'");
                         
                         return `
-                        <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="px-6 py-4 text-sm text-gray-500 font-medium">${i + 1}</td>
+                        <tr class="hover:bg-muted transition-colors">
+                            <td class="px-6 py-4 text-sm text-muted font-medium">${i + 1}</td>
                             <td class="px-6 py-4">
-                                <span class="font-mono text-sm text-gray-800 cursor-pointer hover:text-primary hover:underline" title="Click to copy: ${Utils.escapeHtml(originalName)}" onclick="Utils.copyToClipboard('${escapedOriginal}')">${displayName}</span>${badge}
+                                <span class="font-mono text-sm text-base cursor-pointer hover:text-primary hover:underline" title="Click to copy: ${Utils.escapeHtml(originalName)}" onclick="Utils.copyToClipboard('${escapedOriginal}')">${displayName}</span>${badge}
                             </td>
                             <td class="px-6 py-4">
                                 <div class="flex items-center gap-3">
-                                    <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden max-w-[120px]">
+                                    <div class="flex-1 h-2 bg-elevated rounded-full overflow-hidden max-w-[120px]">
                                         <div class="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-300" style="width: ${Math.min(f.self, 100)}%"></div>
                                     </div>
-                                    <span class="text-sm font-semibold text-gray-700 w-16 text-right">${f.self.toFixed(2)}%</span>
+                                    <span class="text-sm font-semibold text-secondary w-16 text-right">${f.self.toFixed(2)}%</span>
                                 </div>
                             </td>
                             <td class="px-6 py-4 text-center">
@@ -1403,19 +1403,19 @@
                     if (!threadList) return;
                     
                     threadList.innerHTML = (data.threads || []).map((t, i) => `
-                        <li class="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition-colors">
+                        <li class="flex items-center justify-between px-6 py-4 hover:bg-muted transition-colors">
                             <div class="flex items-center gap-3">
                                 <span class="w-6 h-6 rounded-full bg-gradient-to-br from-teal-500 to-cyan-500 text-white text-xs flex items-center justify-center font-medium">${i + 1}</span>
-                                <span class="font-mono text-sm text-gray-800">${Utils.escapeHtml(t.thread_name || 'Unknown')}</span>
+                                <span class="font-mono text-sm text-base">${Utils.escapeHtml(t.thread_name || 'Unknown')}</span>
                             </div>
                             <div class="flex items-center gap-4">
                                 <div class="flex items-center gap-2">
-                                    <div class="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div class="w-20 h-1.5 bg-elevated rounded-full overflow-hidden">
                                         <div class="h-full bg-gradient-to-r from-teal-500 to-cyan-500 rounded-full" style="width: ${Math.min(t.percentage || 0, 100)}%"></div>
                                     </div>
-                                    <span class="text-sm text-gray-600 w-14 text-right">${(t.percentage || 0).toFixed(2)}%</span>
+                                    <span class="text-sm text-secondary w-14 text-right">${(t.percentage || 0).toFixed(2)}%</span>
                                 </div>
-                                <span class="text-xs text-gray-400">${Utils.formatNumber(t.samples)} samples</span>
+                                <span class="text-xs text-muted">${Utils.formatNumber(t.samples)} samples</span>
                             </div>
                         </li>
                     `).join('');
@@ -1470,7 +1470,7 @@
                                         // 显示空状态提示
                                         const tbody = document.getElementById('heapClassTableBody');
                                         if (tbody) {
-                                            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-500">No class data available. Please check if the heap dump was parsed correctly.</td></tr>';
+                                            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-muted">No class data available. Please check if the heap dump was parsed correctly.</td></tr>';
                                         }
                                     }
                                 } else {
@@ -1537,7 +1537,7 @@
                         const leakReports = data.leak_reports || {};
 
                         if (Object.keys(leakReports).length === 0) {
-                            container.innerHTML = '<div class="text-gray-500 text-center py-8">No leak detection data available. Make sure you have multiple profile snapshots for comparison.</div>';
+                            container.innerHTML = '<div class="text-muted text-center py-8">No leak detection data available. Make sure you have multiple profile snapshots for comparison.</div>';
                             return;
                         }
 
@@ -1552,35 +1552,43 @@
                         container.innerHTML = html;
                     } catch (err) {
                         console.error('Failed to load leak report:', err);
-                        container.innerHTML = '<div class="text-red-500 text-center py-8">Failed to load leak detection data</div>';
+                        container.innerHTML = '<div class="text-danger text-center py-8">Failed to load leak detection data</div>';
                     }
                 },
 
                 // Render a single leak report section
                 renderLeakReportSection(title, icon, report) {
                     const severityColors = {
-                        'none': 'bg-green-100 text-green-800 border-green-200',
-                        'low': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-                        'medium': 'bg-orange-100 text-orange-800 border-orange-200',
-                        'high': 'bg-red-100 text-red-800 border-red-200',
-                        'critical': 'bg-red-200 text-red-900 border-red-300'
+                        'none': 'leak-section-none',
+                        'low': 'leak-section-low',
+                        'medium': 'leak-section-medium',
+                        'high': 'leak-section-high',
+                        'critical': 'leak-section-critical'
+                    };
+                    const severityBadgeColors = {
+                        'none': 'leak-severity-none',
+                        'low': 'leak-severity-low',
+                        'medium': 'leak-severity-medium',
+                        'high': 'leak-severity-high',
+                        'critical': 'leak-severity-critical'
                     };
                     const severity = report.severity || 'none';
                     const colorClass = severityColors[severity] || severityColors['none'];
+                    const badgeClass = severityBadgeColors[severity] || severityBadgeColors['none'];
 
                     let growthItemsHtml = '';
                     if (report.growth_items && report.growth_items.length > 0) {
                         growthItemsHtml = `
                             <div class="mt-4">
-                                <h4 class="text-sm font-semibold text-gray-700 mb-2">Growth Items (${report.growth_items.length})</h4>
+                                <h4 class="text-sm font-semibold text-secondary mb-2">Growth Items (${report.growth_items.length})</h4>
                                 <div class="space-y-2 max-h-64 overflow-y-auto">
                                     ${report.growth_items.map(item => `
-                                        <div class="p-3 bg-gray-50 rounded-lg">
+                                        <div class="p-3 bg-muted rounded-lg">
                                             <div class="flex items-center justify-between">
-                                                <span class="font-mono text-sm text-gray-800 truncate" title="${Utils.escapeHtml(item.name)}">${Utils.escapeHtml(item.name)}</span>
-                                                <span class="text-sm font-semibold ${item.growth_percent > 50 ? 'text-red-600' : 'text-orange-600'}">+${item.growth_percent?.toFixed(1) || 0}%</span>
+                                                <span class="font-mono text-sm text-base truncate" title="${Utils.escapeHtml(item.name)}">${Utils.escapeHtml(item.name)}</span>
+                                                <span class="text-sm font-semibold ${item.growth_percent > 50 ? 'text-danger' : 'text-warning'}">+${item.growth_percent?.toFixed(1) || 0}%</span>
                                             </div>
-                                            <div class="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                                            <div class="flex items-center gap-4 mt-1 text-xs text-muted">
                                                 <span>Baseline: ${Utils.formatBytes(item.baseline_value)}</span>
                                                 <span>Current: ${Utils.formatBytes(item.current_value)}</span>
                                                 <span>Growth: ${Utils.formatBytes(item.growth_value)}</span>
@@ -1593,31 +1601,31 @@
                     }
 
                     return `
-                        <div class="border ${colorClass} rounded-xl p-5">
+                        <div class="leak-section ${colorClass} rounded-xl p-5">
                             <div class="flex items-center justify-between mb-4">
                                 <div class="flex items-center gap-3">
                                     <span class="text-2xl">${icon}</span>
-                                    <h3 class="text-lg font-semibold text-gray-800">${title}</h3>
+                                    <h3 class="text-lg font-semibold text-base">${title}</h3>
                                 </div>
-                                <span class="px-3 py-1 rounded-full text-sm font-medium ${colorClass}">${severity.toUpperCase()}</span>
+                                <span class="px-3 py-1 rounded-full text-sm font-medium ${badgeClass}">${severity.toUpperCase()}</span>
                             </div>
-                            <p class="text-gray-700 mb-4">${report.conclusion || 'No conclusion available'}</p>
+                            <p class="text-secondary mb-4">${report.conclusion || 'No conclusion available'}</p>
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                <div class="p-3 bg-white/50 rounded-lg">
-                                    <div class="text-gray-500">Baseline</div>
-                                    <div class="font-semibold">${Utils.formatBytes(report.baseline_total)}</div>
+                                <div class="p-3 leak-stat-box rounded-lg">
+                                    <div class="text-muted">Baseline</div>
+                                    <div class="font-semibold text-base">${Utils.formatBytes(report.baseline_total)}</div>
                                 </div>
-                                <div class="p-3 bg-white/50 rounded-lg">
-                                    <div class="text-gray-500">Current</div>
-                                    <div class="font-semibold">${Utils.formatBytes(report.current_total)}</div>
+                                <div class="p-3 leak-stat-box rounded-lg">
+                                    <div class="text-muted">Current</div>
+                                    <div class="font-semibold text-base">${Utils.formatBytes(report.current_total)}</div>
                                 </div>
-                                <div class="p-3 bg-white/50 rounded-lg">
-                                    <div class="text-gray-500">Growth</div>
-                                    <div class="font-semibold ${report.total_growth > 0 ? 'text-red-600' : 'text-green-600'}">${report.total_growth > 0 ? '+' : ''}${Utils.formatBytes(report.total_growth)}</div>
+                                <div class="p-3 leak-stat-box rounded-lg">
+                                    <div class="text-muted">Growth</div>
+                                    <div class="font-semibold ${report.total_growth > 0 ? 'text-danger' : 'text-success'}">${report.total_growth > 0 ? '+' : ''}${Utils.formatBytes(report.total_growth)}</div>
                                 </div>
-                                <div class="p-3 bg-white/50 rounded-lg">
-                                    <div class="text-gray-500">Growth %</div>
-                                    <div class="font-semibold ${report.total_growth_percent > 0 ? 'text-red-600' : 'text-green-600'}">${report.total_growth_percent?.toFixed(2) || 0}%</div>
+                                <div class="p-3 leak-stat-box rounded-lg">
+                                    <div class="text-muted">Growth %</div>
+                                    <div class="font-semibold ${report.total_growth_percent > 0 ? 'text-danger' : 'text-success'}">${report.total_growth_percent?.toFixed(2) || 0}%</div>
                                 </div>
                             </div>
                             ${growthItemsHtml}

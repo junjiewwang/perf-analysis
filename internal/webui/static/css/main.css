@@ -324,7 +324,7 @@
     font-size: 12px;
 }
 
-/* ===== Tips ===== */
+/* ===== Tips - Theme aware ===== */
 .tips {
     display: flex;
     flex-wrap: wrap;
@@ -340,7 +340,7 @@
     gap: 4px;
 }
 
-/* ===== Callgraph Stats ===== */
+/* ===== Callgraph Stats - Theme aware ===== */
 .callgraph-stats {
     display: flex;
     gap: 20px;
@@ -409,4 +409,92 @@
     background: rgb(var(--color-secondary) / 0.15);
     border-color: rgb(var(--color-secondary) / 0.3);
     color: rgb(var(--color-secondary));
+}
+
+/* ===== Leak Detection Styles - Theme aware ===== */
+
+/* Severity badges */
+.leak-severity-none {
+    background: rgb(var(--color-success) / 0.15);
+    color: rgb(var(--color-success));
+    border: 1px solid rgb(var(--color-success) / 0.3);
+}
+
+.leak-severity-low {
+    background: rgb(251 191 36 / 0.15);
+    color: rgb(var(--color-warning));
+    border: 1px solid rgb(var(--color-warning) / 0.3);
+}
+
+.leak-severity-medium {
+    background: rgb(var(--color-warning) / 0.2);
+    color: rgb(var(--color-warning));
+    border: 1px solid rgb(var(--color-warning) / 0.4);
+}
+
+.leak-severity-high {
+    background: rgb(var(--color-danger) / 0.15);
+    color: rgb(var(--color-danger));
+    border: 1px solid rgb(var(--color-danger) / 0.3);
+}
+
+.leak-severity-critical {
+    background: rgb(var(--color-danger) / 0.25);
+    color: rgb(var(--color-danger));
+    border: 1px solid rgb(var(--color-danger) / 0.5);
+}
+
+/* Leak section cards */
+.leak-section {
+    border: 2px solid;
+}
+
+.leak-section-none {
+    background: rgb(var(--color-success) / 0.05);
+    border-color: rgb(var(--color-success) / 0.3);
+}
+
+.leak-section-low {
+    background: rgb(251 191 36 / 0.05);
+    border-color: rgb(var(--color-warning) / 0.3);
+}
+
+.leak-section-medium {
+    background: rgb(var(--color-warning) / 0.08);
+    border-color: rgb(var(--color-warning) / 0.4);
+}
+
+.leak-section-high {
+    background: rgb(var(--color-danger) / 0.05);
+    border-color: rgb(var(--color-danger) / 0.3);
+}
+
+.leak-section-critical {
+    background: rgb(var(--color-danger) / 0.1);
+    border-color: rgb(var(--color-danger) / 0.5);
+}
+
+/* Leak stat boxes */
+.leak-stat-box {
+    background: rgb(var(--color-bg-card) / 0.6);
+    border: 1px solid rgb(var(--color-border) / 0.3);
+}
+
+/* Leak card in overview */
+.leak-card {
+    background: rgb(var(--color-bg-card));
+}
+
+/* pprof profile cards */
+.pprof-profile-card {
+    transition: all 0.2s ease;
+}
+
+.pprof-profile-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.pprof-profile-card.active {
+    box-shadow: var(--shadow-md);
 }

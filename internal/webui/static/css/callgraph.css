@@ -2,16 +2,16 @@
  * Call Graph CSS - Styles specific to call graph visualization
  */
 
-/* Thread Selector */
+/* Thread Selector - Theme aware */
 .thread-selector-container {
     display: none;
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+    background: linear-gradient(135deg, rgb(var(--color-primary) / 0.1) 0%, rgb(var(--color-secondary) / 0.08) 100%);
     border-radius: 8px;
     margin-bottom: 10px;
-    border: 1px solid #d0d7e8;
+    border: 1px solid rgb(var(--color-border));
 }
 
 .thread-selector-container.visible {
@@ -21,7 +21,7 @@
 .thread-selector-label {
     font-size: 13px;
     font-weight: 600;
-    color: #5f6368;
+    color: rgb(var(--color-text-muted));
     white-space: nowrap;
 }
 
@@ -41,8 +41,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
-    background: white;
-    border: 1px solid #dadce0;
+    background: rgb(var(--color-bg-card));
+    border: 1px solid rgb(var(--color-border));
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -50,13 +50,13 @@
 }
 
 .thread-selector-trigger:hover {
-    border-color: #667eea;
-    box-shadow: 0 1px 3px rgba(102, 126, 234, 0.2);
+    border-color: rgb(var(--color-primary));
+    box-shadow: 0 1px 3px rgb(var(--color-primary) / 0.2);
 }
 
 .thread-selector-wrapper.open .thread-selector-trigger {
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+    border-color: rgb(var(--color-primary));
+    box-shadow: 0 0 0 3px rgb(var(--color-primary) / 0.15);
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
 }
@@ -66,7 +66,7 @@
     align-items: center;
     gap: 6px;
     font-size: 13px;
-    color: #202124;
+    color: rgb(var(--color-text-base));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -78,13 +78,13 @@
 }
 
 .thread-selected-text .selected-pct {
-    color: #667eea;
+    color: rgb(var(--color-primary));
     font-weight: 500;
 }
 
 .thread-selector-arrow {
     flex-shrink: 0;
-    color: #5f6368;
+    color: rgb(var(--color-text-muted));
     transition: transform 0.2s ease;
 }
 
@@ -98,11 +98,11 @@
     top: 100%;
     left: 0;
     right: 0;
-    background: white;
-    border: 1px solid #667eea;
+    background: rgb(var(--color-bg-card));
+    border: 1px solid rgb(var(--color-primary));
     border-top: none;
     border-radius: 0 0 6px 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-lg);
     z-index: 1000;
     display: none;
     max-height: 350px;
@@ -115,39 +115,42 @@
 
 .thread-search-box {
     padding: 8px;
-    border-bottom: 1px solid #e8e8e8;
-    background: #fafafa;
+    border-bottom: 1px solid rgb(var(--color-border-light));
+    background: rgb(var(--color-bg-muted));
 }
 
 .thread-search-input {
     width: 100%;
     padding: 8px 12px;
     font-size: 13px;
-    border: 1px solid #dadce0;
+    border: 1px solid rgb(var(--color-border));
     border-radius: 4px;
     outline: none;
     transition: border-color 0.2s;
+    background: rgb(var(--color-bg-card));
+    color: rgb(var(--color-text-base));
 }
 
 .thread-search-input:focus {
-    border-color: #667eea;
+    border-color: rgb(var(--color-primary));
 }
 
 .thread-search-input::placeholder {
-    color: #9aa0a6;
+    color: rgb(var(--color-text-muted));
 }
 
 .thread-dropdown {
     max-height: 280px;
     overflow-y: auto;
     padding: 4px 0;
+    background: rgb(var(--color-bg-card));
 }
 
 .thread-dropdown-group-label {
     padding: 8px 12px 4px;
     font-size: 11px;
     font-weight: 600;
-    color: #5f6368;
+    color: rgb(var(--color-text-muted));
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -163,15 +166,15 @@
 
 .thread-dropdown-item:hover,
 .thread-dropdown-item.highlighted {
-    background-color: #f0f4ff;
+    background-color: rgb(var(--color-primary) / 0.1);
 }
 
 .thread-dropdown-item.selected {
-    background-color: #e8f0fe;
+    background-color: rgb(var(--color-primary) / 0.15);
 }
 
 .thread-dropdown-item.global-item {
-    border-bottom: 1px solid #e8e8e8;
+    border-bottom: 1px solid rgb(var(--color-border-light));
     margin-bottom: 4px;
 }
 
@@ -189,7 +192,7 @@
 
 .thread-dropdown-item .item-text {
     font-size: 13px;
-    color: #202124;
+    color: rgb(var(--color-text-base));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -197,8 +200,8 @@
 
 .thread-dropdown-item .item-group {
     font-size: 11px;
-    color: #5f6368;
-    background: #e8e8e8;
+    color: rgb(var(--color-text-secondary));
+    background: rgb(var(--color-bg-muted));
     padding: 1px 6px;
     border-radius: 4px;
     flex-shrink: 0;
@@ -207,7 +210,7 @@
 .thread-dropdown-item .item-pct {
     font-size: 12px;
     font-weight: 600;
-    color: #667eea;
+    color: rgb(var(--color-primary));
     flex-shrink: 0;
     margin-left: 8px;
 }
@@ -215,7 +218,7 @@
 .thread-dropdown-empty {
     padding: 16px;
     text-align: center;
-    color: #9aa0a6;
+    color: rgb(var(--color-text-muted));
     font-size: 13px;
 }
 
@@ -224,8 +227,8 @@
     align-items: center;
     gap: 4px;
     padding: 4px 10px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--gradient-primary);
+    color: rgb(var(--color-text-inverted));
     font-size: 11px;
     font-weight: 600;
     border-radius: 12px;
@@ -237,7 +240,7 @@
     border-radius: 8px;
 }
 
-/* Call Graph Container */
+/* Call Graph Container - Theme aware */
 .callgraph-container {
     display: flex;
     gap: 15px;
@@ -246,9 +249,9 @@
 
 #callgraph {
     flex: 1;
-    border: 1px solid #e0e0e0;
+    border: 1px solid rgb(var(--color-border));
     border-radius: 8px;
-    background: linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%);
+    background: rgb(var(--color-bg-muted));
     position: relative;
     overflow: hidden;
 }
@@ -265,7 +268,7 @@
 }
 
 .callgraph-node rect {
-    stroke: #333;
+    stroke: rgb(var(--color-text-secondary));
     stroke-width: 1px;
     transition: all 0.3s ease;
 }
@@ -274,18 +277,55 @@
     font-size: 11px;
     font-family: 'Monaco', 'Menlo', monospace;
     pointer-events: none;
+    fill: rgb(var(--color-text-base));
+}
+
+/* Node text hierarchy colors - theme aware */
+/* Note: Node text should be dark on flame-colored backgrounds for readability */
+.callgraph-node .node-text-primary {
+    fill: #1a1a1a;
+}
+
+.callgraph-node .node-text-base {
+    fill: #333;
+}
+
+.callgraph-node .node-text-secondary {
+    fill: #444;
+}
+
+.callgraph-node .node-text-muted {
+    fill: #555;
+}
+
+/* Dark theme - keep dark text on flame-colored nodes for contrast */
+/* The flame colors (orange/yellow) work better with dark text */
+[data-theme="dark"] .callgraph-node .node-text-primary {
+    fill: #1a1a1a;
+}
+
+[data-theme="dark"] .callgraph-node .node-text-base {
+    fill: #2a2a2a;
+}
+
+[data-theme="dark"] .callgraph-node .node-text-secondary {
+    fill: #333;
+}
+
+[data-theme="dark"] .callgraph-node .node-text-muted {
+    fill: #444;
 }
 
 /* Call Graph Edges */
 .callgraph-edge {
     fill: none;
-    stroke: #999;
+    stroke: rgb(var(--color-text-muted));
     stroke-opacity: 0.6;
     transition: all 0.3s ease;
 }
 
 .callgraph-edge.highlighted {
-    stroke: #e74c3c;
+    stroke: rgb(var(--color-danger));
     stroke-opacity: 1;
     stroke-width: 2px;
 }
@@ -349,6 +389,18 @@
     fill: white;
 }
 
+/* Callee nodes - next level calls (orange) */
+.callgraph-node.search-callee rect {
+    fill: #ff9800 !important;
+    stroke: #e65100;
+    stroke-width: 2px;
+    filter: drop-shadow(0 0 6px rgba(255, 152, 0, 0.5));
+}
+
+.callgraph-node.search-callee text {
+    fill: white;
+}
+
 /* Dimmed nodes */
 .callgraph-node.search-dimmed {
     opacity: 0.08;
@@ -372,6 +424,13 @@
     stroke-width: 2.5px;
 }
 
+/* Callee edges - downstream path */
+.callgraph-edge.search-callee-edge {
+    stroke: #ff9800;
+    stroke-opacity: 1;
+    stroke-width: 2.5px;
+}
+
 /* Depth indicator badge */
 .depth-badge {
     font-size: 9px;
@@ -379,12 +438,12 @@
     font-weight: bold;
 }
 
-/* Stats bar */
+/* Stats bar - Theme aware */
 .callgraph-stats {
     display: flex;
     gap: 20px;
     padding: 10px 15px;
-    background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+    background: rgb(var(--color-bg-muted));
     border-radius: 8px;
     margin-bottom: 10px;
     font-size: 13px;
@@ -397,12 +456,12 @@
 }
 
 .callgraph-stats .stat-label {
-    color: #666;
+    color: rgb(var(--color-text-muted));
 }
 
 .callgraph-stats .stat-value {
     font-weight: 600;
-    color: #333;
+    color: rgb(var(--color-text-base));
 }
 
 /* Filter hidden nodes */
@@ -426,11 +485,11 @@
     transition: opacity 0.3s ease;
 }
 
-/* Call chain sidebar */
+/* Call chain sidebar - Theme aware */
 .callchain-sidebar {
     width: 280px;
-    background: white;
-    border: 1px solid #e0e0e0;
+    background: rgb(var(--color-bg-card));
+    border: 1px solid rgb(var(--color-border));
     border-radius: 8px;
     display: none;
     flex-direction: column;
@@ -443,8 +502,8 @@
 
 .callchain-header {
     padding: 12px 15px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--gradient-primary);
+    color: rgb(var(--color-text-inverted));
     font-weight: 600;
     font-size: 14px;
     display: flex;
@@ -455,7 +514,7 @@
 .callchain-close {
     background: none;
     border: none;
-    color: white;
+    color: rgb(var(--color-text-inverted));
     cursor: pointer;
     font-size: 18px;
     opacity: 0.8;
@@ -469,6 +528,7 @@
     flex: 1;
     overflow-y: auto;
     padding: 10px 0;
+    background: rgb(var(--color-bg-card));
 }
 
 .callchain-section {
@@ -478,7 +538,7 @@
 .callchain-section-title {
     font-size: 11px;
     font-weight: 600;
-    color: #888;
+    color: rgb(var(--color-text-muted));
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
@@ -494,47 +554,133 @@
     transition: all 0.2s;
     word-break: break-all;
     border-left: 3px solid transparent;
+    color: rgb(var(--color-text-base));
 }
 
 .callchain-node:hover {
-    background: #f5f5f5;
+    background: rgb(var(--color-bg-hover));
 }
 
 .callchain-node.root {
-    background: linear-gradient(90deg, rgba(0, 200, 83, 0.1) 0%, transparent 100%);
-    border-left-color: #00c853;
+    background: linear-gradient(90deg, rgb(var(--color-success) / 0.15) 0%, transparent 100%);
+    border-left-color: rgb(var(--color-success));
 }
 
 .callchain-node.chain {
-    background: linear-gradient(90deg, rgba(124, 77, 255, 0.1) 0%, transparent 100%);
-    border-left-color: #7c4dff;
+    background: linear-gradient(90deg, rgb(var(--color-secondary) / 0.15) 0%, transparent 100%);
+    border-left-color: rgb(var(--color-secondary));
 }
 
 .callchain-node.match {
-    background: linear-gradient(90deg, rgba(224, 64, 251, 0.15) 0%, transparent 100%);
-    border-left-color: #e040fb;
+    background: linear-gradient(90deg, rgb(var(--color-accent) / 0.2) 0%, transparent 100%);
+    border-left-color: rgb(var(--color-accent));
     font-weight: 600;
+}
+
+/* Callee nodes - next level calls (orange) */
+.callchain-node.callee {
+    background: linear-gradient(90deg, rgb(var(--color-warning) / 0.15) 0%, transparent 100%);
+    border-left-color: rgb(var(--color-warning));
+    padding: 6px 12px;
+}
+
+.callchain-node.callee:hover {
+    background: linear-gradient(90deg, rgb(var(--color-warning) / 0.25) 0%, rgb(var(--color-warning) / 0.05) 100%);
+}
+
+.callchain-node.callee.filtered {
+    opacity: 0.5;
+    border-left-color: rgb(var(--color-text-muted));
+}
+
+/* Callee progress bar */
+.callee-progress-bar {
+    height: 4px;
+    background: rgb(var(--color-bg-muted));
+    border-radius: 2px;
+    margin-bottom: 6px;
+    overflow: hidden;
+}
+
+.callee-progress {
+    height: 100%;
+    background: linear-gradient(90deg, rgb(var(--color-warning)), rgb(251 146 60));
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    min-width: 2px;
+}
+
+/* Callee info layout */
+.callee-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.callee-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: rgb(var(--color-text-base));
+}
+
+.callee-stats {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 600;
+    color: rgb(251 146 60);
+    white-space: nowrap;
+}
+
+/* Callee others (collapsed) */
+.callchain-node.callee-others {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgb(var(--color-bg-muted));
+    border-left-color: rgb(var(--color-text-muted));
+    color: rgb(var(--color-text-secondary));
+    font-style: italic;
+    padding: 6px 12px;
+}
+
+.callchain-node.callee-others:hover {
+    background: rgb(var(--color-bg-hover));
+    color: rgb(var(--color-text-base));
+}
+
+.callee-others .others-label {
+    font-size: 11px;
+}
+
+.callee-others .others-pct {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgb(var(--color-text-muted));
 }
 
 .callchain-arrow {
     text-align: center;
-    color: #999;
+    color: rgb(var(--color-text-muted));
     font-size: 16px;
     padding: 2px 0;
 }
 
-/* Minimap */
+/* Minimap - Theme aware */
 .callgraph-minimap {
     position: absolute;
     bottom: 10px;
     right: 10px;
     width: 150px;
     height: 100px;
-    background: rgba(255, 255, 255, 0.95);
-    border: 1px solid #ddd;
+    background: rgb(var(--color-bg-card) / 0.95);
+    border: 1px solid rgb(var(--color-border));
     border-radius: 6px;
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-md);
 }
 
 .callgraph-minimap svg {
@@ -543,7 +689,171 @@
 }
 
 .minimap-viewport {
-    fill: rgba(102, 126, 234, 0.2);
-    stroke: #667eea;
+    fill: rgb(var(--color-primary) / 0.2);
+    stroke: rgb(var(--color-primary));
     stroke-width: 1px;
+}
+
+/* ============================================
+   Enhanced Node Tooltip Styles
+   Uses CSS variables for theme support
+   ============================================ */
+
+#nodeTooltip {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    max-width: 380px;
+    min-width: 240px;
+}
+
+.cg-tooltip {
+    background: rgb(var(--color-bg-elevated));
+    border-radius: 10px;
+    padding: 0;
+    box-shadow: var(--shadow-lg), 0 2px 8px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgb(var(--color-border));
+    overflow: hidden;
+}
+
+/* Header section - function name hierarchy */
+.cg-tooltip-header {
+    padding: 12px 14px 10px;
+    background: linear-gradient(135deg, rgb(var(--color-primary) / 0.1) 0%, rgb(var(--color-secondary) / 0.08) 100%);
+    border-bottom: 1px solid rgb(var(--color-border-light));
+}
+
+.cg-tooltip-pkg {
+    font-size: 10px;
+    color: rgb(var(--color-text-muted));
+    margin-bottom: 3px;
+    word-break: break-all;
+    line-height: 1.3;
+}
+
+.cg-tooltip-class {
+    font-size: 11px;
+    color: rgb(var(--color-info));
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.cg-tooltip-method {
+    font-size: 13px;
+    color: rgb(var(--color-text-base));
+    font-weight: 600;
+    word-break: break-all;
+    line-height: 1.4;
+}
+
+/* Allocation badge */
+.cg-tooltip-alloc {
+    padding: 6px 14px;
+    background: linear-gradient(90deg, rgb(var(--color-info) / 0.12) 0%, transparent 100%);
+    border-bottom: 1px solid rgb(var(--color-border-light));
+    font-size: 11px;
+    color: rgb(var(--color-info));
+    font-weight: 500;
+}
+
+/* Metrics section */
+.cg-tooltip-metrics {
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: rgb(var(--color-bg-card));
+}
+
+.cg-tooltip-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cg-tooltip-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cg-tooltip-label {
+    font-size: 11px;
+    color: rgb(var(--color-text-muted));
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cg-tooltip-value {
+    font-size: 13px;
+    font-weight: 700;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+.cg-tooltip-self {
+    color: rgb(var(--color-warning));
+}
+
+.cg-tooltip-total {
+    color: rgb(var(--color-secondary));
+}
+
+/* Progress bars */
+.cg-tooltip-bar {
+    height: 4px;
+    background: rgb(var(--color-bg-muted));
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.cg-tooltip-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    min-width: 2px;
+}
+
+.cg-tooltip-bar-self {
+    background: linear-gradient(90deg, rgb(var(--color-warning)), rgb(251 191 36));
+}
+
+.cg-tooltip-bar-total {
+    background: linear-gradient(90deg, rgb(var(--color-secondary)), rgb(167 139 250));
+}
+
+/* Call relationship info */
+.cg-tooltip-calls {
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 14px;
+    background: rgb(var(--color-bg-muted));
+    border-top: 1px solid rgb(var(--color-border-light));
+    gap: 16px;
+}
+
+.cg-tooltip-callers,
+.cg-tooltip-callees {
+    font-size: 11px;
+    color: rgb(var(--color-text-secondary));
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.cg-tooltip-callers {
+    color: rgb(var(--color-success));
+}
+
+.cg-tooltip-callees {
+    color: rgb(var(--color-warning));
+}
+
+/* Hint at bottom */
+.cg-tooltip-hint {
+    padding: 6px 14px;
+    background: rgb(var(--color-bg-base));
+    font-size: 10px;
+    color: rgb(var(--color-text-muted));
+    text-align: center;
+    border-top: 1px solid rgb(var(--color-border-light));
 }
