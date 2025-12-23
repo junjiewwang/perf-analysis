@@ -25,6 +25,16 @@ const (
 	FlameGraphTypeMemory FlameGraphType = "memory"
 	// FlameGraphTypeTracing represents tracing/latency flame graph.
 	FlameGraphTypeTracing FlameGraphType = "tracing"
+	// FlameGraphTypePProfGoroutine represents Go pprof goroutine flame graph.
+	FlameGraphTypePProfGoroutine FlameGraphType = "pprof-goroutine"
+	// FlameGraphTypePProfHeapInuse represents Go pprof heap inuse flame graph.
+	FlameGraphTypePProfHeapInuse FlameGraphType = "pprof-heap-inuse"
+	// FlameGraphTypePProfHeapAlloc represents Go pprof heap alloc flame graph.
+	FlameGraphTypePProfHeapAlloc FlameGraphType = "pprof-heap-alloc"
+	// FlameGraphTypePProfBlock represents Go pprof block flame graph.
+	FlameGraphTypePProfBlock FlameGraphType = "pprof-block"
+	// FlameGraphTypePProfMutex represents Go pprof mutex flame graph.
+	FlameGraphTypePProfMutex FlameGraphType = "pprof-mutex"
 )
 
 // FlameGraphLoader defines the interface for loading flame graph data.
@@ -129,27 +139,21 @@ func (l *CPUFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flameg
 
 // loadFromFlameGraphFile loads flame graph from pre-computed JSON file.
 func (l *CPUFlameGraphLoader) loadFromFlameGraphFile(taskDir string) (*flamegraph.FlameGraph, error) {
-	flameGraphFile := filepath.Join(taskDir, "collapsed_data.json.gz")
+	// Try multiple locations: cpu subdirectory first (pprof batch analysis), then root
+	subDirs := []string{"cpu", "."}
+	fileNames := []string{"collapsed_data.json.gz", "cpu_flamegraph.json.gz"}
 
-	f, err := os.Open(flameGraphFile)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	gzReader, err := gzip.NewReader(f)
-	if err != nil {
-		return nil, err
-	}
-	defer gzReader.Close()
-
-	var fg flamegraph.FlameGraph
-	decoder := json.NewDecoder(gzReader)
-	if err := decoder.Decode(&fg); err != nil {
-		return nil, fmt.Errorf("failed to decode flame graph: %w", err)
+	for _, subDir := range subDirs {
+		dir := filepath.Join(taskDir, subDir)
+		for _, name := range fileNames {
+			filePath := filepath.Join(dir, name)
+			if fg, err := loadFlameGraphFromGzipJSON(filePath); err == nil {
+				return fg, nil
+			}
+		}
 	}
 
-	return &fg, nil
+	return nil, fmt.Errorf("no CPU flame graph file found in %s", taskDir)
 }
 
 // loadFromCollapsedFile loads flame graph by parsing collapsed file.
@@ -295,6 +299,185 @@ func (l *TracingFlameGraphLoader) Load(ctx context.Context, taskDir string) (*fl
 	decoder := json.NewDecoder(gzReader)
 	if err := decoder.Decode(&fg); err != nil {
 		return nil, fmt.Errorf("failed to decode tracing flame graph: %w", err)
+	}
+
+	return &fg, nil
+}
+
+// PProfGoroutineFlameGraphLoader loads Go pprof goroutine flame graphs.
+type PProfGoroutineFlameGraphLoader struct{}
+
+// NewPProfGoroutineFlameGraphLoader creates a new PProfGoroutineFlameGraphLoader.
+func NewPProfGoroutineFlameGraphLoader() *PProfGoroutineFlameGraphLoader {
+	return &PProfGoroutineFlameGraphLoader{}
+}
+
+// SupportedType returns the flame graph type this loader supports.
+func (l *PProfGoroutineFlameGraphLoader) SupportedType() FlameGraphType {
+	return FlameGraphTypePProfGoroutine
+}
+
+// Load loads goroutine flame graph data for a task.
+func (l *PProfGoroutineFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
+	// Try pprof batch analysis subdirectory first
+	subDirs := []string{"goroutine", "."}
+	fileNames := []string{"goroutine_flamegraph.json.gz", "collapsed_data.json.gz"}
+
+	for _, subDir := range subDirs {
+		dir := filepath.Join(taskDir, subDir)
+		for _, name := range fileNames {
+			filePath := filepath.Join(dir, name)
+			if fg, err := loadFlameGraphFromGzipJSON(filePath); err == nil {
+				return fg, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no goroutine flame graph file found in %s", taskDir)
+}
+
+// PProfHeapInuseFlameGraphLoader loads Go pprof heap inuse flame graphs.
+type PProfHeapInuseFlameGraphLoader struct{}
+
+// NewPProfHeapInuseFlameGraphLoader creates a new PProfHeapInuseFlameGraphLoader.
+func NewPProfHeapInuseFlameGraphLoader() *PProfHeapInuseFlameGraphLoader {
+	return &PProfHeapInuseFlameGraphLoader{}
+}
+
+// SupportedType returns the flame graph type this loader supports.
+func (l *PProfHeapInuseFlameGraphLoader) SupportedType() FlameGraphType {
+	return FlameGraphTypePProfHeapInuse
+}
+
+// Load loads heap inuse flame graph data for a task.
+func (l *PProfHeapInuseFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
+	subDirs := []string{"heap", "."}
+	fileNames := []string{"inuse_space_flamegraph.json.gz", "inuse_objects_flamegraph.json.gz"}
+
+	for _, subDir := range subDirs {
+		dir := filepath.Join(taskDir, subDir)
+		for _, name := range fileNames {
+			filePath := filepath.Join(dir, name)
+			if fg, err := loadFlameGraphFromGzipJSON(filePath); err == nil {
+				return fg, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no heap inuse flame graph file found in %s", taskDir)
+}
+
+// PProfHeapAllocFlameGraphLoader loads Go pprof heap alloc flame graphs.
+type PProfHeapAllocFlameGraphLoader struct{}
+
+// NewPProfHeapAllocFlameGraphLoader creates a new PProfHeapAllocFlameGraphLoader.
+func NewPProfHeapAllocFlameGraphLoader() *PProfHeapAllocFlameGraphLoader {
+	return &PProfHeapAllocFlameGraphLoader{}
+}
+
+// SupportedType returns the flame graph type this loader supports.
+func (l *PProfHeapAllocFlameGraphLoader) SupportedType() FlameGraphType {
+	return FlameGraphTypePProfHeapAlloc
+}
+
+// Load loads heap alloc flame graph data for a task.
+func (l *PProfHeapAllocFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
+	subDirs := []string{"heap", "."}
+	fileNames := []string{"alloc_space_flamegraph.json.gz", "alloc_objects_flamegraph.json.gz"}
+
+	for _, subDir := range subDirs {
+		dir := filepath.Join(taskDir, subDir)
+		for _, name := range fileNames {
+			filePath := filepath.Join(dir, name)
+			if fg, err := loadFlameGraphFromGzipJSON(filePath); err == nil {
+				return fg, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no heap alloc flame graph file found in %s", taskDir)
+}
+
+// PProfBlockFlameGraphLoader loads Go pprof block flame graphs.
+type PProfBlockFlameGraphLoader struct{}
+
+// NewPProfBlockFlameGraphLoader creates a new PProfBlockFlameGraphLoader.
+func NewPProfBlockFlameGraphLoader() *PProfBlockFlameGraphLoader {
+	return &PProfBlockFlameGraphLoader{}
+}
+
+// SupportedType returns the flame graph type this loader supports.
+func (l *PProfBlockFlameGraphLoader) SupportedType() FlameGraphType {
+	return FlameGraphTypePProfBlock
+}
+
+// Load loads block flame graph data for a task.
+func (l *PProfBlockFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
+	subDirs := []string{"block", "."}
+	fileNames := []string{"block_flamegraph.json.gz", "collapsed_data.json.gz"}
+
+	for _, subDir := range subDirs {
+		dir := filepath.Join(taskDir, subDir)
+		for _, name := range fileNames {
+			filePath := filepath.Join(dir, name)
+			if fg, err := loadFlameGraphFromGzipJSON(filePath); err == nil {
+				return fg, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no block flame graph file found in %s", taskDir)
+}
+
+// PProfMutexFlameGraphLoader loads Go pprof mutex flame graphs.
+type PProfMutexFlameGraphLoader struct{}
+
+// NewPProfMutexFlameGraphLoader creates a new PProfMutexFlameGraphLoader.
+func NewPProfMutexFlameGraphLoader() *PProfMutexFlameGraphLoader {
+	return &PProfMutexFlameGraphLoader{}
+}
+
+// SupportedType returns the flame graph type this loader supports.
+func (l *PProfMutexFlameGraphLoader) SupportedType() FlameGraphType {
+	return FlameGraphTypePProfMutex
+}
+
+// Load loads mutex flame graph data for a task.
+func (l *PProfMutexFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
+	subDirs := []string{"mutex", "."}
+	fileNames := []string{"mutex_flamegraph.json.gz", "collapsed_data.json.gz"}
+
+	for _, subDir := range subDirs {
+		dir := filepath.Join(taskDir, subDir)
+		for _, name := range fileNames {
+			filePath := filepath.Join(dir, name)
+			if fg, err := loadFlameGraphFromGzipJSON(filePath); err == nil {
+				return fg, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no mutex flame graph file found in %s", taskDir)
+}
+
+// loadFlameGraphFromGzipJSON is a helper function to load flame graph from gzip JSON file.
+func loadFlameGraphFromGzipJSON(filePath string) (*flamegraph.FlameGraph, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	gzReader, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	defer gzReader.Close()
+
+	var fg flamegraph.FlameGraph
+	decoder := json.NewDecoder(gzReader)
+	if err := decoder.Decode(&fg); err != nil {
+		return nil, fmt.Errorf("failed to decode flame graph: %w", err)
 	}
 
 	return &fg, nil

@@ -32,6 +32,18 @@ func (f *Factory) CreateAnalyzerForMode(mode AnalysisMode) (Analyzer, error) {
 	case ModeCPU:
 		// Generic CPU uses the same analyzer as Java CPU (collapsed format)
 		return NewJavaCPUAnalyzer(f.config), nil
+	case ModePProfCPU:
+		return NewPProfCPUAnalyzer(f.config), nil
+	case ModePProfHeap:
+		return NewPProfHeapAnalyzer(f.config), nil
+	case ModePProfGoroutine:
+		return NewPProfGoroutineAnalyzer(f.config), nil
+	case ModePProfBlock:
+		return NewPProfBlockAnalyzer(f.config), nil
+	case ModePProfMutex:
+		return NewPProfMutexAnalyzer(f.config), nil
+	case ModePProfAll:
+		return NewPProfBatchAnalyzer(f.config), nil
 	default:
 		return nil, fmt.Errorf("%w: unknown mode %q", ErrUnsupportedMode, mode)
 	}
@@ -70,7 +82,7 @@ func (f *Factory) createGenericAnalyzer(profilerType model.ProfilerType) (Analyz
 	case model.ProfilerTypePerf:
 		return NewJavaCPUAnalyzer(f.config), nil
 	case model.ProfilerTypePProf:
-		return nil, ErrUnsupportedTaskType
+		return NewPProfCPUAnalyzer(f.config), nil
 	default:
 		return nil, ErrUnsupportedTaskType
 	}
@@ -91,6 +103,22 @@ func (f *Factory) CreateManager() *Manager {
 	// Register Java heap analyzer
 	javaHeapAnalyzer := NewJavaHeapAnalyzer(f.config)
 	manager.Register(javaHeapAnalyzer)
+
+	// Register pprof analyzers
+	pprofCPUAnalyzer := NewPProfCPUAnalyzer(f.config)
+	manager.RegisterWithKey(pprofCPUAnalyzer, model.TaskTypePProfCPU, model.ProfilerTypePProf)
+
+	pprofHeapAnalyzer := NewPProfHeapAnalyzer(f.config)
+	manager.RegisterWithKey(pprofHeapAnalyzer, model.TaskTypePProfHeap, model.ProfilerTypePProf)
+
+	pprofGoroutineAnalyzer := NewPProfGoroutineAnalyzer(f.config)
+	manager.RegisterWithKey(pprofGoroutineAnalyzer, model.TaskTypePProfGoroutine, model.ProfilerTypePProf)
+
+	pprofBlockAnalyzer := NewPProfBlockAnalyzer(f.config)
+	manager.RegisterWithKey(pprofBlockAnalyzer, model.TaskTypePProfBlock, model.ProfilerTypePProf)
+
+	pprofMutexAnalyzer := NewPProfMutexAnalyzer(f.config)
+	manager.RegisterWithKey(pprofMutexAnalyzer, model.TaskTypePProfMutex, model.ProfilerTypePProf)
 
 	return manager
 }

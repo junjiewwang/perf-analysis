@@ -10,16 +10,21 @@ import (
 type TaskType int
 
 const (
-	TaskTypeGeneric  TaskType = 0 // Generic CPU profiling (perf)
-	TaskTypeJava     TaskType = 1 // Java async-profiler
-	TaskTypeTracing  TaskType = 2 // IO tracing
-	TaskTypeTiming   TaskType = 3 // Timing analysis
-	TaskTypeMemLeak  TaskType = 4 // Memory leak analysis
-	TaskTypePProfMem TaskType = 5 // Go pprof memory
-	TaskTypeJavaHeap TaskType = 6 // Java heap dump
-	TaskTypePhysMem  TaskType = 7 // Physical memory
-	TaskTypeJeprof   TaskType = 8 // Jeprof
-	TaskTypeBolt     TaskType = 9 // Bolt optimization
+	TaskTypeGeneric        TaskType = 0  // Generic CPU profiling (perf)
+	TaskTypeJava           TaskType = 1  // Java async-profiler
+	TaskTypeTracing        TaskType = 2  // IO tracing
+	TaskTypeTiming         TaskType = 3  // Timing analysis
+	TaskTypeMemLeak        TaskType = 4  // Memory leak analysis
+	TaskTypePProfMem       TaskType = 5  // Go pprof memory
+	TaskTypeJavaHeap       TaskType = 6  // Java heap dump
+	TaskTypePhysMem        TaskType = 7  // Physical memory
+	TaskTypeJeprof         TaskType = 8  // Jeprof
+	TaskTypeBolt           TaskType = 9  // Bolt optimization
+	TaskTypePProfCPU       TaskType = 10 // Go pprof CPU
+	TaskTypePProfHeap      TaskType = 11 // Go pprof Heap
+	TaskTypePProfGoroutine TaskType = 12 // Go pprof Goroutine
+	TaskTypePProfBlock     TaskType = 13 // Go pprof Block
+	TaskTypePProfMutex     TaskType = 14 // Go pprof Mutex
 )
 
 // String returns the string representation of TaskType.
@@ -45,6 +50,16 @@ func (t TaskType) String() string {
 		return "jeprof"
 	case TaskTypeBolt:
 		return "bolt"
+	case TaskTypePProfCPU:
+		return "pprof_cpu"
+	case TaskTypePProfHeap:
+		return "pprof_heap"
+	case TaskTypePProfGoroutine:
+		return "pprof_goroutine"
+	case TaskTypePProfBlock:
+		return "pprof_block"
+	case TaskTypePProfMutex:
+		return "pprof_mutex"
 	default:
 		return "unknown"
 	}
@@ -152,14 +167,18 @@ func (t *Task) IsMasterTask() bool {
 // GetResourceType returns the resource type string for the task.
 func (t *Task) GetResourceType() string {
 	switch t.Type {
-	case TaskTypeGeneric, TaskTypeTiming:
+	case TaskTypeGeneric, TaskTypeTiming, TaskTypePProfCPU:
 		return "CPU"
 	case TaskTypeJava:
 		return "App"
 	case TaskTypeTracing:
 		return "Disk"
-	case TaskTypeMemLeak, TaskTypePProfMem, TaskTypeJavaHeap, TaskTypePhysMem, TaskTypeJeprof:
+	case TaskTypeMemLeak, TaskTypePProfMem, TaskTypeJavaHeap, TaskTypePhysMem, TaskTypeJeprof, TaskTypePProfHeap:
 		return "Memory"
+	case TaskTypePProfGoroutine:
+		return "Goroutine"
+	case TaskTypePProfBlock, TaskTypePProfMutex:
+		return "Concurrency"
 	default:
 		return "Unknown"
 	}

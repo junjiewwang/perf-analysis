@@ -977,6 +977,22 @@ const FlameGraph = (function() {
         // Get current selected thread
         getSelectedThread() {
             return selectedThreadTid;
+        },
+
+        // Get top functions from the loaded flame graph data
+        getTopFunctions() {
+            if (!originalApiData || !originalApiData.thread_analysis) {
+                return [];
+            }
+            return originalApiData.thread_analysis.top_functions || [];
+        },
+
+        // Get total samples from the loaded flame graph data
+        getTotalSamples() {
+            if (!originalApiData) {
+                return 0;
+            }
+            return originalApiData.total_samples || 0;
         }
     };
 })();

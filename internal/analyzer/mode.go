@@ -23,6 +23,24 @@ const (
 
 	// ModeCPU analyzes generic CPU profiling data (collapsed format).
 	ModeCPU AnalysisMode = "cpu"
+
+	// ModePProfCPU analyzes Go pprof CPU profile.
+	ModePProfCPU AnalysisMode = "pprof-cpu"
+
+	// ModePProfHeap analyzes Go pprof Heap profile.
+	ModePProfHeap AnalysisMode = "pprof-heap"
+
+	// ModePProfGoroutine analyzes Go pprof Goroutine profile.
+	ModePProfGoroutine AnalysisMode = "pprof-goroutine"
+
+	// ModePProfBlock analyzes Go pprof Block profile.
+	ModePProfBlock AnalysisMode = "pprof-block"
+
+	// ModePProfMutex analyzes Go pprof Mutex profile.
+	ModePProfMutex AnalysisMode = "pprof-mutex"
+
+	// ModePProfAll analyzes all pprof profiles in a directory.
+	ModePProfAll AnalysisMode = "pprof-all"
 )
 
 // ModeInfo describes an analysis mode for help and validation.
@@ -64,6 +82,48 @@ var modeRegistry = map[AnalysisMode]*ModeInfo{
 		TaskType:    model.TaskTypeGeneric,
 		Profiler:    model.ProfilerTypePerf,
 	},
+	ModePProfCPU: {
+		Mode:        ModePProfCPU,
+		Description: "Go pprof CPU profile analysis",
+		InputFormat: "Go pprof format (.pprof, .pb.gz)",
+		TaskType:    model.TaskTypePProfCPU,
+		Profiler:    model.ProfilerTypePProf,
+	},
+	ModePProfHeap: {
+		Mode:        ModePProfHeap,
+		Description: "Go pprof Heap profile analysis",
+		InputFormat: "Go pprof format (.pprof, .pb.gz)",
+		TaskType:    model.TaskTypePProfHeap,
+		Profiler:    model.ProfilerTypePProf,
+	},
+	ModePProfGoroutine: {
+		Mode:        ModePProfGoroutine,
+		Description: "Go pprof Goroutine profile analysis",
+		InputFormat: "Go pprof format (.pprof, .pb.gz)",
+		TaskType:    model.TaskTypePProfGoroutine,
+		Profiler:    model.ProfilerTypePProf,
+	},
+	ModePProfBlock: {
+		Mode:        ModePProfBlock,
+		Description: "Go pprof Block profile analysis",
+		InputFormat: "Go pprof format (.pprof, .pb.gz)",
+		TaskType:    model.TaskTypePProfBlock,
+		Profiler:    model.ProfilerTypePProf,
+	},
+	ModePProfMutex: {
+		Mode:        ModePProfMutex,
+		Description: "Go pprof Mutex profile analysis",
+		InputFormat: "Go pprof format (.pprof, .pb.gz)",
+		TaskType:    model.TaskTypePProfMutex,
+		Profiler:    model.ProfilerTypePProf,
+	},
+	ModePProfAll: {
+		Mode:        ModePProfAll,
+		Description: "Batch analysis of all pprof profiles in a directory",
+		InputFormat: "Directory containing pprof subdirectories (cpu/, heap/, goroutine/, etc.)",
+		TaskType:    model.TaskTypePProfCPU, // Primary type
+		Profiler:    model.ProfilerTypePProf,
+	},
 }
 
 // ParseMode parses a mode string into AnalysisMode.
@@ -94,7 +154,10 @@ func ValidModes() string {
 func AllModes() []*ModeInfo {
 	result := make([]*ModeInfo, 0, len(modeRegistry))
 	// Return in a consistent order
-	order := []AnalysisMode{ModeJavaCPU, ModeJavaAlloc, ModeJavaHeap, ModeCPU}
+	order := []AnalysisMode{
+		ModeJavaCPU, ModeJavaAlloc, ModeJavaHeap, ModeCPU,
+		ModePProfCPU, ModePProfHeap, ModePProfGoroutine, ModePProfBlock, ModePProfMutex, ModePProfAll,
+	}
 	for _, mode := range order {
 		if info, ok := modeRegistry[mode]; ok {
 			result = append(result, info)

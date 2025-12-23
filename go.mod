@@ -1,10 +1,11 @@
 module github.com/perf-analysis
 
-go 1.24.0
+go 1.24.9
 
 toolchain go1.24.11
 
 require (
+	github.com/google/pprof v0.0.0-20251213031049-b05bdaca462f
 	github.com/klauspost/compress v1.18.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.18.2

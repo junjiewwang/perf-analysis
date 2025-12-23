@@ -19,6 +19,12 @@ func TestParseMode(t *testing.T) {
 		{"java-alloc", "java-alloc", ModeJavaAlloc, false},
 		{"java-heap", "java-heap", ModeJavaHeap, false},
 		{"cpu", "cpu", ModeCPU, false},
+		{"pprof-cpu", "pprof-cpu", ModePProfCPU, false},
+		{"pprof-heap", "pprof-heap", ModePProfHeap, false},
+		{"pprof-goroutine", "pprof-goroutine", ModePProfGoroutine, false},
+		{"pprof-block", "pprof-block", ModePProfBlock, false},
+		{"pprof-mutex", "pprof-mutex", ModePProfMutex, false},
+		{"pprof-all", "pprof-all", ModePProfAll, false},
 		{"invalid", "invalid-mode", "", true},
 		{"empty", "", "", true},
 	}
@@ -46,6 +52,12 @@ func TestAnalysisMode_ToTaskType(t *testing.T) {
 		{ModeJavaAlloc, model.TaskTypeJava},
 		{ModeJavaHeap, model.TaskTypeJavaHeap},
 		{ModeCPU, model.TaskTypeGeneric},
+		{ModePProfCPU, model.TaskTypePProfCPU},
+		{ModePProfHeap, model.TaskTypePProfHeap},
+		{ModePProfGoroutine, model.TaskTypePProfGoroutine},
+		{ModePProfBlock, model.TaskTypePProfBlock},
+		{ModePProfMutex, model.TaskTypePProfMutex},
+		{ModePProfAll, model.TaskTypePProfCPU}, // Primary type
 	}
 
 	for _, tt := range tests {
@@ -66,6 +78,12 @@ func TestAnalysisMode_ToProfilerType(t *testing.T) {
 		{ModeJavaAlloc, model.ProfilerTypeAsyncAlloc},
 		{ModeJavaHeap, model.ProfilerTypePerf},
 		{ModeCPU, model.ProfilerTypePerf},
+		{ModePProfCPU, model.ProfilerTypePProf},
+		{ModePProfHeap, model.ProfilerTypePProf},
+		{ModePProfGoroutine, model.ProfilerTypePProf},
+		{ModePProfBlock, model.ProfilerTypePProf},
+		{ModePProfMutex, model.ProfilerTypePProf},
+		{ModePProfAll, model.ProfilerTypePProf},
 	}
 
 	for _, tt := range tests {
@@ -87,6 +105,12 @@ func TestGetModeInfo(t *testing.T) {
 		{ModeJavaAlloc, true, false},
 		{ModeJavaHeap, true, false},
 		{ModeCPU, true, false},
+		{ModePProfCPU, true, false},
+		{ModePProfHeap, true, false},
+		{ModePProfGoroutine, true, false},
+		{ModePProfBlock, true, false},
+		{ModePProfMutex, true, false},
+		{ModePProfAll, true, false},
 		{"invalid", false, true},
 	}
 
@@ -105,12 +129,15 @@ func TestGetModeInfo(t *testing.T) {
 
 func TestAllModes(t *testing.T) {
 	modes := AllModes()
-	if len(modes) != 4 {
-		t.Errorf("AllModes() returned %d modes, want 4", len(modes))
+	if len(modes) != 10 {
+		t.Errorf("AllModes() returned %d modes, want 10", len(modes))
 	}
 
 	// Verify order
-	expectedOrder := []AnalysisMode{ModeJavaCPU, ModeJavaAlloc, ModeJavaHeap, ModeCPU}
+	expectedOrder := []AnalysisMode{
+		ModeJavaCPU, ModeJavaAlloc, ModeJavaHeap, ModeCPU,
+		ModePProfCPU, ModePProfHeap, ModePProfGoroutine, ModePProfBlock, ModePProfMutex, ModePProfAll,
+	}
 	for i, info := range modes {
 		if info.Mode != expectedOrder[i] {
 			t.Errorf("AllModes()[%d] = %v, want %v", i, info.Mode, expectedOrder[i])
@@ -120,7 +147,11 @@ func TestAllModes(t *testing.T) {
 
 func TestValidModes(t *testing.T) {
 	valid := ValidModes()
-	for _, mode := range []string{"java-cpu", "java-alloc", "java-heap", "cpu"} {
+	expectedModes := []string{
+		"java-cpu", "java-alloc", "java-heap", "cpu",
+		"pprof-cpu", "pprof-heap", "pprof-goroutine", "pprof-block", "pprof-mutex", "pprof-all",
+	}
+	for _, mode := range expectedModes {
 		if !contains(valid, mode) {
 			t.Errorf("ValidModes() should contain %q", mode)
 		}
@@ -144,14 +175,20 @@ func TestFactory_CreateAnalyzerForMode(t *testing.T) {
 	factory := NewFactory(nil)
 
 	tests := []struct {
-		mode         AnalysisMode
-		wantName     string
-		wantErr      bool
+		mode     AnalysisMode
+		wantName string
+		wantErr  bool
 	}{
 		{ModeJavaCPU, "java_cpu_analyzer", false},
 		{ModeJavaAlloc, "java_mem_analyzer", false},
 		{ModeJavaHeap, "java_heap_analyzer", false},
 		{ModeCPU, "java_cpu_analyzer", false}, // Generic uses same analyzer
+		{ModePProfCPU, "pprof_cpu_analyzer", false},
+		{ModePProfHeap, "pprof_heap_analyzer", false},
+		{ModePProfGoroutine, "pprof_goroutine_analyzer", false},
+		{ModePProfBlock, "pprof_block_analyzer", false},
+		{ModePProfMutex, "pprof_mutex_analyzer", false},
+		{ModePProfAll, "pprof_batch_analyzer", false},
 		{"invalid", "", true},
 	}
 

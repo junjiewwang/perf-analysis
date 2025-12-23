@@ -8,3 +8,4 @@ data
 pprof/
 pprof-report/
 !pkg/pprof/
+!internal/parser/pprof/

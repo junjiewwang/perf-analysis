@@ -70,6 +70,41 @@ function extractSearchTerm(funcName) {
     // Remove allocation marker suffix for search
     const cleanName = stripAllocationMarker(funcName);
     
+    // Check for Go-style function names like:
+    // - "(*ReferenceGraph).ComputeMultiLevelRetainers"
+    // - "github.com/pkg/foo.(*Bar).Method"
+    // - "runtime.mapaccess2_fast64"
+    // Go function names may contain (*Type) or (Type) patterns
+    const goMethodMatch = cleanName.match(/\(\*?([^)]+)\)\.(\w+)$/);
+    if (goMethodMatch) {
+        // Return the full method signature like "(*ReferenceGraph).ComputeMultiLevelRetainers"
+        // or just the method name for searching
+        const typeName = goMethodMatch[1];
+        const methodName = goMethodMatch[2];
+        // Return a search term that will match in the flame graph
+        // Use the method name which is more likely to be unique
+        return methodName;
+    }
+    
+    // Check for Go package paths like "github.com/pkg/foo.FuncName"
+    if (cleanName.includes('/')) {
+        // Extract the last part after the last /
+        const lastSlash = cleanName.lastIndexOf('/');
+        const afterSlash = cleanName.substring(lastSlash + 1);
+        // This gives us something like "foo.FuncName" or "foo.(*Bar).Method"
+        // Try to extract the function/method name
+        const dotParts = afterSlash.split('.');
+        if (dotParts.length >= 2) {
+            // Return the last meaningful part
+            const lastPart = dotParts[dotParts.length - 1];
+            // If it's a method like "Method" from "(*Bar).Method", return it
+            if (lastPart && !lastPart.startsWith('(')) {
+                return lastPart;
+            }
+        }
+        return afterSlash;
+    }
+    
     // For Java-style names like "com.example.Class.method", extract "Class.method" or just "method"
     const parts = cleanName.split('.');
     if (parts.length >= 2) {

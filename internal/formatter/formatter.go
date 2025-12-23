@@ -37,6 +37,7 @@ func NewRegistry() *Registry {
 	r.Register(&HeapFormatter{})
 	r.Register(&MemLeakFormatter{})
 	r.Register(&TracingFormatter{})
+	r.Register(&PProfBatchFormatter{})
 
 	return r
 }

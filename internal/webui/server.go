@@ -41,6 +41,12 @@ func NewServer(dataDir string, port int, logger utils.Logger) *Server {
 	// Register additional loaders for memory and tracing
 	fgService.RegisterLoader(NewMemoryFlameGraphLoader())
 	fgService.RegisterLoader(NewTracingFlameGraphLoader())
+	// Register pprof loaders
+	fgService.RegisterLoader(NewPProfGoroutineFlameGraphLoader())
+	fgService.RegisterLoader(NewPProfHeapInuseFlameGraphLoader())
+	fgService.RegisterLoader(NewPProfHeapAllocFlameGraphLoader())
+	fgService.RegisterLoader(NewPProfBlockFlameGraphLoader())
+	fgService.RegisterLoader(NewPProfMutexFlameGraphLoader())
 
 	return &Server{
 		dataDir:         dataDir,
@@ -82,6 +88,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/refgraph/gc-root-retained", s.handleRefGraphGCRootRetained)
 	mux.HandleFunc("/api/refgraph/retainers", s.handleRefGraphRetainers)
 	mux.HandleFunc("/api/refgraph/biggest-by-class", s.handleRefGraphBiggestByClass)
+
+	// pprof analysis APIs
+	mux.HandleFunc("/api/pprof/leak-report", s.handlePProfLeakReport)
+	mux.HandleFunc("/api/pprof/batch-analysis", s.handlePProfBatchAnalysis)
 
 	// Page routes
 	mux.HandleFunc("/", s.handleIndex)
@@ -162,6 +172,11 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 // - cpu (default): CPU profiling flame graph
 // - memory/alloc: Memory allocation flame graph
 // - tracing/latency: Tracing/latency flame graph
+// - pprof-goroutine: Go pprof goroutine flame graph
+// - pprof-heap-inuse: Go pprof heap inuse flame graph
+// - pprof-heap-alloc: Go pprof heap alloc flame graph
+// - pprof-block: Go pprof block flame graph
+// - pprof-mutex: Go pprof mutex flame graph
 func (s *Server) handleFlameGraph(w http.ResponseWriter, r *http.Request) {
 	taskID := r.URL.Query().Get("task")
 	if taskID == "" {
@@ -178,6 +193,16 @@ func (s *Server) handleFlameGraph(w http.ResponseWriter, r *http.Request) {
 		fgType = FlameGraphTypeTracing
 	case "cpu", "":
 		fgType = FlameGraphTypeCPU
+	case "pprof-goroutine", "goroutine":
+		fgType = FlameGraphTypePProfGoroutine
+	case "pprof-heap-inuse", "heap-inuse", "inuse":
+		fgType = FlameGraphTypePProfHeapInuse
+	case "pprof-heap-alloc", "heap-alloc":
+		fgType = FlameGraphTypePProfHeapAlloc
+	case "pprof-block", "block":
+		fgType = FlameGraphTypePProfBlock
+	case "pprof-mutex", "mutex":
+		fgType = FlameGraphTypePProfMutex
 	default:
 		// Unknown type, try to find any .json.gz file (legacy behavior)
 		s.handleFlameGraphLegacy(w, r, taskID)
@@ -267,26 +292,35 @@ func (s *Server) handleCallGraph(w http.ResponseWriter, r *http.Request) {
 
 	// Build priority list based on type
 	var priorityFiles []string
+	var subDirs []string
 	switch strings.ToLower(cgType) {
 	case "memory", "alloc":
+		subDirs = []string{"heap", "."}
 		priorityFiles = []string{
 			"alloc_callgraph_data.json.gz", // New format for memory
 			"alloc_callgraph.json.gz",      // Alternative
 			"memory_callgraph.json.gz",     // Legacy
 		}
 	default: // cpu or empty
+		subDirs = []string{"cpu", "."}
 		priorityFiles = []string{
 			"callgraph_data.json.gz", // New format for CPU
 			"callgraph.json",         // Legacy format
 		}
 	}
 
-	// Try priority files first
-	for _, fileName := range priorityFiles {
-		filePath := filepath.Join(taskDir, fileName)
-		if _, err := os.Stat(filePath); err == nil {
-			callGraphFile = filePath
-			isGzipped = strings.HasSuffix(fileName, ".gz")
+	// Try priority files first in each subdirectory
+	for _, subDir := range subDirs {
+		dir := filepath.Join(taskDir, subDir)
+		for _, fileName := range priorityFiles {
+			filePath := filepath.Join(dir, fileName)
+			if _, err := os.Stat(filePath); err == nil {
+				callGraphFile = filePath
+				isGzipped = strings.HasSuffix(fileName, ".gz")
+				break
+			}
+		}
+		if callGraphFile != "" {
 			break
 		}
 	}
@@ -987,4 +1021,88 @@ func parseInt(s string) (int, error) {
 	var n int
 	_, err := fmt.Sscanf(s, "%d", &n)
 	return n, err
+}
+
+// handlePProfLeakReport returns the pprof leak detection report.
+func (s *Server) handlePProfLeakReport(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+
+	leakType := r.URL.Query().Get("type")
+	if leakType == "" {
+		leakType = "all" // Return all leak reports
+	}
+
+	// Determine task directory
+	var taskDir string
+	if taskID != "" {
+		taskDir = filepath.Join(s.dataDir, taskID)
+	} else {
+		taskDir = s.dataDir
+	}
+
+	// Try to read batch_analysis.json which contains leak reports
+	// First try in the task directory, then in subdirectories
+	batchFile := filepath.Join(taskDir, "batch_analysis.json")
+	data, err := os.ReadFile(batchFile)
+	if err != nil {
+		// No batch analysis file, return empty
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write([]byte(`{"leak_reports":{}}`))
+		return
+	}
+
+	var batchResult map[string]interface{}
+	if err := json.Unmarshal(data, &batchResult); err != nil {
+		http.Error(w, "Failed to parse batch analysis", http.StatusInternalServerError)
+		return
+	}
+
+	// Extract leak reports
+	leakReports, ok := batchResult["leak_reports"].(map[string]interface{})
+	if !ok {
+		leakReports = make(map[string]interface{})
+	}
+
+	// Filter by type if specified
+	if leakType != "all" {
+		if report, exists := leakReports[leakType]; exists {
+			leakReports = map[string]interface{}{leakType: report}
+		} else {
+			leakReports = make(map[string]interface{})
+		}
+	}
+
+	response := map[string]interface{}{
+		"leak_reports": leakReports,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handlePProfBatchAnalysis returns the complete pprof batch analysis result.
+func (s *Server) handlePProfBatchAnalysis(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+
+	// Determine task directory
+	var taskDir string
+	if taskID != "" {
+		taskDir = filepath.Join(s.dataDir, taskID)
+	} else {
+		taskDir = s.dataDir
+	}
+
+	// Try to read batch_analysis.json
+	batchFile := filepath.Join(taskDir, "batch_analysis.json")
+	data, err := os.ReadFile(batchFile)
+	if err != nil {
+		http.Error(w, "Batch analysis not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Write(data)
 }
