@@ -15,6 +15,21 @@
     stroke-width: 0.5px;
 }
 
+/* Flame graph text - uses theme variable for proper contrast */
+.d3-flame-graph text {
+    fill: rgb(var(--color-flame-text));
+    font-size: 11px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    pointer-events: none;
+    text-shadow: 0 0 2px rgb(var(--color-flame-text-shadow) / 0.5);
+}
+
+/* Dark mode: ensure text is readable on colorful backgrounds */
+[data-theme="dark"] .d3-flame-graph text {
+    fill: rgb(var(--color-flame-text));
+    text-shadow: 0 1px 2px rgb(var(--color-flame-text-shadow) / 0.8);
+}
+
 .d3-flame-graph-tip {
     background: rgba(0, 0, 0, 0.85) !important;
     color: white !important;
@@ -253,4 +268,66 @@
 /* Legacy tooltip styles (fallback) */
 .flame-tooltip {
     display: none;
+}
+
+/* ========================================
+   Flame Graph Type Legend
+   Shows color coding for different function types
+   ======================================== */
+
+.flame-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 12px;
+    background: rgb(var(--color-bg-muted));
+    border-radius: 6px;
+    font-size: 12px;
+    margin-bottom: 12px;
+}
+
+.flame-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: rgb(var(--color-text-secondary));
+}
+
+.flame-legend-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* Type-specific legend colors */
+.flame-legend-color.type-jvm {
+    background: rgb(var(--color-flame-jvm));
+}
+
+.flame-legend-color.type-gc {
+    background: rgb(var(--color-flame-gc));
+}
+
+.flame-legend-color.type-native {
+    background: rgb(var(--color-flame-native));
+}
+
+.flame-legend-color.type-kernel {
+    background: rgb(var(--color-flame-kernel));
+}
+
+.flame-legend-color.type-reflect {
+    background: rgb(var(--color-flame-reflect));
+}
+
+/* Dark mode gradient preview */
+.flame-legend-color.type-gradient {
+    background: linear-gradient(90deg, 
+        rgb(var(--color-flame-gradient-1)) 0%,
+        rgb(var(--color-flame-gradient-2)) 33%,
+        rgb(var(--color-flame-gradient-3)) 66%,
+        rgb(var(--color-flame-gradient-4)) 100%
+    );
+    width: 40px;
 }

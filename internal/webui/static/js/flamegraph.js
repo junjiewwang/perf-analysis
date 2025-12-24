@@ -611,25 +611,143 @@ const FlameGraph = (function() {
                 .onClick(this.handleClick.bind(this))
                 .tooltip(createFlameTooltip());
 
-            // Color scheme - read base hue from CSS variables for theme support
+            // Color scheme - theme-aware with cool-to-warm gradient for dark mode
             flameChart.setColorMapper(function(d, originalColor) {
                 const name = d.data.name || '';
+                
+                // Check for special function types first
+                const style = getComputedStyle(document.documentElement);
+                const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+                
+                // Check special types and return type-specific colors
+                const typeColor = getTypeSpecificColor(name, style);
+                if (typeColor) {
+                    return typeColor;
+                }
+                
+                // Generate hash from function name for consistent coloring
                 let hash = 0;
                 for (let i = 0; i < name.length; i++) {
                     hash = ((hash << 5) - hash) + name.charCodeAt(i);
                     hash |= 0;
                 }
                 
-                // Read flame color settings from CSS variables
-                const style = getComputedStyle(document.documentElement);
+                // Calculate depth ratio for gradient effect (deeper = warmer)
+                const depth = d.depth || 0;
+                const maxDepth = 50; // Reasonable max depth assumption
+                const depthRatio = Math.min(depth / maxDepth, 1);
+                
+                if (isDarkMode) {
+                    // Dark mode: cool-to-warm gradient (blue → purple → pink → amber)
+                    // Use depth to influence the gradient position
+                    return getDarkModeFlameColor(hash, depthRatio, style);
+                } else {
+                    // Light mode: classic warm flame colors
+                    return getLightModeFlameColor(hash, style);
+                }
+            });
+            
+            // Helper function to get type-specific colors
+            function getTypeSpecificColor(name, style) {
+                // JVM/Java system functions
+                if (/^java\.|^javax\.|^jdk\.|^sun\.|^com\.sun\./.test(name)) {
+                    const rgb = style.getPropertyValue('--color-flame-jvm').trim() || '255 152 0';
+                    return `rgb(${rgb.split(' ').join(', ')})`;
+                }
+                // GC functions
+                if (/GC|Garbage|SafePoint|safepoint|VMThread/i.test(name)) {
+                    const rgb = style.getPropertyValue('--color-flame-gc').trim() || '244 67 54';
+                    return `rgb(${rgb.split(' ').join(', ')})`;
+                }
+                // Native functions
+                if (/^\[native\]|^libc\.|^libpthread|^__[a-z]|^pthread_|^malloc|^free$|^mmap/.test(name)) {
+                    const rgb = style.getPropertyValue('--color-flame-native').trim() || '76 175 80';
+                    return `rgb(${rgb.split(' ').join(', ')})`;
+                }
+                // Kernel functions
+                if (/^\[kernel\]|^vmlinux|^do_syscall|^sys_|^__x64_sys|^entry_SYSCALL/.test(name)) {
+                    const rgb = style.getPropertyValue('--color-flame-kernel').trim() || '156 39 176';
+                    return `rgb(${rgb.split(' ').join(', ')})`;
+                }
+                // Reflection functions
+                if (/reflect|Reflect|\$Proxy|CGLIB|ByteBuddy|MethodHandle|LambdaForm/i.test(name)) {
+                    const rgb = style.getPropertyValue('--color-flame-reflect').trim() || '0 188 212';
+                    return `rgb(${rgb.split(' ').join(', ')})`;
+                }
+                return null;
+            }
+            
+            // Dark mode: cool-to-warm gradient
+            function getDarkModeFlameColor(hash, depthRatio, style) {
+                // Gradient colors from CSS variables
+                const gradientColors = [
+                    parseRgbVar(style.getPropertyValue('--color-flame-gradient-1').trim()) || [59, 130, 246],   // blue
+                    parseRgbVar(style.getPropertyValue('--color-flame-gradient-2').trim()) || [139, 92, 246],  // violet
+                    parseRgbVar(style.getPropertyValue('--color-flame-gradient-3').trim()) || [236, 72, 153],  // pink
+                    parseRgbVar(style.getPropertyValue('--color-flame-gradient-4').trim()) || [251, 146, 60],  // amber
+                ];
+                
+                // Use hash to add variation, depth to influence gradient position
+                const hashVariation = (Math.abs(hash) % 100) / 100; // 0-1
+                const gradientPos = depthRatio * 0.6 + hashVariation * 0.4; // Blend depth and hash
+                
+                // Interpolate between gradient colors
+                const color = interpolateGradient(gradientColors, gradientPos);
+                
+                // Add slight saturation/lightness variation based on hash
+                const satAdjust = (Math.abs(hash >> 8) % 20) - 10; // -10 to +10
+                const lightAdjust = (Math.abs(hash >> 16) % 15) - 7; // -7 to +7
+                
+                return adjustColorBrightness(color, satAdjust, lightAdjust);
+            }
+            
+            // Light mode: classic warm flame colors
+            function getLightModeFlameColor(hash, style) {
                 const baseHue = parseInt(style.getPropertyValue('--color-flame-base-hue')) || 30;
                 const hueRange = parseInt(style.getPropertyValue('--color-flame-hue-range')) || 30;
+                const satBase = parseInt(style.getPropertyValue('--color-flame-saturation-base')) || 70;
+                const lightBase = parseInt(style.getPropertyValue('--color-flame-lightness-base')) || 55;
                 
                 const hue = baseHue + (Math.abs(hash) % hueRange);
-                const saturation = 70 + (Math.abs(hash >> 8) % 30);
-                const lightness = 50 + (Math.abs(hash >> 16) % 20);
+                const saturation = satBase + (Math.abs(hash >> 8) % 25);
+                const lightness = lightBase + (Math.abs(hash >> 16) % 15);
                 return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-            });
+            }
+            
+            // Parse "r g b" string to [r, g, b] array
+            function parseRgbVar(str) {
+                if (!str) return null;
+                const parts = str.trim().split(/\s+/).map(Number);
+                return parts.length === 3 ? parts : null;
+            }
+            
+            // Interpolate between gradient colors
+            function interpolateGradient(colors, t) {
+                t = Math.max(0, Math.min(1, t));
+                const segments = colors.length - 1;
+                const segmentT = t * segments;
+                const segmentIndex = Math.min(Math.floor(segmentT), segments - 1);
+                const localT = segmentT - segmentIndex;
+                
+                const c1 = colors[segmentIndex];
+                const c2 = colors[segmentIndex + 1];
+                
+                return [
+                    Math.round(c1[0] + (c2[0] - c1[0]) * localT),
+                    Math.round(c1[1] + (c2[1] - c1[1]) * localT),
+                    Math.round(c1[2] + (c2[2] - c1[2]) * localT)
+                ];
+            }
+            
+            // Adjust color brightness while keeping it valid
+            function adjustColorBrightness(rgb, satAdjust, lightAdjust) {
+                // Simple brightness adjustment
+                const factor = 1 + lightAdjust / 100;
+                const r = Math.min(255, Math.max(0, Math.round(rgb[0] * factor)));
+                const g = Math.min(255, Math.max(0, Math.round(rgb[1] * factor)));
+                const b = Math.min(255, Math.max(0, Math.round(rgb[2] * factor)));
+                return `rgb(${r}, ${g}, ${b})`;
+            }
 
             try {
                 d3.select('#flamegraph').datum(flameGraphData).call(flameChart);

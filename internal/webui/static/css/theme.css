@@ -54,14 +54,33 @@
     --color-chart-5: 244 67 54;          /* danger */
     --color-chart-6: 33 150 243;         /* info */
     
-    /* Flame graph color palette - classic flame colors */
+    /* Flame graph color palette - classic flame colors for light mode */
     --color-flame-hot: 255 87 34;        /* #ff5722 - hottest (top frames) */
     --color-flame-warm: 255 152 0;       /* #ff9800 - warm (mid frames) */
     --color-flame-cool: 255 193 7;       /* #ffc107 - cooler (bottom frames) */
     --color-flame-base-hue: 30;          /* Base hue for flame color generation */
     --color-flame-hue-range: 30;         /* Hue variation range */
+    --color-flame-saturation-base: 70;   /* Base saturation */
+    --color-flame-lightness-base: 55;    /* Base lightness */
     --gradient-flame: linear-gradient(135deg, rgb(var(--color-flame-hot)) 0%, rgb(var(--color-flame-warm)) 100%);
     --gradient-flame-progress: linear-gradient(90deg, rgb(var(--color-flame-warm)) 0%, rgb(var(--color-flame-hot)) 100%);
+    
+    /* Gradient stops for light mode flame graph (warm colors) */
+    --color-flame-gradient-1: 255 237 179;  /* #ffedB3 - yellow (coolest) */
+    --color-flame-gradient-2: 255 204 0;    /* #ffcc00 - gold */
+    --color-flame-gradient-3: 255 152 0;    /* #ff9800 - orange */
+    --color-flame-gradient-4: 255 87 34;    /* #ff5722 - red-orange (hottest) */
+    
+    /* Special type colors for light mode */
+    --color-flame-jvm: 255 152 0;        /* #ff9800 - orange */
+    --color-flame-gc: 244 67 54;         /* #f44336 - red */
+    --color-flame-native: 76 175 80;     /* #4caf50 - green */
+    --color-flame-kernel: 156 39 176;    /* #9c27b0 - purple */
+    --color-flame-reflect: 0 188 212;    /* #00bcd4 - cyan */
+    
+    /* Flame text color - dark for light mode */
+    --color-flame-text: 33 33 33;        /* dark text */
+    --color-flame-text-shadow: 255 255 255; /* white shadow for contrast */
     
     /* Flame graph specific */
     --color-flame-match: 224 64 251;     /* #e040fb - search match highlight */
@@ -119,10 +138,33 @@
     --color-chart-5: 248 113 113;
     --color-chart-6: 96 165 250;
     
-    /* Flame graph colors - brighter for dark mode */
-    --color-flame-hot: 255 112 67;       /* #ff7043 - brighter orange-red */
-    --color-flame-warm: 255 167 38;      /* #ffa726 - brighter orange */
-    --color-flame-cool: 255 213 79;      /* #ffd54f - brighter yellow */
+    /* Flame graph colors - cool-to-warm gradient for dark mode */
+    --color-flame-hot: 251 146 60;       /* #fb923c - amber-400 (warm endpoint) */
+    --color-flame-warm: 236 72 153;      /* #ec4899 - pink-500 (mid) */
+    --color-flame-cool: 139 92 246;      /* #8b5cf6 - violet-500 (cool endpoint) */
+    
+    /* Dark mode: use cool-to-warm gradient (blue→purple→pink→amber) */
+    --color-flame-base-hue: 250;         /* Start from blue/violet */
+    --color-flame-hue-range: 60;         /* Range towards warm colors */
+    --color-flame-saturation-base: 75;   /* Higher saturation for dark mode */
+    --color-flame-lightness-base: 60;    /* Brighter for dark background */
+    
+    /* Gradient stops for dark mode flame graph */
+    --color-flame-gradient-1: 59 130 246;   /* #3b82f6 - blue-500 (coolest) */
+    --color-flame-gradient-2: 139 92 246;   /* #8b5cf6 - violet-500 */
+    --color-flame-gradient-3: 236 72 153;   /* #ec4899 - pink-500 */
+    --color-flame-gradient-4: 251 146 60;   /* #fb923c - amber-400 (hottest) */
+    
+    /* Special type colors for dark mode */
+    --color-flame-jvm: 251 191 36;       /* #fbbf24 - amber-400 */
+    --color-flame-gc: 248 113 113;       /* #f87171 - red-400 */
+    --color-flame-native: 74 222 128;    /* #4ade80 - green-400 */
+    --color-flame-kernel: 192 132 252;   /* #c084fc - purple-400 */
+    --color-flame-reflect: 34 211 238;   /* #22d3ee - cyan-400 */
+    
+    /* Flame text color - light for dark mode */
+    --color-flame-text: 255 255 255;     /* white text */
+    --color-flame-text-shadow: 0 0 0;    /* black shadow for contrast */
 }
 
 /* ===== Purple Theme ===== */
