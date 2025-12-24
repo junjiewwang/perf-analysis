@@ -1514,6 +1514,15 @@
                                 }
                             });
                         });
+                    } else if (panelId === 'callgraph') {
+                        // 当切换到 Call Graph 面板时，检查主题是否已更改并重新渲染
+                        this.$nextTick(() => {
+                            requestAnimationFrame(() => {
+                                if (typeof CallGraph !== 'undefined' && CallGraph.checkThemeAndRerender) {
+                                    CallGraph.checkThemeAndRerender();
+                                }
+                            });
+                        });
                     } else if (panelId === 'leakreport') {
                         // 加载泄漏检测报告
                         this.$nextTick(() => {

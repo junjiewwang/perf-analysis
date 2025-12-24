@@ -349,3 +349,8 @@ html.theme-transitioning *::after {
                 border-color 0.3s ease,
                 box-shadow 0.3s ease !important;
 }
+
+/* ===== Additional Hover Utilities ===== */
+.hover\:bg-theme-hover:hover {
+    background-color: rgb(var(--color-bg-hover));
+}

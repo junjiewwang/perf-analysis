@@ -1099,6 +1099,9 @@ const CallGraph = (function() {
                 container.innerHTML = '<div class="loading">No call graph data available</div>';
                 return;
             }
+            
+            // Store the current theme for later comparison
+            this._lastRenderedTheme = document.documentElement.getAttribute('data-theme') || 'light';
 
             const width = container.clientWidth || 1200;
             const height = 700;
@@ -1750,7 +1753,22 @@ const CallGraph = (function() {
                     percentage: t.percentage
                 }))
             };
-        }
+        },
+        
+        // Check and re-render if theme has changed since last render
+        checkThemeAndRerender() {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            if (this._lastRenderedTheme && this._lastRenderedTheme !== currentTheme) {
+                console.log('[CallGraph] Theme changed from', this._lastRenderedTheme, 'to', currentTheme, '- re-rendering');
+                const data = this.getOriginalData();
+                if (data && nodes.length > 0) {
+                    this.render(data);
+                }
+            }
+        },
+        
+        // Store the theme used for rendering
+        _lastRenderedTheme: null
     };
 })();
 
@@ -1779,5 +1797,6 @@ if (typeof ThemeManager !== 'undefined') {
                 }
             }, 100);
         }
+        // Note: If not visible, checkThemeAndRerender() will be called when panel becomes visible
     });
 }

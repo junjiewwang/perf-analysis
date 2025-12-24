@@ -248,7 +248,7 @@ const ThreadsPanel = (function() {
 
         if (pageThreads.length === 0) {
             elements.tbody.innerHTML = `
-                <tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                <tr><td colspan="7" class="px-6 py-8 text-center text-theme-muted">
                     ${state.searchTerm ? 'No threads match your search criteria' : 'No thread data available'}
                 </td></tr>
             `;
@@ -273,27 +273,27 @@ const ThreadsPanel = (function() {
         const escapedTopFunc = Utils.escapeHtml(thread.top_func || '').replace(/'/g, "\\'");
 
         return `
-            <tr class="hover:bg-gray-50 transition-colors">
-                <td class="px-6 py-4 text-sm text-gray-500 font-medium">${index + 1}</td>
+            <tr class="table-row-hover transition-colors">
+                <td class="px-6 py-4 text-sm text-theme-muted font-medium">${index + 1}</td>
                 <td class="px-6 py-4">
                     <div class="flex flex-col">
-                        <span class="font-mono text-sm text-gray-800" title="${Utils.escapeHtml(thread.thread_name)}">${Utils.escapeHtml(thread.thread_name)}</span>
+                        <span class="font-mono text-sm text-theme-base" title="${Utils.escapeHtml(thread.thread_name)}">${Utils.escapeHtml(thread.thread_name)}</span>
                         ${thread.thread_group && thread.thread_group !== thread.thread_name ? 
-                            `<span class="text-xs text-gray-400 mt-0.5">${Utils.escapeHtml(thread.thread_group)}</span>` : ''}
+                            `<span class="text-xs text-theme-muted mt-0.5">${Utils.escapeHtml(thread.thread_group)}</span>` : ''}
                     </div>
                 </td>
-                <td class="px-6 py-4 text-sm text-gray-600 font-mono text-right">${thread.tid}</td>
-                <td class="px-6 py-4 text-sm font-semibold text-gray-700 text-right">${Utils.formatNumber(thread.samples)}</td>
+                <td class="px-6 py-4 text-sm text-theme-secondary font-mono text-right">${thread.tid}</td>
+                <td class="px-6 py-4 text-sm font-semibold text-theme-base text-right">${Utils.formatNumber(thread.samples)}</td>
                 <td class="px-6 py-4">
                     <div class="flex items-center gap-3">
-                        <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden max-w-[120px]">
-                            <div class="h-full bg-gradient-to-r from-teal-500 to-cyan-500 rounded-full transition-all duration-300" style="width: ${barWidth}%"></div>
+                        <div class="flex-1 h-2 bg-theme-muted rounded-full overflow-hidden max-w-[120px]">
+                            <div class="h-full thread-progress-bar rounded-full transition-all duration-300" style="width: ${barWidth}%"></div>
                         </div>
-                        <span class="text-sm font-semibold text-gray-700 w-16 text-right">${percentage}%</span>
+                        <span class="text-sm font-semibold text-theme-base w-16 text-right">${percentage}%</span>
                     </div>
                 </td>
                 <td class="px-6 py-4">
-                    <span class="font-mono text-sm text-gray-600 cursor-pointer hover:text-primary hover:underline" 
+                    <span class="font-mono text-sm text-theme-secondary cursor-pointer hover:text-primary hover:underline" 
                           title="${Utils.escapeHtml(thread.top_func || '')}"
                           onclick="ThreadsPanel.searchTopFuncInFlameGraph('${escapedTopFunc}')">${Utils.escapeHtml(truncatedFunc)}</span>
                 </td>
@@ -354,15 +354,15 @@ const ThreadsPanel = (function() {
             }
 
             elements.pageButtons.innerHTML = `
-                <button class="px-3 py-1.5 text-sm rounded ${state.currentPage === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-200'}" 
+                <button class="px-3 py-1.5 text-sm rounded ${state.currentPage === 1 ? 'text-theme-muted cursor-not-allowed' : 'text-theme-base hover:bg-theme-hover'}" 
                         ${state.currentPage === 1 ? 'disabled' : ''} 
                         onclick="ThreadsPanel.goToPage(${state.currentPage - 1})">← Prev</button>
                 ${pages.map(p => p === '...' 
-                    ? '<span class="px-2 text-gray-400">...</span>'
-                    : `<button class="w-8 h-8 text-sm rounded ${p === state.currentPage ? 'bg-primary text-white' : 'text-gray-700 hover:bg-gray-200'}" 
+                    ? '<span class="px-2 text-theme-muted">...</span>'
+                    : `<button class="w-8 h-8 text-sm rounded ${p === state.currentPage ? 'bg-primary text-white' : 'text-theme-base hover:bg-theme-hover'}" 
                               onclick="ThreadsPanel.goToPage(${p})">${p}</button>`
                 ).join('')}
-                <button class="px-3 py-1.5 text-sm rounded ${state.currentPage === totalPages ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-200'}" 
+                <button class="px-3 py-1.5 text-sm rounded ${state.currentPage === totalPages ? 'text-theme-muted cursor-not-allowed' : 'text-theme-base hover:bg-theme-hover'}" 
                         ${state.currentPage === totalPages ? 'disabled' : ''} 
                         onclick="ThreadsPanel.goToPage(${state.currentPage + 1})">Next →</button>
             `;
@@ -391,7 +391,7 @@ const ThreadsPanel = (function() {
     function showLoading(show) {
         if (elements.tbody && show) {
             elements.tbody.innerHTML = `
-                <tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">
+                <tr><td colspan="7" class="px-6 py-8 text-center text-theme-muted">
                     <div class="animate-spin text-2xl mb-2">⏳</div>
                     <p>Loading thread analysis data...</p>
                 </td></tr>
@@ -403,7 +403,7 @@ const ThreadsPanel = (function() {
     function showError(message) {
         if (elements.tbody) {
             elements.tbody.innerHTML = `
-                <tr><td colspan="7" class="px-6 py-8 text-center text-red-500">
+                <tr><td colspan="7" class="px-6 py-8 text-center" style="color: rgb(var(--color-danger));">
                     <p>⚠️ ${Utils.escapeHtml(message)}</p>
                 </td></tr>
             `;
@@ -417,61 +417,72 @@ const ThreadsPanel = (function() {
 
     // Show thread detail modal
     function showThreadDetailModal(thread) {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const bgCard = isDark ? '#1f2937' : 'white';
+        const bgMuted = isDark ? '#374151' : '#f9fafb';
+        const textBase = isDark ? '#f3f4f6' : '#1f2937';
+        const textSecondary = isDark ? '#9ca3af' : '#6b7280';
+        const textMuted = isDark ? '#6b7280' : '#9ca3af';
+        const borderColor = isDark ? '#4b5563' : '#e5e7eb';
+        const accentColor = isDark ? '#2dd4bf' : '#0d9488';
+        const btnSecondaryBg = isDark ? '#374151' : '#f3f4f6';
+        const btnSecondaryText = isDark ? '#f3f4f6' : '#374151';
+        
         const modal = document.createElement('div');
         modal.className = 'modal-overlay';
         modal.innerHTML = `
-            <div class="modal-content" style="background: white; max-width: 700px; border-radius: 12px;">
-                <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;">
-                    <h3 style="margin: 0; font-size: 16px; color: #1f2937;">🧵 ${Utils.escapeHtml(thread.thread_name)}</h3>
-                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #6b7280;">×</button>
+            <div class="modal-content" style="background: ${bgCard}; max-width: 700px; border-radius: 12px; color: ${textBase};">
+                <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid ${borderColor}; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; font-size: 16px; color: ${textBase};">🧵 ${Utils.escapeHtml(thread.thread_name)}</h3>
+                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: ${textSecondary};">×</button>
                 </div>
                 <div class="modal-body" style="padding: 20px;">
-                    <div style="display: flex; gap: 24px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb;">
+                    <div style="display: flex; gap: 24px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid ${borderColor};">
                         <div>
-                            <span style="color: #6b7280; font-size: 12px;">TID</span>
-                            <div style="font-weight: 600; font-family: monospace;">${thread.tid}</div>
+                            <span style="color: ${textSecondary}; font-size: 12px;">TID</span>
+                            <div style="font-weight: 600; font-family: monospace; color: ${textBase};">${thread.tid}</div>
                         </div>
                         <div>
-                            <span style="color: #6b7280; font-size: 12px;">Samples</span>
-                            <div style="font-weight: 600;">${Utils.formatNumber(thread.samples)}</div>
+                            <span style="color: ${textSecondary}; font-size: 12px;">Samples</span>
+                            <div style="font-weight: 600; color: ${textBase};">${Utils.formatNumber(thread.samples)}</div>
                         </div>
                         <div>
-                            <span style="color: #6b7280; font-size: 12px;">Percentage</span>
-                            <div style="font-weight: 600; color: #0d9488;">${thread.percentage.toFixed(2)}%</div>
+                            <span style="color: ${textSecondary}; font-size: 12px;">Percentage</span>
+                            <div style="font-weight: 600; color: ${accentColor};">${thread.percentage.toFixed(2)}%</div>
                         </div>
                         <div>
-                            <span style="color: #6b7280; font-size: 12px;">Thread Group</span>
-                            <div style="font-weight: 500;">${Utils.escapeHtml(thread.thread_group || '-')}</div>
+                            <span style="color: ${textSecondary}; font-size: 12px;">Thread Group</span>
+                            <div style="font-weight: 500; color: ${textBase};">${Utils.escapeHtml(thread.thread_group || '-')}</div>
                         </div>
                     </div>
                     <div style="margin-bottom: 16px;">
-                        <h4 style="font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 12px;">Top Functions</h4>
+                        <h4 style="font-size: 14px; font-weight: 600; color: ${textBase}; margin-bottom: 12px;">Top Functions</h4>
                         <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                             <thead>
-                                <tr style="background: #f9fafb;">
-                                    <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: #6b7280;">Function</th>
-                                    <th style="padding: 8px 12px; text-align: right; font-weight: 600; color: #6b7280; width: 80px;">Samples</th>
-                                    <th style="padding: 8px 12px; text-align: right; font-weight: 600; color: #6b7280; width: 80px;">%</th>
+                                <tr style="background: ${bgMuted};">
+                                    <th style="padding: 8px 12px; text-align: left; font-weight: 600; color: ${textSecondary};">Function</th>
+                                    <th style="padding: 8px 12px; text-align: right; font-weight: 600; color: ${textSecondary}; width: 80px;">Samples</th>
+                                    <th style="padding: 8px 12px; text-align: right; font-weight: 600; color: ${textSecondary}; width: 80px;">%</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${thread.top_funcs?.slice(0, 10).map(f => `
-                                    <tr style="border-bottom: 1px solid #e5e7eb;">
-                                        <td style="padding: 8px 12px; font-family: monospace; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${Utils.escapeHtml(f.name)}">${Utils.escapeHtml(Utils.stripAllocationMarker(f.name))}</td>
-                                        <td style="padding: 8px 12px; text-align: right; font-family: monospace;">${Utils.formatNumber(f.samples)}</td>
-                                        <td style="padding: 8px 12px; text-align: right; color: #0d9488; font-weight: 500;">${f.percentage.toFixed(2)}%</td>
+                                    <tr style="border-bottom: 1px solid ${borderColor};">
+                                        <td style="padding: 8px 12px; font-family: monospace; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: ${textBase};" title="${Utils.escapeHtml(f.name)}">${Utils.escapeHtml(Utils.stripAllocationMarker(f.name))}</td>
+                                        <td style="padding: 8px 12px; text-align: right; font-family: monospace; color: ${textBase};">${Utils.formatNumber(f.samples)}</td>
+                                        <td style="padding: 8px 12px; text-align: right; color: ${accentColor}; font-weight: 500;">${f.percentage.toFixed(2)}%</td>
                                     </tr>
-                                `).join('') || '<tr><td colspan="3" style="padding: 16px; text-align: center; color: #9ca3af;">No function data</td></tr>'}
+                                `).join('') || `<tr><td colspan="3" style="padding: 16px; text-align: center; color: ${textMuted};">No function data</td></tr>`}
                             </tbody>
                         </table>
                     </div>
-                    <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                    <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid ${borderColor};">
                         <button onclick="ThreadsPanel.searchThreadInFlameGraph('${Utils.escapeHtml(thread.thread_name).replace(/'/g, "\\'")}'); this.closest('.modal-overlay').remove();" 
                                 style="padding: 8px 16px; background: linear-gradient(135deg, #f97316, #ef4444); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
                             🔥 Search in Flame Graph
                         </button>
                         <button onclick="this.closest('.modal-overlay').remove();" 
-                                style="padding: 8px 16px; background: #f3f4f6; color: #374151; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                                style="padding: 8px 16px; background: ${btnSecondaryBg}; color: ${btnSecondaryText}; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
                             Close
                         </button>
                     </div>
@@ -559,6 +570,11 @@ const ThreadsPanel = (function() {
         // State access
         getState() {
             return { ...state };
+        },
+
+        // Re-render the table (for theme changes)
+        rerender() {
+            render();
         }
     };
 })();
@@ -566,6 +582,14 @@ const ThreadsPanel = (function() {
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
     ThreadsPanel.init();
+    
+    // Listen for theme changes and re-render
+    if (typeof ThemeManager !== 'undefined') {
+        ThemeManager.onChange(() => {
+            // Re-render table to update theme-aware colors
+            ThreadsPanel.rerender();
+        });
+    }
 });
 
 // Export for global access (with backward compatibility alias)

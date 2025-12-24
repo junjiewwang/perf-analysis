@@ -1,17 +1,37 @@
 /**
  * CPU Thread Analysis Styles
  * Provides styling for thread-level CPU profiling visualization
+ * Supports light and dark themes via CSS variables
  */
 
-/* Light theme overrides for the main app */
+/* ===== Thread Page Theme Variables ===== */
+:root {
+    /* Thread-specific colors for light mode */
+    --thread-progress-from: 20 184 166;     /* teal-500 */
+    --thread-progress-to: 6 182 212;        /* cyan-500 */
+    --thread-row-hover: 249 250 251;        /* gray-50 */
+    --thread-row-expanded: 243 244 246;     /* gray-100 */
+    --thread-border: 229 231 235;           /* gray-200 */
+}
+
+[data-theme="dark"] {
+    /* Thread-specific colors for dark mode */
+    --thread-progress-from: 45 212 191;     /* teal-400 */
+    --thread-progress-to: 34 211 238;       /* cyan-400 */
+    --thread-row-hover: 55 65 81;           /* gray-700 */
+    --thread-row-expanded: 75 85 99;        /* gray-600 */
+    --thread-border: 75 85 99;              /* gray-600 */
+}
+
+/* Container with theme support */
 .cpu-threads-container {
     display: flex;
     flex-direction: column;
     min-height: 400px;
     max-height: calc(100vh - 300px);
     overflow-y: auto;
-    background: #fff;
-    color: #333;
+    background: rgb(var(--color-bg-card));
+    color: rgb(var(--color-text-base));
 }
 
 /* Virtual scroll container */
@@ -176,22 +196,22 @@
     width: 100%;
 }
 
-/* Thread Item - Light theme */
+/* Thread Item - Theme aware */
 .thread-item {
     display: flex;
     flex-direction: column;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid rgb(var(--thread-border));
     cursor: pointer;
     transition: background 0.15s;
-    background: #fff;
+    background: rgb(var(--color-bg-card));
 }
 
 .thread-item:hover {
-    background: #f9fafb;
+    background: rgb(var(--thread-row-hover));
 }
 
 .thread-item.expanded {
-    background: #f3f4f6;
+    background: rgb(var(--thread-row-expanded));
 }
 
 .thread-item-main {
@@ -208,7 +228,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #6b7280;
+    color: rgb(var(--color-text-muted));
 }
 
 .thread-expand-icon .icon {
@@ -229,7 +249,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #1f2937;
+    color: rgb(var(--color-text-base));
 }
 
 .thread-meta {
@@ -237,7 +257,7 @@
     gap: 12px;
     margin-top: 2px;
     font-size: 12px;
-    color: #6b7280;
+    color: rgb(var(--color-text-muted));
 }
 
 .thread-tid {
@@ -246,7 +266,7 @@
 
 .thread-group {
     padding: 1px 6px;
-    background: #e5e7eb;
+    background: rgb(var(--color-bg-muted));
     border-radius: 3px;
     font-size: 11px;
 }
@@ -261,14 +281,14 @@
 .thread-samples {
     font-weight: 600;
     font-family: monospace;
-    color: #374151;
+    color: rgb(var(--color-text-base));
 }
 
 .thread-percentage {
     position: relative;
     width: 100px;
     height: 16px;
-    background: #e5e7eb;
+    background: rgb(var(--color-bg-muted));
     border-radius: 3px;
     overflow: hidden;
     margin-top: 4px;
@@ -279,8 +299,8 @@
     left: 0;
     top: 0;
     height: 100%;
-    background: linear-gradient(90deg, #667eea, #764ba2);
-    opacity: 0.8;
+    background: linear-gradient(90deg, rgb(var(--thread-progress-from)), rgb(var(--thread-progress-to)));
+    opacity: 0.9;
     transition: width 0.3s;
 }
 
@@ -292,13 +312,13 @@
     font-size: 11px;
     font-weight: 500;
     z-index: 1;
-    color: #374151;
+    color: rgb(var(--color-text-base));
 }
 
 .thread-top-func {
     width: 200px;
     font-size: 13px;
-    color: #6b7280;
+    color: rgb(var(--color-text-secondary));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -320,15 +340,15 @@
     padding: 6px;
     background: transparent;
     border: none;
-    color: #6b7280;
+    color: rgb(var(--color-text-muted));
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.15s;
 }
 
 .thread-action:hover {
-    background: #e5e7eb;
-    color: #667eea;
+    background: rgb(var(--color-bg-hover));
+    color: rgb(var(--color-primary));
 }
 
 /* Thread Detail */
@@ -750,14 +770,19 @@
 .error-message {
     padding: 40px;
     text-align: center;
-    color: var(--error-color, #ef5350);
+    color: rgb(var(--color-danger, 239 83 80));
 }
 
 .no-data {
     padding: 20px;
     text-align: center;
-    color: var(--text-secondary, #a0a0a0);
+    color: rgb(var(--color-text-muted));
     font-style: italic;
+}
+
+/* Thread progress bar - theme aware */
+.thread-progress-bar {
+    background: linear-gradient(90deg, rgb(var(--thread-progress-from)), rgb(var(--thread-progress-to)));
 }
 
 /* Responsive */
