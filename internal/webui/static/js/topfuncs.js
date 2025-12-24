@@ -12,38 +12,89 @@ const TopFuncsPanel = (function() {
     let funcsData = [];
     let threadGroupsData = [];
 
-    // Color palette for charts - uses theme-aware colors when available
+    // Color palette for charts - theme-aware colors
+    // Light mode: vibrant colors that work well on white backgrounds
+    // Dark mode: brighter, more saturated colors for dark backgrounds
     function getThemeColors() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        
+        if (isDark) {
+            // Dark mode: brighter, more vibrant colors
+            return [
+                '#818cf8', '#a78bfa', '#f472b6', '#fb7185', '#60a5fa',
+                '#22d3ee', '#4ade80', '#34d399', '#fb923c', '#fbbf24',
+                '#38bdf8', '#c084fc', '#a5b4fc', '#fda4af', '#67e8f9',
+                '#86efac', '#5eead4', '#fdba74', '#fcd34d', '#f0abfc'
+            ];
+        }
+        
+        // Light mode: original colors
         if (typeof ThemeManager !== 'undefined') {
-            // Try to get colors from theme
             const primary = ThemeManager.getColorHex('primary') || '#667eea';
             const secondary = ThemeManager.getColorHex('secondary') || '#764ba2';
             return [
                 primary, secondary, '#f093fb', '#f5576c', '#4facfe',
                 '#00f2fe', '#43e97b', '#38f9d7', '#fa709a', '#fee140',
-                '#30cfd0', '#330867', '#a8edea', '#fed6e3', '#5ee7df',
-                '#b490ca', '#5c258d', '#4389a2', '#93a5cf', '#e4efe9'
+                '#30cfd0', '#6366f1', '#a8edea', '#fed6e3', '#5ee7df',
+                '#b490ca', '#8b5cf6', '#4389a2', '#93a5cf', '#e4efe9'
             ];
         }
         return [
             '#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe',
             '#00f2fe', '#43e97b', '#38f9d7', '#fa709a', '#fee140',
-            '#30cfd0', '#330867', '#a8edea', '#fed6e3', '#5ee7df',
-            '#b490ca', '#5c258d', '#4389a2', '#93a5cf', '#e4efe9'
+            '#30cfd0', '#6366f1', '#a8edea', '#fed6e3', '#5ee7df',
+            '#b490ca', '#8b5cf6', '#4389a2', '#93a5cf', '#e4efe9'
         ];
     }
 
     // Thread group specific colors (more distinct)
-    const THREAD_COLORS = [
-        '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',
-        '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#48b8d0',
-        '#6e7074', '#546570', '#c4ccd3', '#f9c846', '#ff7875',
-        '#95de64', '#69c0ff', '#b37feb', '#ff85c0', '#ffd666'
-    ];
+    // These colors are optimized for both light and dark modes
+    function getThreadColors() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        
+        if (isDark) {
+            // Dark mode: brighter thread colors
+            return [
+                '#60a5fa', '#4ade80', '#fbbf24', '#f87171', '#22d3ee',
+                '#34d399', '#fb923c', '#c084fc', '#f472b6', '#38bdf8',
+                '#a3a3a3', '#78716c', '#d4d4d8', '#facc15', '#fca5a5',
+                '#86efac', '#7dd3fc', '#d8b4fe', '#f9a8d4', '#fde047'
+            ];
+        }
+        
+        // Light mode: original thread colors
+        return [
+            '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',
+            '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#48b8d0',
+            '#6e7074', '#546570', '#c4ccd3', '#f9c846', '#ff7875',
+            '#95de64', '#69c0ff', '#b37feb', '#ff85c0', '#ffd666'
+        ];
+    }
+    
+    // Get theme-aware text colors for ECharts
+    function getChartTextColor() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        return isDark ? '#e5e7eb' : '#333';
+    }
+    
+    function getChartSecondaryTextColor() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        return isDark ? '#9ca3af' : '#666';
+    }
+    
+    function getChartAxisLineColor() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        return isDark ? '#4b5563' : '#e0e0e0';
+    }
+    
+    function getChartSplitLineColor() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        return isDark ? '#374151' : '#f0f0f0';
+    }
 
     // Get color for index
-    function getColor(index, palette = null) {
-        const colors = palette || getThemeColors();
+    function getColor(index, useThreadColors = false) {
+        const colors = useThreadColors ? getThreadColors() : getThemeColors();
         return colors[index % colors.length];
     }
 
@@ -130,12 +181,19 @@ const TopFuncsPanel = (function() {
 
         const barColors = names.map((_, i) => {
             if (fullNames[i] === '__others__') {
-                return '#9ca3af';
+                const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                return isDark ? '#6b7280' : '#9ca3af';
             }
             return getColor(names.length - 1 - i);
         });
 
         const leftMargin = calculateLeftMargin(names);
+        
+        // Get theme-aware colors
+        const textColor = getChartTextColor();
+        const secondaryTextColor = getChartSecondaryTextColor();
+        const axisLineColor = getChartAxisLineColor();
+        const splitLineColor = getChartSplitLineColor();
 
         chartInstance = echarts.init(container);
 
@@ -171,23 +229,23 @@ const TopFuncsPanel = (function() {
                 type: 'value',
                 name: 'Self %',
                 nameLocation: 'end',
-                nameTextStyle: { fontSize: 11, color: '#666' },
-                axisLabel: { formatter: '{value}%', fontSize: 10 },
-                splitLine: { lineStyle: { color: '#f0f0f0' } }
+                nameTextStyle: { fontSize: 11, color: secondaryTextColor },
+                axisLabel: { formatter: '{value}%', fontSize: 10, color: secondaryTextColor },
+                splitLine: { lineStyle: { color: splitLineColor } }
             },
             yAxis: {
                 type: 'category',
                 data: names,
                 axisLabel: {
                     fontSize: 11,
-                    color: '#333',
+                    color: textColor,
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
                     width: leftMargin - 20,
                     overflow: 'truncate',
                     ellipsis: '...'
                 },
                 axisTick: { show: false },
-                axisLine: { lineStyle: { color: '#e0e0e0' } }
+                axisLine: { lineStyle: { color: axisLineColor } }
             },
             series: [{
                 name: 'Self %',
@@ -208,7 +266,7 @@ const TopFuncsPanel = (function() {
                     position: 'right',
                     formatter: '{c}%',
                     fontSize: 10,
-                    color: '#666'
+                    color: secondaryTextColor
                 },
                 emphasis: {
                     itemStyle: {
@@ -258,27 +316,32 @@ const TopFuncsPanel = (function() {
             value: parseFloat(g.percentage.toFixed(2)),
             threadCount: g.thread_count,
             totalSamples: g.total_samples,
-            itemStyle: { color: getColor(i, THREAD_COLORS) }
+            itemStyle: { color: getColor(i, true) }
         }));
 
         if (showOthers && othersValue > 0) {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
             pieData.push({
                 name: `Others (${othersCount} groups)`,
                 value: parseFloat(othersValue.toFixed(2)),
                 threadCount: data.slice(displayCount).reduce((sum, g) => sum + g.thread_count, 0),
                 totalSamples: data.slice(displayCount).reduce((sum, g) => sum + g.total_samples, 0),
-                itemStyle: { color: '#9ca3af' }
+                itemStyle: { color: isDark ? '#6b7280' : '#9ca3af' }
             });
         }
 
         threadPieInstance = echarts.init(container);
+        
+        // Get theme-aware colors
+        const textColor = getChartTextColor();
+        const secondaryTextColor = getChartSecondaryTextColor();
 
         const option = {
             title: {
                 text: 'Thread Group Distribution',
                 left: 'center',
                 top: 10,
-                textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
+                textStyle: { fontSize: 14, fontWeight: 'bold', color: textColor }
             },
             tooltip: {
                 trigger: 'item',
@@ -297,7 +360,7 @@ const TopFuncsPanel = (function() {
                 right: 10,
                 top: 50,
                 bottom: 20,
-                textStyle: { fontSize: 10 },
+                textStyle: { fontSize: 10, color: secondaryTextColor },
                 formatter: function(name) {
                     return name.length > 20 ? name.substring(0, 18) + '...' : name;
                 }
@@ -310,13 +373,14 @@ const TopFuncsPanel = (function() {
                 avoidLabelOverlap: true,
                 itemStyle: {
                     borderRadius: 6,
-                    borderColor: '#fff',
+                    borderColor: document.documentElement.getAttribute('data-theme') === 'dark' ? '#1f2937' : '#fff',
                     borderWidth: 2
                 },
                 label: {
                     show: true,
                     formatter: '{b}: {d}%',
-                    fontSize: 10
+                    fontSize: 10,
+                    color: secondaryTextColor
                 },
                 labelLine: {
                     length: 10,
@@ -371,13 +435,19 @@ const TopFuncsPanel = (function() {
         const fullNames = chartData.map(g => g.group_name);
 
         threadBarInstance = echarts.init(container);
+        
+        // Get theme-aware colors
+        const textColor = getChartTextColor();
+        const secondaryTextColor = getChartSecondaryTextColor();
+        const axisLineColor = getChartAxisLineColor();
+        const splitLineColor = getChartSplitLineColor();
 
         const option = {
             title: {
                 text: 'Top Thread Groups by CPU',
                 left: 'center',
                 top: 10,
-                textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
+                textStyle: { fontSize: 14, fontWeight: 'bold', color: textColor }
             },
             tooltip: {
                 trigger: 'axis',
@@ -404,22 +474,22 @@ const TopFuncsPanel = (function() {
                 type: 'value',
                 name: 'CPU %',
                 nameLocation: 'end',
-                nameTextStyle: { fontSize: 10, color: '#666' },
-                axisLabel: { formatter: '{value}%', fontSize: 10 },
-                splitLine: { lineStyle: { color: '#f0f0f0' } }
+                nameTextStyle: { fontSize: 10, color: secondaryTextColor },
+                axisLabel: { formatter: '{value}%', fontSize: 10, color: secondaryTextColor },
+                splitLine: { lineStyle: { color: splitLineColor } }
             },
             yAxis: {
                 type: 'category',
                 data: names,
                 axisLabel: {
                     fontSize: 10,
-                    color: '#333',
+                    color: textColor,
                     width: 120,
                     overflow: 'truncate',
                     ellipsis: '...'
                 },
                 axisTick: { show: false },
-                axisLine: { lineStyle: { color: '#e0e0e0' } }
+                axisLine: { lineStyle: { color: axisLineColor } }
             },
             series: [{
                 name: 'CPU %',
@@ -428,8 +498,8 @@ const TopFuncsPanel = (function() {
                     value: v,
                     itemStyle: {
                         color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                            { offset: 0, color: getColor(chartData.length - 1 - i, THREAD_COLORS) },
-                            { offset: 1, color: adjustColor(getColor(chartData.length - 1 - i, THREAD_COLORS), 20) }
+                            { offset: 0, color: getColor(chartData.length - 1 - i, true) },
+                            { offset: 1, color: adjustColor(getColor(chartData.length - 1 - i, true), 20) }
                         ]),
                         borderRadius: [0, 4, 4, 0]
                     }
@@ -442,7 +512,7 @@ const TopFuncsPanel = (function() {
                         return params.value.toFixed(1) + '%';
                     },
                     fontSize: 10,
-                    color: '#666'
+                    color: secondaryTextColor
                 },
                 emphasis: {
                     itemStyle: {
@@ -475,13 +545,13 @@ const TopFuncsPanel = (function() {
         const displayData = data.slice(0, displayCount);
 
         container.innerHTML = displayData.map((g, i) => `
-            <div class="flex items-center gap-2 p-2 bg-white rounded border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+            <div class="flex items-center gap-2 p-2 bg-theme-card rounded border border-theme cursor-pointer hover:bg-theme-hover transition-colors"
                  onclick="TopFuncsPanel.filterThreadGroup('${Utils.escapeHtml(g.group_name).replace(/'/g, "\\'")}')"
                  title="Click to filter threads by this group">
-                <div class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ${getColor(i, THREAD_COLORS)}"></div>
+                <div class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ${getColor(i, true)}"></div>
                 <div class="flex-1 min-w-0">
-                    <div class="font-medium text-gray-800 truncate" title="${Utils.escapeHtml(g.group_name)}">${Utils.escapeHtml(g.group_name)}</div>
-                    <div class="text-gray-500">${g.thread_count} threads · ${g.percentage.toFixed(1)}%</div>
+                    <div class="font-medium text-theme-base truncate" title="${Utils.escapeHtml(g.group_name)}">${Utils.escapeHtml(g.group_name)}</div>
+                    <div class="text-theme-secondary">${g.thread_count} threads · ${g.percentage.toFixed(1)}%</div>
                 </div>
             </div>
         `).join('');

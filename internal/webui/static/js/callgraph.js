@@ -1714,6 +1714,11 @@ const CallGraph = (function() {
             return nodes;
         },
         
+        // Get original data for re-rendering
+        getOriginalData() {
+            return originalData;
+        },
+        
         // Get theme-aware arrow colors from CSS variables
         getArrowColors() {
             const rootStyle = getComputedStyle(document.documentElement);
@@ -1751,3 +1756,28 @@ const CallGraph = (function() {
 
 // Export for global access
 window.CallGraph = CallGraph;
+
+// Listen for theme changes to re-render call graph with new colors
+if (typeof ThemeManager !== 'undefined') {
+    ThemeManager.onChange(function(themeId) {
+        // Re-render call graph when theme changes
+        // Check if call graph is visible and has data
+        const container = document.getElementById('callgraph');
+        const panel = container?.closest('[x-show]') || document.getElementById('callgraph-panel');
+        const isVisible = panel && (
+            window.getComputedStyle(panel).display !== 'none' ||
+            panel.classList.contains('active')
+        );
+        
+        if (isVisible && CallGraph.getNodes()?.length > 0) {
+            console.log('[CallGraph] Theme changed to:', themeId, '- re-rendering');
+            // Re-render using the stored original data
+            setTimeout(() => {
+                const data = CallGraph.getOriginalData();
+                if (data) {
+                    CallGraph.render(data);
+                }
+            }, 100);
+        }
+    });
+}

@@ -1117,3 +1117,22 @@ const FlameGraph = (function() {
 
 // Export for global access
 window.FlameGraph = FlameGraph;
+
+// Listen for theme changes to re-render flame graph with new colors
+if (typeof ThemeManager !== 'undefined') {
+    ThemeManager.onChange(function(themeId) {
+        // Re-render flame graph when theme changes
+        // Check if flame graph is visible and has data
+        const container = document.getElementById('flamegraph');
+        const panel = container?.closest('[x-show]') || document.getElementById('flamegraph-panel');
+        const isVisible = panel && (
+            window.getComputedStyle(panel).display !== 'none' ||
+            panel.classList.contains('active')
+        );
+        
+        if (isVisible && FlameGraph.getData()) {
+            console.log('[FlameGraph] Theme changed to:', themeId, '- re-rendering');
+            setTimeout(() => FlameGraph.render(), 100);
+        }
+    });
+}
