@@ -3,9 +3,6 @@ package analyzer
 import "errors"
 
 var (
-	// ErrUnsupportedTaskType is returned when no analyzer is registered for a task type.
-	ErrUnsupportedTaskType = errors.New("unsupported task type")
-
 	// ErrUnsupportedMode is returned when an unknown analysis mode is specified.
 	ErrUnsupportedMode = errors.New("unsupported analysis mode")
 

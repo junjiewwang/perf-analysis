@@ -21,40 +21,6 @@ func TestNewJavaMemAnalyzer(t *testing.T) {
 	assert.Equal(t, "java_mem_analyzer", analyzer.Name())
 }
 
-func TestJavaMemAnalyzer_SupportedTypes(t *testing.T) {
-	analyzer := NewJavaMemAnalyzer(nil)
-
-	types := analyzer.SupportedTypes()
-
-	assert.Len(t, types, 1)
-	assert.Contains(t, types, model.TaskTypeJava)
-}
-
-func TestJavaMemAnalyzer_CanHandle(t *testing.T) {
-	analyzer := NewJavaMemAnalyzer(nil)
-
-	// Should handle allocation profiling
-	req := &model.AnalysisRequest{
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypeAsyncAlloc,
-	}
-	assert.True(t, analyzer.CanHandle(req))
-
-	// Should not handle CPU profiling
-	req = &model.AnalysisRequest{
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypePerf,
-	}
-	assert.False(t, analyzer.CanHandle(req))
-
-	// Should not handle other task types
-	req = &model.AnalysisRequest{
-		TaskType:     model.TaskTypeGeneric,
-		ProfilerType: model.ProfilerTypeAsyncAlloc,
-	}
-	assert.False(t, analyzer.CanHandle(req))
-}
-
 func TestJavaMemAnalyzer_Analyze_Success(t *testing.T) {
 	tempDir := t.TempDir()
 	config := &BaseAnalyzerConfig{
@@ -72,11 +38,10 @@ main-thread;java.lang.String.valueOf;com.example.App.stringify 3000`
 	os.MkdirAll(taskDir, 0755)
 
 	req := &model.AnalysisRequest{
-		TaskID:       1,
-		TaskUUID:     "test-java-mem-uuid",
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypeAsyncAlloc,
-		OutputDir:    taskDir,
+		TaskID:   1,
+		TaskUUID: "test-java-mem-uuid",
+		Mode:     string(ModeJavaAlloc),
+		OutputDir: taskDir,
 	}
 
 	result, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader(input))
@@ -103,10 +68,9 @@ func TestJavaMemAnalyzer_Analyze_EmptyData(t *testing.T) {
 	analyzer := NewJavaMemAnalyzer(config)
 
 	req := &model.AnalysisRequest{
-		TaskID:       1,
-		TaskUUID:     "test-empty-uuid",
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypeAsyncAlloc,
+		TaskID:   1,
+		TaskUUID: "test-empty-uuid",
+		Mode:     string(ModeJavaAlloc),
 	}
 
 	_, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader(""))
@@ -115,28 +79,12 @@ func TestJavaMemAnalyzer_Analyze_EmptyData(t *testing.T) {
 	assert.Equal(t, ErrEmptyData, err)
 }
 
-func TestJavaMemAnalyzer_Analyze_WrongProfilerType(t *testing.T) {
-	analyzer := NewJavaMemAnalyzer(nil)
-
-	req := &model.AnalysisRequest{
-		TaskID:       1,
-		TaskUUID:     "test-uuid",
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypePerf, // Wrong type
-	}
-
-	_, err := analyzer.AnalyzeFromReader(context.Background(), req, strings.NewReader("data"))
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "only supports profiler type async_alloc")
-}
-
 func TestJavaMemAnalyzer_GenerateMemorySuggestions(t *testing.T) {
 	analyzer := NewJavaMemAnalyzer(nil)
 
 	topAllocators := model.TopFuncsMap{
-		"com.example.App.allocate":    model.TopFuncValue{Self: 15.0},
-		"com.example.Worker.process":  model.TopFuncValue{Self: 5.0},
+		"com.example.App.allocate":   model.TopFuncValue{Self: 15.0},
+		"com.example.Worker.process": model.TopFuncValue{Self: 5.0},
 	}
 
 	suggestions := analyzer.generateMemorySuggestions(topAllocators)

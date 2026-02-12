@@ -187,9 +187,9 @@ func runService(cmd *cobra.Command, args []string) error {
 func printStartupBanner(logger *utils.DefaultLogger, cfg *config.Config) {
 	separator := strings.Repeat("─", 60)
 
-	logger.Info(separator)
+	logger.Info("%s", separator)
 	logger.Info("  perf-analyzer service")
-	logger.Info(separator)
+	logger.Info("%s", separator)
 
 	// Section 1: Version & Environment
 	logger.Info("  Version:      %s", Version)
@@ -200,9 +200,9 @@ func printStartupBanner(logger *utils.DefaultLogger, cfg *config.Config) {
 	logger.Info("  PID:          %d", os.Getpid())
 
 	// Section 2: Infrastructure
-	logger.Info(separator)
+	logger.Info("%s", separator)
 	logger.Info("  Infrastructure")
-	logger.Info(separator)
+	logger.Info("%s", separator)
 
 	// Database
 	logger.Info("  Database:     %s://%s:%d/%s (max_conns=%d)",
@@ -223,9 +223,9 @@ func printStartupBanner(logger *utils.DefaultLogger, cfg *config.Config) {
 	logger.Info("  Analysis:     version=%s, data_dir=%s", cfg.Analysis.Version, cfg.Analysis.DataDir)
 
 	// Section 3: Components
-	logger.Info(separator)
+	logger.Info("%s", separator)
 	logger.Info("  Components")
-	logger.Info(separator)
+	logger.Info("%s", separator)
 
 	// Scheduler
 	if cfg.Scheduler.Enabled {
@@ -300,7 +300,7 @@ func printStartupBanner(logger *utils.DefaultLogger, cfg *config.Config) {
 	// Retention
 	logger.Info("  Retention:    default=%s", cfg.Retention.Default)
 
-	logger.Info(separator)
+	logger.Info("%s", separator)
 }
 
 // initLoggerFromConfig creates a logger based on configuration settings.

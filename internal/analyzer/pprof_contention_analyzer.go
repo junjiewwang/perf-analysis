@@ -16,7 +16,6 @@ import (
 type PProfContentionAnalyzer struct {
 	*BaseAnalyzer
 	analyzerType string // "block" or "mutex"
-	taskType     model.TaskType
 }
 
 // NewPProfBlockAnalyzer creates a new pprof Block analyzer.
@@ -31,7 +30,6 @@ func NewPProfBlockAnalyzer(config *BaseAnalyzerConfig) *PProfContentionAnalyzer 
 	return &PProfContentionAnalyzer{
 		BaseAnalyzer: NewBaseAnalyzer(config),
 		analyzerType: "block",
-		taskType:     model.TaskTypePProfBlock,
 	}
 }
 
@@ -47,18 +45,12 @@ func NewPProfMutexAnalyzer(config *BaseAnalyzerConfig) *PProfContentionAnalyzer 
 	return &PProfContentionAnalyzer{
 		BaseAnalyzer: NewBaseAnalyzer(config),
 		analyzerType: "mutex",
-		taskType:     model.TaskTypePProfMutex,
 	}
 }
 
 // Name returns the analyzer name.
 func (a *PProfContentionAnalyzer) Name() string {
 	return fmt.Sprintf("pprof_%s_analyzer", a.analyzerType)
-}
-
-// SupportedTypes returns the task types supported by this analyzer.
-func (a *PProfContentionAnalyzer) SupportedTypes() []model.TaskType {
-	return []model.TaskType{a.taskType}
 }
 
 // Analyze performs pprof Block/Mutex analysis using an input file.
@@ -172,7 +164,7 @@ func (a *PProfContentionAnalyzer) AnalyzeFromReader(ctx context.Context, req *mo
 	// Step 6: Build response
 	return &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
-		TaskType:     req.TaskType,
+		Mode:         req.Mode,
 		TotalRecords: int(totalCount),
 		OutputFiles:  outputFiles,
 		Data:         blockData,

@@ -109,8 +109,7 @@ func TestAnalysisRequest(t *testing.T) {
 	req := &AnalysisRequest{
 		TaskID:        1,
 		TaskUUID:      "uuid-123",
-		TaskType:      TaskTypeJava,
-		ProfilerType:  ProfilerTypePerf,
+		Mode:          "async-profiler-cpu",
 		ResultFile:    "result.collapsed",
 		UserName:      "testuser",
 		MasterTaskTID: &masterTID,
@@ -122,7 +121,7 @@ func TestAnalysisRequest(t *testing.T) {
 
 	assert.Equal(t, int64(1), req.TaskID)
 	assert.Equal(t, "uuid-123", req.TaskUUID)
-	assert.Equal(t, TaskTypeJava, req.TaskType)
+	assert.Equal(t, "async-profiler-cpu", req.Mode)
 	assert.NotNil(t, req.MasterTaskTID)
 	assert.Equal(t, "master-123", *req.MasterTaskTID)
 }

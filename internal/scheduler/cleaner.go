@@ -91,7 +91,7 @@ func (rc *ResultCleaner) clean(ctx context.Context) {
 			return
 		}
 
-		retention := rc.retention.GetRetentionForType(task.Type.String())
+		retention := rc.retention.GetRetentionForType(task.Mode)
 		expireTime := task.CreateTime.Add(retention)
 
 		if time.Now().Before(expireTime) {

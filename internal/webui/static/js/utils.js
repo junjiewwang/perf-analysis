@@ -523,35 +523,42 @@ function isSystemFunction(name, filterTypes) {
     return false;
 }
 
-// Get CSS class for task type badge
+// Get CSS class for mode badge
 function getTaskTypeClass(typeName) {
     const typeMap = {
-        'java': 'java',
-        'generic': 'generic',
-        'pprof_mem': 'pprof',
-        'memleak': 'memory',
-        'java_heap': 'heap',
-        'phys_mem': 'memory',
-        'jeprof': 'memory',
-        'tracing': 'tracing',
-        'timing': 'tracing'
+        'async-profiler-cpu': 'java',
+        'async-profiler-alloc': 'java',
+        'async-profiler-wall': 'java',
+        'async-profiler-lock': 'java',
+        'perf-cpu': 'generic',
+        'pprof-cpu': 'pprof',
+        'pprof-heap': 'pprof',
+        'pprof-goroutine': 'pprof',
+        'pprof-block': 'pprof',
+        'pprof-mutex': 'pprof',
+        'pprof-all': 'pprof',
+        'heapdump-heap': 'heap',
+        'jeprof-heap': 'memory'
     };
     return typeMap[typeName] || 'generic';
 }
 
-// Get icon for task type
+// Get icon for mode
 function getTaskTypeIcon(typeName) {
     const iconMap = {
-        'java': '☕',
-        'generic': '🔧',
-        'pprof_mem': '🐹',
-        'memleak': '💾',
-        'java_heap': '📦',
-        'phys_mem': '🧠',
-        'jeprof': '📊',
-        'tracing': '🔍',
-        'timing': '⏱️',
-        'bolt': '⚡'
+        'async-profiler-cpu': '☕',
+        'async-profiler-alloc': '📈',
+        'async-profiler-wall': '⏱️',
+        'async-profiler-lock': '🔒',
+        'perf-cpu': '🔥',
+        'pprof-cpu': '🐹',
+        'pprof-heap': '🐹',
+        'pprof-goroutine': '🐹',
+        'pprof-block': '🐹',
+        'pprof-mutex': '🐹',
+        'pprof-all': '🐹',
+        'heapdump-heap': '📦',
+        'jeprof-heap': '📊'
     };
     return iconMap[typeName] || '📊';
 }
@@ -560,8 +567,10 @@ function getTaskTypeIcon(typeName) {
 function getProfilerIcon(profilerName) {
     const iconMap = {
         'perf': '🔥',
-        'async_alloc': '📈',
-        'pprof': '🐹'
+        'async-profiler': '☕',
+        'pprof': '🐹',
+        'heapdump': '📦',
+        'jeprof': '📊'
     };
     return iconMap[profilerName] || '📊';
 }

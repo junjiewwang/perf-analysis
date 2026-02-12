@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/perf-analysis/internal/statistics"
-	"github.com/perf-analysis/pkg/model"
 )
 
 func TestNewAdvisor(t *testing.T) {
@@ -32,8 +31,7 @@ func TestAdvisor_Advise_HighCPUFunction(t *testing.T) {
 	advisor := NewAdvisor()
 
 	ctx := &RuleContext{
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypePerf,
+		Mode: "async-profiler-cpu",
 		TopFuncsResult: &statistics.TopFuncsResult{
 			TopFuncs: []statistics.TopFuncEntry{
 				{Name: "com.example.App.heavyCompute", SelfSamples: 2000, SelfPercent: 20.0},
@@ -59,8 +57,7 @@ func TestAdvisor_Advise_GCOverhead(t *testing.T) {
 	advisor := NewAdvisor()
 
 	ctx := &RuleContext{
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypePerf,
+		Mode: "async-profiler-cpu",
 		TopFuncsResult: &statistics.TopFuncsResult{
 			TopFuncs: []statistics.TopFuncEntry{
 				{Name: "java.lang.ref.Reference$ReferenceHandler.run", SelfSamples: 100, SelfPercent: 1.0},
@@ -87,8 +84,7 @@ func TestAdvisor_Advise_LockContention(t *testing.T) {
 	advisor := NewAdvisor()
 
 	ctx := &RuleContext{
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypePerf,
+		Mode: "async-profiler-cpu",
 		TopFuncsResult: &statistics.TopFuncsResult{
 			TopFuncs: []statistics.TopFuncEntry{
 				{Name: "java.lang.Object.monitorEnter", SelfSamples: 300, SelfPercent: 3.0},
@@ -114,8 +110,7 @@ func TestAdvisor_Advise_FrequentAllocation(t *testing.T) {
 	advisor := NewAdvisor()
 
 	ctx := &RuleContext{
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypeAsyncAlloc,
+		Mode: "async-profiler-alloc",
 		TopFuncsResult: &statistics.TopFuncsResult{
 			TopFuncs: []statistics.TopFuncEntry{
 				{Name: "java.lang.StringBuilder.toString", SelfSamples: 800, SelfPercent: 8.0},
@@ -141,8 +136,7 @@ func TestAdvisor_Advise_ReflectionUsage(t *testing.T) {
 	advisor := NewAdvisor()
 
 	ctx := &RuleContext{
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypePerf,
+		Mode: "async-profiler-cpu",
 		TopFuncsResult: &statistics.TopFuncsResult{
 			TopFuncs: []statistics.TopFuncEntry{
 				{Name: "java.lang.reflect.Method.invoke", SelfSamples: 300, SelfPercent: 3.0},
@@ -168,8 +162,7 @@ func TestAdvisor_Advise_NoSuggestions(t *testing.T) {
 	advisor := NewAdvisor()
 
 	ctx := &RuleContext{
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypePerf,
+		Mode: "async-profiler-cpu",
 		TopFuncsResult: &statistics.TopFuncsResult{
 			TopFuncs: []statistics.TopFuncEntry{
 				{Name: "com.example.App.normalFunction", SelfSamples: 100, SelfPercent: 1.0},
@@ -187,8 +180,7 @@ func TestAdvisor_Advise_NilTopFuncs(t *testing.T) {
 	advisor := NewAdvisor()
 
 	ctx := &RuleContext{
-		TaskType:       model.TaskTypeJava,
-		ProfilerType:   model.ProfilerTypePerf,
+		Mode:           "async-profiler-cpu",
 		TopFuncsResult: nil,
 	}
 

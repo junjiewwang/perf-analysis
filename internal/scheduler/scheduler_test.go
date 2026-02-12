@@ -195,8 +195,9 @@ func TestScheduler_ConvertEventToTask(t *testing.T) {
 	modelTask := &model.Task{
 		ID:            1,
 		TaskUUID:      "uuid-123",
-		Type:          model.TaskTypeJava,
-		ProfilerType:  model.ProfilerTypePerf,
+		Profiler:      model.ProfilerAsyncProfiler,
+		Event:         model.EventCPU,
+		Mode:          "async-profiler-cpu",
 		ResultFile:    "result.data",
 		UserName:      "testuser",
 		MasterTaskTID: &masterTID,
@@ -211,8 +212,7 @@ func TestScheduler_ConvertEventToTask(t *testing.T) {
 
 	assert.Equal(t, int64(1), task.ID)
 	assert.Equal(t, "uuid-123", task.UUID)
-	assert.Equal(t, model.TaskTypeJava, task.Type)
-	assert.Equal(t, model.ProfilerTypePerf, task.ProfilerType)
+	assert.Equal(t, "async-profiler-cpu", task.Mode)
 	assert.Equal(t, "result.data", task.ResultFile)
 	assert.Equal(t, "testuser", task.UserName)
 	assert.NotNil(t, task.MasterTaskTID)

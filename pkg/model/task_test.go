@@ -7,45 +7,117 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTaskType_String(t *testing.T) {
+func TestProfiler_String(t *testing.T) {
 	tests := []struct {
-		taskType TaskType
+		profiler Profiler
 		expected string
 	}{
-		{TaskTypeGeneric, "generic"},
-		{TaskTypeJava, "java"},
-		{TaskTypeTracing, "tracing"},
-		{TaskTypeTiming, "timing"},
-		{TaskTypeMemLeak, "memleak"},
-		{TaskTypePProfMem, "pprof_mem"},
-		{TaskTypeJavaHeap, "java_heap"},
-		{TaskTypePhysMem, "phys_mem"},
-		{TaskTypeJeprof, "jeprof"},
-		{TaskTypeBolt, "bolt"},
-		{TaskType(99), "unknown"},
+		{ProfilerPerf, "perf"},
+		{ProfilerAsyncProfiler, "async-profiler"},
+		{ProfilerPProf, "pprof"},
+		{ProfilerHeapDump, "heapdump"},
+		{ProfilerJeprof, "jeprof"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.taskType.String())
+			assert.Equal(t, tt.expected, tt.profiler.String())
 		})
 	}
 }
 
-func TestProfilerType_String(t *testing.T) {
+func TestProfiler_IsValid(t *testing.T) {
 	tests := []struct {
-		profilerType ProfilerType
-		expected     string
+		profiler Profiler
+		valid    bool
 	}{
-		{ProfilerTypePerf, "perf"},
-		{ProfilerTypeAsyncAlloc, "async_alloc"},
-		{ProfilerTypePProf, "pprof"},
-		{ProfilerType(99), "unknown"},
+		{ProfilerPerf, true},
+		{ProfilerAsyncProfiler, true},
+		{ProfilerPProf, true},
+		{ProfilerHeapDump, true},
+		{ProfilerJeprof, true},
+		{Profiler("unknown"), false},
+		{Profiler(""), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.profiler), func(t *testing.T) {
+			assert.Equal(t, tt.valid, tt.profiler.IsValid())
+		})
+	}
+}
+
+func TestEventType_String(t *testing.T) {
+	tests := []struct {
+		event    EventType
+		expected string
+	}{
+		{EventCPU, "cpu"},
+		{EventAlloc, "alloc"},
+		{EventHeap, "heap"},
+		{EventWall, "wall"},
+		{EventLock, "lock"},
+		{EventGoroutine, "goroutine"},
+		{EventBlock, "block"},
+		{EventMutex, "mutex"},
+		{EventIO, "io"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.profilerType.String())
+			assert.Equal(t, tt.expected, tt.event.String())
+		})
+	}
+}
+
+func TestEventType_IsValid(t *testing.T) {
+	tests := []struct {
+		event EventType
+		valid bool
+	}{
+		{EventCPU, true},
+		{EventAlloc, true},
+		{EventHeap, true},
+		{EventWall, true},
+		{EventLock, true},
+		{EventGoroutine, true},
+		{EventBlock, true},
+		{EventMutex, true},
+		{EventIO, true},
+		{EventType("unknown"), false},
+		{EventType(""), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.event), func(t *testing.T) {
+			assert.Equal(t, tt.valid, tt.event.IsValid())
+		})
+	}
+}
+
+func TestAnalysisMode(t *testing.T) {
+	tests := []struct {
+		profiler Profiler
+		event    EventType
+		expected string
+	}{
+		{ProfilerPerf, EventCPU, "perf-cpu"},
+		{ProfilerAsyncProfiler, EventCPU, "async-profiler-cpu"},
+		{ProfilerAsyncProfiler, EventAlloc, "async-profiler-alloc"},
+		{ProfilerAsyncProfiler, EventWall, "async-profiler-wall"},
+		{ProfilerAsyncProfiler, EventLock, "async-profiler-lock"},
+		{ProfilerPProf, EventCPU, "pprof-cpu"},
+		{ProfilerPProf, EventHeap, "pprof-heap"},
+		{ProfilerPProf, EventGoroutine, "pprof-goroutine"},
+		{ProfilerPProf, EventBlock, "pprof-block"},
+		{ProfilerPProf, EventMutex, "pprof-mutex"},
+		{ProfilerHeapDump, EventHeap, "heapdump-heap"},
+		{ProfilerJeprof, EventHeap, "jeprof-heap"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			assert.Equal(t, tt.expected, AnalysisMode(tt.profiler, tt.event))
 		})
 	}
 }
@@ -129,35 +201,14 @@ func TestTask_IsMasterTask(t *testing.T) {
 	}
 }
 
-func TestTask_GetResourceType(t *testing.T) {
-	tests := []struct {
-		taskType TaskType
-		expected string
-	}{
-		{TaskTypeGeneric, "CPU"},
-		{TaskTypeTiming, "CPU"},
-		{TaskTypeJava, "App"},
-		{TaskTypeTracing, "Disk"},
-		{TaskTypeMemLeak, "Memory"},
-		{TaskTypePProfMem, "Memory"},
-		{TaskTypeJavaHeap, "Memory"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.expected, func(t *testing.T) {
-			task := &Task{Type: tt.taskType}
-			assert.Equal(t, tt.expected, task.GetResourceType())
-		})
-	}
-}
-
 func TestNewTask(t *testing.T) {
-	task := NewTask(123, "uuid-456", TaskTypeJava, ProfilerTypePerf)
+	task := NewTask(123, "uuid-456", ProfilerAsyncProfiler, EventCPU)
 
 	assert.Equal(t, int64(123), task.ID)
 	assert.Equal(t, "uuid-456", task.TaskUUID)
-	assert.Equal(t, TaskTypeJava, task.Type)
-	assert.Equal(t, ProfilerTypePerf, task.ProfilerType)
+	assert.Equal(t, ProfilerAsyncProfiler, task.Profiler)
+	assert.Equal(t, EventCPU, task.Event)
+	assert.Equal(t, "async-profiler-cpu", task.Mode)
 	assert.Equal(t, TaskStatusPending, task.Status)
 	assert.Equal(t, AnalysisStatusPending, task.AnalysisStatus)
 	assert.False(t, task.CreateTime.IsZero())

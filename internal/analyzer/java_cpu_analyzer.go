@@ -35,17 +35,8 @@ func (a *JavaCPUAnalyzer) Name() string {
 	return "java_cpu_analyzer"
 }
 
-// SupportedTypes returns the task types supported by this analyzer.
-func (a *JavaCPUAnalyzer) SupportedTypes() []model.TaskType {
-	return []model.TaskType{model.TaskTypeJava}
-}
-
 // Analyze performs Java CPU profiling analysis using an input file.
 func (a *JavaCPUAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
-	if req.ProfilerType != model.ProfilerTypePerf {
-		return nil, fmt.Errorf("java cpu analyzer only supports profiler type perf, got %v", req.ProfilerType)
-	}
-
 	file, err := os.Open(req.InputFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open input file: %w", err)
@@ -57,10 +48,6 @@ func (a *JavaCPUAnalyzer) Analyze(ctx context.Context, req *model.AnalysisReques
 
 // AnalyzeFromReader performs Java CPU profiling analysis from a reader.
 func (a *JavaCPUAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResponse, error) {
-	if req.ProfilerType != model.ProfilerTypePerf {
-		return nil, fmt.Errorf("java cpu analyzer only supports profiler type perf, got %v", req.ProfilerType)
-	}
-
 	// Step 1: Parse the collapsed data
 	parseResult, err := a.Parse(ctx, dataReader)
 	if err != nil {
@@ -163,7 +150,7 @@ func (a *JavaCPUAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Anal
 	// Step 12: Build response
 	return &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
-		TaskType:     req.TaskType,
+		Mode:         req.Mode,
 		TotalRecords: int(parseResult.TotalSamples),
 		OutputFiles:  outputFiles,
 		Data:         cpuData,

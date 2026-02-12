@@ -19,7 +19,7 @@ func (f *AllocationFormatter) SupportedTypes() []model.AnalysisDataType {
 func (f *AllocationFormatter) Format(resp *model.AnalysisResponse, log utils.Logger) {
 	log.Info("=== Allocation Analysis Results ===")
 	log.Info("Task UUID:         %s", resp.TaskUUID)
-	log.Info("Task Type:         %s", resp.TaskType.String())
+	log.Info("Task Type:         %s", resp.Mode)
 	log.Info("Total Allocations: %d", resp.TotalRecords)
 	log.Info("")
 
@@ -61,7 +61,7 @@ func (f *AllocationFormatter) Format(resp *model.AnalysisResponse, log utils.Log
 func (f *AllocationFormatter) FormatSummary(resp *model.AnalysisResponse) map[string]interface{} {
 	summary := map[string]interface{}{
 		"task_uuid":     resp.TaskUUID,
-		"task_type":     resp.TaskType.String(),
+		"task_type":     resp.Mode,
 		"total_records": resp.TotalRecords,
 	}
 

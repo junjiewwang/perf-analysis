@@ -3,89 +3,130 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
-// TaskType represents the type of analysis task.
-type TaskType int
+// Profiler represents the profiling tool used to collect data.
+type Profiler string
 
 const (
-	TaskTypeGeneric        TaskType = 0  // Generic CPU profiling (perf)
-	TaskTypeJava           TaskType = 1  // Java async-profiler
-	TaskTypeTracing        TaskType = 2  // IO tracing
-	TaskTypeTiming         TaskType = 3  // Timing analysis
-	TaskTypeMemLeak        TaskType = 4  // Memory leak analysis
-	TaskTypePProfMem       TaskType = 5  // Go pprof memory
-	TaskTypeJavaHeap       TaskType = 6  // Java heap dump
-	TaskTypePhysMem        TaskType = 7  // Physical memory
-	TaskTypeJeprof         TaskType = 8  // Jeprof
-	TaskTypeBolt           TaskType = 9  // Bolt optimization
-	TaskTypePProfCPU       TaskType = 10 // Go pprof CPU
-	TaskTypePProfHeap      TaskType = 11 // Go pprof Heap
-	TaskTypePProfGoroutine TaskType = 12 // Go pprof Goroutine
-	TaskTypePProfBlock     TaskType = 13 // Go pprof Block
-	TaskTypePProfMutex     TaskType = 14 // Go pprof Mutex
+	// ProfilerPerf is the Linux perf profiler.
+	ProfilerPerf Profiler = "perf"
+
+	// ProfilerAsyncProfiler is the async-profiler for Java.
+	ProfilerAsyncProfiler Profiler = "async-profiler"
+
+	// ProfilerPProf is the Go pprof profiler.
+	ProfilerPProf Profiler = "pprof"
+
+	// ProfilerHeapDump is the Java heap dump tool.
+	ProfilerHeapDump Profiler = "heapdump"
+
+	// ProfilerJeprof is the jemalloc profiler.
+	ProfilerJeprof Profiler = "jeprof"
 )
 
-// String returns the string representation of TaskType.
-func (t TaskType) String() string {
-	switch t {
-	case TaskTypeGeneric:
-		return "generic"
-	case TaskTypeJava:
-		return "java"
-	case TaskTypeTracing:
-		return "tracing"
-	case TaskTypeTiming:
-		return "timing"
-	case TaskTypeMemLeak:
-		return "memleak"
-	case TaskTypePProfMem:
-		return "pprof_mem"
-	case TaskTypeJavaHeap:
-		return "java_heap"
-	case TaskTypePhysMem:
-		return "phys_mem"
-	case TaskTypeJeprof:
-		return "jeprof"
-	case TaskTypeBolt:
-		return "bolt"
-	case TaskTypePProfCPU:
-		return "pprof_cpu"
-	case TaskTypePProfHeap:
-		return "pprof_heap"
-	case TaskTypePProfGoroutine:
-		return "pprof_goroutine"
-	case TaskTypePProfBlock:
-		return "pprof_block"
-	case TaskTypePProfMutex:
-		return "pprof_mutex"
-	default:
-		return "unknown"
-	}
+// knownProfilers is the set of valid profiler values.
+var knownProfilers = map[Profiler]bool{
+	ProfilerPerf:          true,
+	ProfilerAsyncProfiler: true,
+	ProfilerPProf:         true,
+	ProfilerHeapDump:      true,
+	ProfilerJeprof:        true,
 }
 
-// ProfilerType represents the profiler type.
-type ProfilerType int
+// IsValid returns true if the profiler is a known value.
+func (p Profiler) IsValid() bool {
+	return knownProfilers[p]
+}
+
+// String returns the string representation of the profiler.
+func (p Profiler) String() string {
+	return string(p)
+}
+
+// EventType represents the type of profiling event.
+type EventType string
 
 const (
-	ProfilerTypePerf       ProfilerType = 0 // perf / async-profiler CPU
-	ProfilerTypeAsyncAlloc ProfilerType = 1 // async-profiler allocation
-	ProfilerTypePProf      ProfilerType = 2 // Go pprof
+	// EventCPU is CPU sampling event.
+	EventCPU EventType = "cpu"
+
+	// EventAlloc is memory allocation event.
+	EventAlloc EventType = "alloc"
+
+	// EventHeap is heap snapshot event.
+	EventHeap EventType = "heap"
+
+	// EventWall is wall-clock time event.
+	EventWall EventType = "wall"
+
+	// EventLock is lock contention event.
+	EventLock EventType = "lock"
+
+	// EventGoroutine is Go goroutine profiling event.
+	EventGoroutine EventType = "goroutine"
+
+	// EventBlock is Go block profiling event.
+	EventBlock EventType = "block"
+
+	// EventMutex is Go mutex profiling event.
+	EventMutex EventType = "mutex"
+
+	// EventIO is IO tracing event.
+	EventIO EventType = "io"
 )
 
-// String returns the string representation of ProfilerType.
-func (p ProfilerType) String() string {
-	switch p {
-	case ProfilerTypePerf:
-		return "perf"
-	case ProfilerTypeAsyncAlloc:
-		return "async_alloc"
-	case ProfilerTypePProf:
-		return "pprof"
-	default:
-		return "unknown"
-	}
+// knownEventTypes is the set of valid event type values.
+var knownEventTypes = map[EventType]bool{
+	EventCPU:       true,
+	EventAlloc:     true,
+	EventHeap:      true,
+	EventWall:      true,
+	EventLock:      true,
+	EventGoroutine: true,
+	EventBlock:     true,
+	EventMutex:     true,
+	EventIO:        true,
+}
+
+// IsValid returns true if the event type is a known value.
+func (e EventType) IsValid() bool {
+	return knownEventTypes[e]
+}
+
+// String returns the string representation of the event type.
+func (e EventType) String() string {
+	return string(e)
+}
+
+// ResourceType represents the resource category that an analysis mode targets.
+type ResourceType string
+
+const (
+	// ResourceCPU is CPU-related profiling.
+	ResourceCPU ResourceType = "CPU"
+
+	// ResourceMemory is memory-related profiling.
+	ResourceMemory ResourceType = "Memory"
+
+	// ResourceIO is disk/IO-related profiling.
+	ResourceIO ResourceType = "Disk"
+
+	// ResourceApp is application-level profiling (e.g. Java wall/lock).
+	ResourceApp ResourceType = "App"
+
+	// ResourceGoroutine is Go goroutine profiling.
+	ResourceGoroutine ResourceType = "Goroutine"
+
+	// ResourceConcurrency is concurrency-related profiling (block, mutex).
+	ResourceConcurrency ResourceType = "Concurrency"
+)
+
+// AnalysisMode returns the composite mode string "{profiler}-{event}".
+func AnalysisMode(profiler Profiler, event EventType) string {
+	return fmt.Sprintf("%s-%s", profiler, event)
 }
 
 // TaskStatus represents the status of a task.
@@ -111,22 +152,24 @@ const (
 
 // Task represents a profiling task.
 type Task struct {
-	ID             int64          `json:"id" db:"id"`
-	TaskUUID       string         `json:"tid" db:"tid"`
-	Type           TaskType       `json:"type" db:"type"`
-	ProfilerType   ProfilerType   `json:"profiler_type" db:"profiler_type"`
-	Status         TaskStatus     `json:"status" db:"status"`
-	AnalysisStatus AnalysisStatus `json:"analysis_status" db:"analysis_status"`
-	StatusInfo     string         `json:"status_info" db:"status_info"`
-	ResultFile     string         `json:"result_file" db:"result_file"`
-	UserName       string         `json:"user_name" db:"user_name"`
-	MasterTaskTID  *string        `json:"mastertask_tid" db:"mastertask_tid"`
-	COSBucket      string         `json:"cos_bucket" db:"cos_bucket"`
-	RequestParams  RequestParams  `json:"request_params" db:"request_params"`
-	CallbackURL    string         `json:"callback_url,omitempty" db:"callback_url"`
-	CreateTime     time.Time      `json:"create_time" db:"create_time"`
-	BeginTime      *time.Time     `json:"begin_time" db:"begin_time"`
-	EndTime        *time.Time     `json:"end_time" db:"end_time"`
+	ID             int64             `json:"id" db:"id"`
+	TaskUUID       string            `json:"tid" db:"tid"`
+	Profiler       Profiler          `json:"profiler" db:"profiler"`
+	Event          EventType         `json:"event" db:"event"`
+	Mode           string            `json:"mode" db:"mode"`
+	Status         TaskStatus        `json:"status" db:"status"`
+	AnalysisStatus AnalysisStatus    `json:"analysis_status" db:"analysis_status"`
+	StatusInfo     string            `json:"status_info" db:"status_info"`
+	ResultFile     string            `json:"result_file" db:"result_file"`
+	UserName       string            `json:"user_name" db:"user_name"`
+	MasterTaskTID  *string           `json:"mastertask_tid" db:"mastertask_tid"`
+	COSBucket      string            `json:"cos_bucket" db:"cos_bucket"`
+	RequestParams  RequestParams     `json:"request_params" db:"request_params"`
+	CallbackURL    string            `json:"callback_url,omitempty" db:"callback_url"`
+	Metadata       map[string]string `json:"metadata,omitempty" db:"metadata"`
+	CreateTime     time.Time         `json:"create_time" db:"create_time"`
+	BeginTime      *time.Time        `json:"begin_time" db:"begin_time"`
+	EndTime        *time.Time        `json:"end_time" db:"end_time"`
 }
 
 // RequestParams holds task request parameters.
@@ -165,33 +208,14 @@ func (t *Task) IsMasterTask() bool {
 	return t.MasterTaskTID != nil && *t.MasterTaskTID != ""
 }
 
-// GetResourceType returns the resource type string for the task.
-func (t *Task) GetResourceType() string {
-	switch t.Type {
-	case TaskTypeGeneric, TaskTypeTiming, TaskTypePProfCPU:
-		return "CPU"
-	case TaskTypeJava:
-		return "App"
-	case TaskTypeTracing:
-		return "Disk"
-	case TaskTypeMemLeak, TaskTypePProfMem, TaskTypeJavaHeap, TaskTypePhysMem, TaskTypeJeprof, TaskTypePProfHeap:
-		return "Memory"
-	case TaskTypePProfGoroutine:
-		return "Goroutine"
-	case TaskTypePProfBlock, TaskTypePProfMutex:
-		return "Concurrency"
-	default:
-		return "Unknown"
-	}
-}
-
 // NewTask creates a new Task instance.
-func NewTask(id int64, taskUUID string, taskType TaskType, profilerType ProfilerType) *Task {
+func NewTask(id int64, taskUUID string, profiler Profiler, event EventType) *Task {
 	return &Task{
 		ID:             id,
 		TaskUUID:       taskUUID,
-		Type:           taskType,
-		ProfilerType:   profilerType,
+		Profiler:       profiler,
+		Event:          event,
+		Mode:           AnalysisMode(profiler, event),
 		Status:         TaskStatusPending,
 		AnalysisStatus: AnalysisStatusPending,
 		CreateTime:     time.Now(),

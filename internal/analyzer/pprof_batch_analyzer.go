@@ -56,17 +56,6 @@ func (a *PProfBatchAnalyzer) Name() string {
 	return a.name
 }
 
-// SupportedTypes returns the task types supported by this analyzer.
-func (a *PProfBatchAnalyzer) SupportedTypes() []model.TaskType {
-	return []model.TaskType{
-		model.TaskTypePProfCPU,
-		model.TaskTypePProfHeap,
-		model.TaskTypePProfGoroutine,
-		model.TaskTypePProfBlock,
-		model.TaskTypePProfMutex,
-	}
-}
-
 // Analyze performs batch analysis on a pprof directory.
 func (a *PProfBatchAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
 	// Check if input is a directory
@@ -144,7 +133,7 @@ func (a *PProfBatchAnalyzer) analyzeDirectory(ctx context.Context, req *model.An
 	// Create response with PProfBatchData
 	response := &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
-		TaskType:     model.TaskTypePProfCPU, // Primary type
+		Mode:         req.Mode,
 		TotalRecords: int(results.TotalSamples),
 		Data:         batchData,
 	}
@@ -267,10 +256,9 @@ func (a *PProfBatchAnalyzer) analyzeProfileSet(
 	}
 	
 	subReq := &model.AnalysisRequest{
-		TaskID:       req.TaskID,
-		InputFile:    latestFile,
-		OutputDir:    subOutputDir,
-		ProfilerType: model.ProfilerTypePProf,
+		TaskID:    req.TaskID,
+		InputFile: latestFile,
+		OutputDir: subOutputDir,
 	}
 
 	var resp *model.AnalysisResponse
@@ -278,19 +266,19 @@ func (a *PProfBatchAnalyzer) analyzeProfileSet(
 
 	switch profileType {
 	case "cpu":
-		subReq.TaskType = model.TaskTypePProfCPU
+		subReq.Mode = string(ModePProfCPU)
 		resp, err = a.cpuAnalyzer.Analyze(ctx, subReq)
 	case "heap", "allocs":
-		subReq.TaskType = model.TaskTypePProfHeap
+		subReq.Mode = string(ModePProfHeap)
 		resp, err = a.heapAnalyzer.Analyze(ctx, subReq)
 	case "goroutine":
-		subReq.TaskType = model.TaskTypePProfGoroutine
+		subReq.Mode = string(ModePProfGoroutine)
 		resp, err = a.goroutineAnalyzer.Analyze(ctx, subReq)
 	case "block":
-		subReq.TaskType = model.TaskTypePProfBlock
+		subReq.Mode = string(ModePProfBlock)
 		resp, err = a.blockAnalyzer.Analyze(ctx, subReq)
 	case "mutex":
-		subReq.TaskType = model.TaskTypePProfMutex
+		subReq.Mode = string(ModePProfMutex)
 		resp, err = a.mutexAnalyzer.Analyze(ctx, subReq)
 	default:
 		return nil, fmt.Errorf("unknown profile type: %s", profileType)

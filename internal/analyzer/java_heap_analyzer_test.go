@@ -43,33 +43,12 @@ func TestJavaHeapAnalyzer_Name(t *testing.T) {
 	assert.Equal(t, "java_heap_analyzer", analyzer.Name())
 }
 
-func TestJavaHeapAnalyzer_SupportedTypes(t *testing.T) {
-	analyzer := NewJavaHeapAnalyzer(nil)
-	types := analyzer.SupportedTypes()
-
-	assert.Len(t, types, 1)
-	assert.Contains(t, types, model.TaskTypeJavaHeap)
-}
-
-func TestJavaHeapAnalyzer_Analyze_WrongTaskType(t *testing.T) {
-	analyzer := NewJavaHeapAnalyzer(nil)
-	ctx := context.Background()
-
-	req := &model.AnalysisRequest{
-		TaskType: model.TaskTypeJava, // Wrong type
-	}
-
-	_, err := analyzer.Analyze(ctx, req)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "java heap analyzer only supports task type java_heap")
-}
-
 func TestJavaHeapAnalyzer_Analyze_FileNotFound(t *testing.T) {
 	analyzer := NewJavaHeapAnalyzer(nil)
 	ctx := context.Background()
 
 	req := &model.AnalysisRequest{
-		TaskType:  model.TaskTypeJavaHeap,
+		Mode:      string(ModeJavaHeap),
 		InputFile: "/nonexistent/file.hprof",
 	}
 
@@ -98,7 +77,7 @@ func TestJavaHeapAnalyzer_AnalyzeRealFile(t *testing.T) {
 
 	req := &model.AnalysisRequest{
 		TaskUUID:  "test-heap-task-123",
-		TaskType:  model.TaskTypeJavaHeap,
+		Mode:      string(ModeJavaHeap),
 		InputFile: testFile,
 	}
 
@@ -223,20 +202,8 @@ func TestSortClassesByCount(t *testing.T) {
 func TestFactory_CreateJavaHeapAnalyzer(t *testing.T) {
 	factory := NewFactory(nil)
 
-	analyzer, err := factory.CreateAnalyzer(model.TaskTypeJavaHeap, model.ProfilerTypePerf)
-
+	a, err := factory.CreateAnalyzerForMode(ModeJavaHeap)
 	require.NoError(t, err)
-	require.NotNil(t, analyzer)
-	assert.Equal(t, "java_heap_analyzer", analyzer.Name())
-}
-
-func TestFactory_CreateManager_IncludesJavaHeapAnalyzer(t *testing.T) {
-	factory := NewFactory(nil)
-	manager := factory.CreateManager()
-
-	analyzer, ok := manager.GetAnalyzer(model.TaskTypeJavaHeap)
-
-	assert.True(t, ok)
-	assert.NotNil(t, analyzer)
-	assert.Equal(t, "java_heap_analyzer", analyzer.Name())
+	require.NotNil(t, a)
+	assert.Equal(t, "java_heap_analyzer", a.Name())
 }

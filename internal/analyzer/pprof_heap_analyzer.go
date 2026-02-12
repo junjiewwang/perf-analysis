@@ -35,11 +35,6 @@ func (a *PProfHeapAnalyzer) Name() string {
 	return "pprof_heap_analyzer"
 }
 
-// SupportedTypes returns the task types supported by this analyzer.
-func (a *PProfHeapAnalyzer) SupportedTypes() []model.TaskType {
-	return []model.TaskType{model.TaskTypePProfHeap}
-}
-
 // Analyze performs pprof Heap analysis using an input file.
 func (a *PProfHeapAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
 	file, err := os.Open(req.InputFile)
@@ -169,7 +164,7 @@ func (a *PProfHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.An
 	// Step 4: Build response
 	return &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
-		TaskType:     req.TaskType,
+		Mode:         req.Mode,
 		TotalRecords: int(totalRecords),
 		OutputFiles:  outputFiles,
 		Data:         heapData,

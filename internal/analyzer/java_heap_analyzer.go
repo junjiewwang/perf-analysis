@@ -62,17 +62,8 @@ func (a *JavaHeapAnalyzer) Name() string {
 	return "java_heap_analyzer"
 }
 
-// SupportedTypes returns the task types supported by this analyzer.
-func (a *JavaHeapAnalyzer) SupportedTypes() []model.TaskType {
-	return []model.TaskType{model.TaskTypeJavaHeap}
-}
-
 // Analyze performs Java heap dump analysis using an input file.
 func (a *JavaHeapAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
-	if req.TaskType != model.TaskTypeJavaHeap {
-		return nil, fmt.Errorf("java heap analyzer only supports task type java_heap, got %v", req.TaskType)
-	}
-
 	file, err := os.Open(req.InputFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open input file: %w", err)
@@ -84,9 +75,6 @@ func (a *JavaHeapAnalyzer) Analyze(ctx context.Context, req *model.AnalysisReque
 
 // AnalyzeFromReader performs Java heap dump analysis from a reader.
 func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResponse, error) {
-	if req.TaskType != model.TaskTypeJavaHeap {
-		return nil, fmt.Errorf("java heap analyzer only supports task type java_heap, got %v", req.TaskType)
-	}
 
 	// Create timer for post-parse operations (uses dependency injection via Logger)
 	timer := utils.NewTimer("Post-Parse Operations", utils.WithLogger(a.config.Logger), utils.WithEnabled(a.config.Logger != nil))
@@ -255,7 +243,7 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 	// Step 11: Build response
 	return &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
-		TaskType:     req.TaskType,
+		Mode:         req.Mode,
 		TotalRecords: int(heapResult.TotalInstances),
 		OutputFiles:  outputFiles,
 		Data:         heapData,

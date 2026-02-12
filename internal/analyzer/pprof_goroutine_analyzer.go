@@ -39,11 +39,6 @@ func (a *PProfGoroutineAnalyzer) Name() string {
 	return "pprof_goroutine_analyzer"
 }
 
-// SupportedTypes returns the task types supported by this analyzer.
-func (a *PProfGoroutineAnalyzer) SupportedTypes() []model.TaskType {
-	return []model.TaskType{model.TaskTypePProfGoroutine}
-}
-
 // Analyze performs pprof Goroutine analysis using an input file.
 func (a *PProfGoroutineAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
 	file, err := os.Open(req.InputFile)
@@ -134,7 +129,7 @@ func (a *PProfGoroutineAnalyzer) AnalyzeFromReader(ctx context.Context, req *mod
 	// Step 7: Build response
 	return &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
-		TaskType:     req.TaskType,
+		Mode:         req.Mode,
 		TotalRecords: int(totalCount),
 		OutputFiles:  outputFiles,
 		Data:         goroutineData,

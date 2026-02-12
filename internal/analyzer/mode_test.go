@@ -13,18 +13,21 @@ func TestParseMode(t *testing.T) {
 		want    AnalysisMode
 		wantErr bool
 	}{
-		{"java-cpu", "java-cpu", ModeJavaCPU, false},
-		{"java-cpu uppercase", "JAVA-CPU", ModeJavaCPU, false},
-		{"java-cpu with spaces", "  java-cpu  ", ModeJavaCPU, false},
-		{"java-alloc", "java-alloc", ModeJavaAlloc, false},
-		{"java-heap", "java-heap", ModeJavaHeap, false},
-		{"cpu", "cpu", ModeCPU, false},
+		{"async-profiler-cpu", "async-profiler-cpu", ModeJavaCPU, false},
+		{"uppercase", "ASYNC-PROFILER-CPU", ModeJavaCPU, false},
+		{"with spaces", "  async-profiler-cpu  ", ModeJavaCPU, false},
+		{"async-profiler-alloc", "async-profiler-alloc", ModeJavaAlloc, false},
+		{"async-profiler-wall", "async-profiler-wall", ModeJavaWall, false},
+		{"async-profiler-lock", "async-profiler-lock", ModeJavaLock, false},
+		{"heapdump-heap", "heapdump-heap", ModeJavaHeap, false},
+		{"perf-cpu", "perf-cpu", ModeCPU, false},
 		{"pprof-cpu", "pprof-cpu", ModePProfCPU, false},
 		{"pprof-heap", "pprof-heap", ModePProfHeap, false},
 		{"pprof-goroutine", "pprof-goroutine", ModePProfGoroutine, false},
 		{"pprof-block", "pprof-block", ModePProfBlock, false},
 		{"pprof-mutex", "pprof-mutex", ModePProfMutex, false},
 		{"pprof-all", "pprof-all", ModePProfAll, false},
+		{"jeprof-heap", "jeprof-heap", ModeJeprof, false},
 		{"invalid", "invalid-mode", "", true},
 		{"empty", "", "", true},
 	}
@@ -43,53 +46,63 @@ func TestParseMode(t *testing.T) {
 	}
 }
 
-func TestAnalysisMode_ToTaskType(t *testing.T) {
+func TestModeInfo_ProfilerAndEvent(t *testing.T) {
 	tests := []struct {
-		mode AnalysisMode
-		want model.TaskType
+		mode     AnalysisMode
+		profiler model.Profiler
+		event    model.EventType
+		resource model.ResourceType
 	}{
-		{ModeJavaCPU, model.TaskTypeJava},
-		{ModeJavaAlloc, model.TaskTypeJava},
-		{ModeJavaHeap, model.TaskTypeJavaHeap},
-		{ModeCPU, model.TaskTypeGeneric},
-		{ModePProfCPU, model.TaskTypePProfCPU},
-		{ModePProfHeap, model.TaskTypePProfHeap},
-		{ModePProfGoroutine, model.TaskTypePProfGoroutine},
-		{ModePProfBlock, model.TaskTypePProfBlock},
-		{ModePProfMutex, model.TaskTypePProfMutex},
-		{ModePProfAll, model.TaskTypePProfCPU}, // Primary type
+		{ModeJavaCPU, model.ProfilerAsyncProfiler, model.EventCPU, model.ResourceCPU},
+		{ModeJavaAlloc, model.ProfilerAsyncProfiler, model.EventAlloc, model.ResourceMemory},
+		{ModeJavaWall, model.ProfilerAsyncProfiler, model.EventWall, model.ResourceApp},
+		{ModeJavaLock, model.ProfilerAsyncProfiler, model.EventLock, model.ResourceConcurrency},
+		{ModeJavaHeap, model.ProfilerHeapDump, model.EventHeap, model.ResourceMemory},
+		{ModeCPU, model.ProfilerPerf, model.EventCPU, model.ResourceCPU},
+		{ModePProfCPU, model.ProfilerPProf, model.EventCPU, model.ResourceCPU},
+		{ModePProfHeap, model.ProfilerPProf, model.EventHeap, model.ResourceMemory},
+		{ModePProfGoroutine, model.ProfilerPProf, model.EventGoroutine, model.ResourceGoroutine},
+		{ModePProfBlock, model.ProfilerPProf, model.EventBlock, model.ResourceConcurrency},
+		{ModePProfMutex, model.ProfilerPProf, model.EventMutex, model.ResourceConcurrency},
+		{ModePProfAll, model.ProfilerPProf, model.EventCPU, model.ResourceCPU},
+		{ModeJeprof, model.ProfilerJeprof, model.EventHeap, model.ResourceMemory},
 	}
 
 	for _, tt := range tests {
 		t.Run(string(tt.mode), func(t *testing.T) {
-			if got := tt.mode.ToTaskType(); got != tt.want {
-				t.Errorf("ToTaskType() = %v, want %v", got, tt.want)
+			info, ok := GetModeInfo(tt.mode)
+			if !ok {
+				t.Fatalf("GetModeInfo(%q) not found", tt.mode)
+			}
+			if info.Profiler != tt.profiler {
+				t.Errorf("Profiler = %v, want %v", info.Profiler, tt.profiler)
+			}
+			if info.Event != tt.event {
+				t.Errorf("Event = %v, want %v", info.Event, tt.event)
+			}
+			if info.Resource != tt.resource {
+				t.Errorf("Resource = %v, want %v", info.Resource, tt.resource)
 			}
 		})
 	}
 }
 
-func TestAnalysisMode_ToProfilerType(t *testing.T) {
+func TestResourceType(t *testing.T) {
 	tests := []struct {
-		mode AnalysisMode
-		want model.ProfilerType
+		mode     AnalysisMode
+		resource model.ResourceType
 	}{
-		{ModeJavaCPU, model.ProfilerTypePerf},
-		{ModeJavaAlloc, model.ProfilerTypeAsyncAlloc},
-		{ModeJavaHeap, model.ProfilerTypePerf},
-		{ModeCPU, model.ProfilerTypePerf},
-		{ModePProfCPU, model.ProfilerTypePProf},
-		{ModePProfHeap, model.ProfilerTypePProf},
-		{ModePProfGoroutine, model.ProfilerTypePProf},
-		{ModePProfBlock, model.ProfilerTypePProf},
-		{ModePProfMutex, model.ProfilerTypePProf},
-		{ModePProfAll, model.ProfilerTypePProf},
+		{ModeJavaCPU, model.ResourceCPU},
+		{ModeJavaAlloc, model.ResourceMemory},
+		{ModeJavaWall, model.ResourceApp},
+		{ModeJavaLock, model.ResourceConcurrency},
+		{ModePProfGoroutine, model.ResourceGoroutine},
 	}
 
 	for _, tt := range tests {
 		t.Run(string(tt.mode), func(t *testing.T) {
-			if got := tt.mode.ToProfilerType(); got != tt.want {
-				t.Errorf("ToProfilerType() = %v, want %v", got, tt.want)
+			if got := tt.mode.ResourceType(); got != tt.resource {
+				t.Errorf("ResourceType() = %v, want %v", got, tt.resource)
 			}
 		})
 	}
@@ -103,6 +116,8 @@ func TestGetModeInfo(t *testing.T) {
 	}{
 		{ModeJavaCPU, true, false},
 		{ModeJavaAlloc, true, false},
+		{ModeJavaWall, true, false},
+		{ModeJavaLock, true, false},
 		{ModeJavaHeap, true, false},
 		{ModeCPU, true, false},
 		{ModePProfCPU, true, false},
@@ -111,6 +126,7 @@ func TestGetModeInfo(t *testing.T) {
 		{ModePProfBlock, true, false},
 		{ModePProfMutex, true, false},
 		{ModePProfAll, true, false},
+		{ModeJeprof, true, false},
 		{"invalid", false, true},
 	}
 
@@ -129,14 +145,14 @@ func TestGetModeInfo(t *testing.T) {
 
 func TestAllModes(t *testing.T) {
 	modes := AllModes()
-	if len(modes) != 10 {
-		t.Errorf("AllModes() returned %d modes, want 10", len(modes))
+	if len(modes) != 13 {
+		t.Errorf("AllModes() returned %d modes, want 13", len(modes))
 	}
 
-	// Verify order
 	expectedOrder := []AnalysisMode{
-		ModeJavaCPU, ModeJavaAlloc, ModeJavaHeap, ModeCPU,
+		ModeJavaCPU, ModeJavaAlloc, ModeJavaWall, ModeJavaLock, ModeJavaHeap, ModeCPU,
 		ModePProfCPU, ModePProfHeap, ModePProfGoroutine, ModePProfBlock, ModePProfMutex, ModePProfAll,
+		ModeJeprof,
 	}
 	for i, info := range modes {
 		if info.Mode != expectedOrder[i] {
@@ -148,8 +164,10 @@ func TestAllModes(t *testing.T) {
 func TestValidModes(t *testing.T) {
 	valid := ValidModes()
 	expectedModes := []string{
-		"java-cpu", "java-alloc", "java-heap", "cpu",
+		"async-profiler-cpu", "async-profiler-alloc", "async-profiler-wall", "async-profiler-lock",
+		"heapdump-heap", "perf-cpu",
 		"pprof-cpu", "pprof-heap", "pprof-goroutine", "pprof-block", "pprof-mutex", "pprof-all",
+		"jeprof-heap",
 	}
 	for _, mode := range expectedModes {
 		if !contains(valid, mode) {
@@ -181,8 +199,10 @@ func TestFactory_CreateAnalyzerForMode(t *testing.T) {
 	}{
 		{ModeJavaCPU, "java_cpu_analyzer", false},
 		{ModeJavaAlloc, "java_mem_analyzer", false},
+		{ModeJavaWall, "java_cpu_analyzer", false},
+		{ModeJavaLock, "java_cpu_analyzer", false},
 		{ModeJavaHeap, "java_heap_analyzer", false},
-		{ModeCPU, "java_cpu_analyzer", false}, // Generic uses same analyzer
+		{ModeCPU, "java_cpu_analyzer", false},
 		{ModePProfCPU, "pprof_cpu_analyzer", false},
 		{ModePProfHeap, "pprof_heap_analyzer", false},
 		{ModePProfGoroutine, "pprof_goroutine_analyzer", false},

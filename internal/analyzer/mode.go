@@ -8,21 +8,27 @@ import (
 )
 
 // AnalysisMode represents a user-friendly analysis mode.
-// It abstracts away the complexity of TaskType + ProfilerType combinations.
+// It maps directly to the model.AnalysisMode("{profiler}-{event}") composite key.
 type AnalysisMode string
 
 const (
 	// ModeJavaCPU analyzes Java CPU hotspots from async-profiler/perf data.
-	ModeJavaCPU AnalysisMode = "java-cpu"
+	ModeJavaCPU AnalysisMode = "async-profiler-cpu"
 
 	// ModeJavaAlloc analyzes Java memory allocation from async-profiler alloc data.
-	ModeJavaAlloc AnalysisMode = "java-alloc"
+	ModeJavaAlloc AnalysisMode = "async-profiler-alloc"
+
+	// ModeJavaWall analyzes Java wall-clock time from async-profiler wall data.
+	ModeJavaWall AnalysisMode = "async-profiler-wall"
+
+	// ModeJavaLock analyzes Java lock contention from async-profiler lock data.
+	ModeJavaLock AnalysisMode = "async-profiler-lock"
 
 	// ModeJavaHeap analyzes Java heap dump (HPROF format).
-	ModeJavaHeap AnalysisMode = "java-heap"
+	ModeJavaHeap AnalysisMode = "heapdump-heap"
 
 	// ModeCPU analyzes generic CPU profiling data (collapsed format).
-	ModeCPU AnalysisMode = "cpu"
+	ModeCPU AnalysisMode = "perf-cpu"
 
 	// ModePProfCPU analyzes Go pprof CPU profile.
 	ModePProfCPU AnalysisMode = "pprof-cpu"
@@ -41,88 +47,126 @@ const (
 
 	// ModePProfAll analyzes all pprof profiles in a directory.
 	ModePProfAll AnalysisMode = "pprof-all"
+
+	// ModeJeprof analyzes jemalloc heap profile.
+	ModeJeprof AnalysisMode = "jeprof-heap"
 )
 
-// ModeInfo describes an analysis mode for help and validation.
+// ModeInfo describes an analysis mode for help, validation, and dispatch.
 type ModeInfo struct {
 	Mode        AnalysisMode
 	Description string
 	InputFormat string
-	TaskType    model.TaskType
-	Profiler    model.ProfilerType
+	Profiler    model.Profiler
+	Event       model.EventType
+	Resource    model.ResourceType
 }
 
 // modeRegistry maps mode names to their metadata.
 var modeRegistry = map[AnalysisMode]*ModeInfo{
 	ModeJavaCPU: {
 		Mode:        ModeJavaCPU,
-		Description: "Java CPU hotspot analysis (async-profiler/perf)",
+		Description: "Java CPU hotspot analysis (async-profiler)",
 		InputFormat: "Collapsed stack format (.collapsed, .data, .txt)",
-		TaskType:    model.TaskTypeJava,
-		Profiler:    model.ProfilerTypePerf,
+		Profiler:    model.ProfilerAsyncProfiler,
+		Event:       model.EventCPU,
+		Resource:    model.ResourceCPU,
 	},
 	ModeJavaAlloc: {
 		Mode:        ModeJavaAlloc,
 		Description: "Java memory allocation analysis (async-profiler alloc)",
 		InputFormat: "Collapsed stack format (.collapsed, .data, .txt)",
-		TaskType:    model.TaskTypeJava,
-		Profiler:    model.ProfilerTypeAsyncAlloc,
+		Profiler:    model.ProfilerAsyncProfiler,
+		Event:       model.EventAlloc,
+		Resource:    model.ResourceMemory,
+	},
+	ModeJavaWall: {
+		Mode:        ModeJavaWall,
+		Description: "Java wall-clock time analysis (async-profiler wall)",
+		InputFormat: "Collapsed stack format (.collapsed, .data, .txt)",
+		Profiler:    model.ProfilerAsyncProfiler,
+		Event:       model.EventWall,
+		Resource:    model.ResourceApp,
+	},
+	ModeJavaLock: {
+		Mode:        ModeJavaLock,
+		Description: "Java lock contention analysis (async-profiler lock)",
+		InputFormat: "Collapsed stack format (.collapsed, .data, .txt)",
+		Profiler:    model.ProfilerAsyncProfiler,
+		Event:       model.EventLock,
+		Resource:    model.ResourceConcurrency,
 	},
 	ModeJavaHeap: {
 		Mode:        ModeJavaHeap,
 		Description: "Java heap dump analysis (HPROF)",
 		InputFormat: "HPROF binary format (.hprof)",
-		TaskType:    model.TaskTypeJavaHeap,
-		Profiler:    model.ProfilerTypePerf, // Not used for heap
+		Profiler:    model.ProfilerHeapDump,
+		Event:       model.EventHeap,
+		Resource:    model.ResourceMemory,
 	},
 	ModeCPU: {
 		Mode:        ModeCPU,
-		Description: "Generic CPU profiling analysis",
+		Description: "Generic CPU profiling analysis (perf)",
 		InputFormat: "Collapsed stack format (.collapsed, .data, .txt)",
-		TaskType:    model.TaskTypeGeneric,
-		Profiler:    model.ProfilerTypePerf,
+		Profiler:    model.ProfilerPerf,
+		Event:       model.EventCPU,
+		Resource:    model.ResourceCPU,
 	},
 	ModePProfCPU: {
 		Mode:        ModePProfCPU,
 		Description: "Go pprof CPU profile analysis",
 		InputFormat: "Go pprof format (.pprof, .pb.gz)",
-		TaskType:    model.TaskTypePProfCPU,
-		Profiler:    model.ProfilerTypePProf,
+		Profiler:    model.ProfilerPProf,
+		Event:       model.EventCPU,
+		Resource:    model.ResourceCPU,
 	},
 	ModePProfHeap: {
 		Mode:        ModePProfHeap,
 		Description: "Go pprof Heap profile analysis",
 		InputFormat: "Go pprof format (.pprof, .pb.gz)",
-		TaskType:    model.TaskTypePProfHeap,
-		Profiler:    model.ProfilerTypePProf,
+		Profiler:    model.ProfilerPProf,
+		Event:       model.EventHeap,
+		Resource:    model.ResourceMemory,
 	},
 	ModePProfGoroutine: {
 		Mode:        ModePProfGoroutine,
 		Description: "Go pprof Goroutine profile analysis",
 		InputFormat: "Go pprof format (.pprof, .pb.gz)",
-		TaskType:    model.TaskTypePProfGoroutine,
-		Profiler:    model.ProfilerTypePProf,
+		Profiler:    model.ProfilerPProf,
+		Event:       model.EventGoroutine,
+		Resource:    model.ResourceGoroutine,
 	},
 	ModePProfBlock: {
 		Mode:        ModePProfBlock,
 		Description: "Go pprof Block profile analysis",
 		InputFormat: "Go pprof format (.pprof, .pb.gz)",
-		TaskType:    model.TaskTypePProfBlock,
-		Profiler:    model.ProfilerTypePProf,
+		Profiler:    model.ProfilerPProf,
+		Event:       model.EventBlock,
+		Resource:    model.ResourceConcurrency,
 	},
 	ModePProfMutex: {
 		Mode:        ModePProfMutex,
 		Description: "Go pprof Mutex profile analysis",
 		InputFormat: "Go pprof format (.pprof, .pb.gz)",
-		TaskType:    model.TaskTypePProfMutex,
-		Profiler:    model.ProfilerTypePProf,
+		Profiler:    model.ProfilerPProf,
+		Event:       model.EventMutex,
+		Resource:    model.ResourceConcurrency,
 	},
 	ModePProfAll: {
 		Mode:        ModePProfAll,
 		Description: "Batch analysis of all pprof profiles in a directory",
 		InputFormat: "Directory containing pprof subdirectories (cpu/, heap/, goroutine/, etc.)",
-		TaskType:    model.TaskTypePProfCPU, // Primary type
-		Profiler:    model.ProfilerTypePProf,
+		Profiler:    model.ProfilerPProf,
+		Event:       model.EventCPU, // Primary event
+		Resource:    model.ResourceCPU,
+	},
+	ModeJeprof: {
+		Mode:        ModeJeprof,
+		Description: "Jemalloc heap profile analysis",
+		InputFormat: "Jeprof heap format",
+		Profiler:    model.ProfilerJeprof,
+		Event:       model.EventHeap,
+		Resource:    model.ResourceMemory,
 	},
 }
 
@@ -153,10 +197,10 @@ func ValidModes() string {
 // AllModes returns all registered mode information.
 func AllModes() []*ModeInfo {
 	result := make([]*ModeInfo, 0, len(modeRegistry))
-	// Return in a consistent order
 	order := []AnalysisMode{
-		ModeJavaCPU, ModeJavaAlloc, ModeJavaHeap, ModeCPU,
+		ModeJavaCPU, ModeJavaAlloc, ModeJavaWall, ModeJavaLock, ModeJavaHeap, ModeCPU,
 		ModePProfCPU, ModePProfHeap, ModePProfGoroutine, ModePProfBlock, ModePProfMutex, ModePProfAll,
+		ModeJeprof,
 	}
 	for _, mode := range order {
 		if info, ok := modeRegistry[mode]; ok {
@@ -177,18 +221,10 @@ func (m AnalysisMode) Info() *ModeInfo {
 	return info
 }
 
-// ToTaskType converts the mode to TaskType.
-func (m AnalysisMode) ToTaskType() model.TaskType {
+// ResourceType returns the resource type for this mode.
+func (m AnalysisMode) ResourceType() model.ResourceType {
 	if info := m.Info(); info != nil {
-		return info.TaskType
+		return info.Resource
 	}
-	return model.TaskTypeGeneric
-}
-
-// ToProfilerType converts the mode to ProfilerType.
-func (m AnalysisMode) ToProfilerType() model.ProfilerType {
-	if info := m.Info(); info != nil {
-		return info.Profiler
-	}
-	return model.ProfilerTypePerf
+	return ""
 }

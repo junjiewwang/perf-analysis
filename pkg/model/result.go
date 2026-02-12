@@ -92,8 +92,7 @@ type ParseResult struct {
 type AnalysisRequest struct {
 	TaskID        int64
 	TaskUUID      string
-	TaskType      TaskType
-	ProfilerType  ProfilerType
+	Mode          string
 	InputFile     string
 	OutputDir     string
 	ResultFile    string
@@ -106,7 +105,7 @@ type AnalysisRequest struct {
 // AnalysisResponse represents the response from an analysis.
 type AnalysisResponse struct {
 	TaskUUID     string           `json:"task_uuid"`
-	TaskType     TaskType         `json:"task_type"`
+	Mode         string           `json:"mode"`
 	TotalRecords int              `json:"total_records"`
 	OutputFiles  []OutputFile     `json:"output_files"`
 	Data         AnalysisData     `json:"data"`
@@ -135,8 +134,7 @@ type AnalysisContext struct {
 	TotalRecords            int64                  `json:"total_records"`
 	TotalRecordsWithSwapper int64                  `json:"total_records_with_swapper"`
 	TID                     string                 `json:"tid"`
-	Type                    TaskType               `json:"type"`
-	ProfilerType            ProfilerType           `json:"profiler_type"`
+	Mode                    string                 `json:"mode"`
 	Status                  TaskStatus             `json:"status"`
 	StatusInfo              string                 `json:"status_info"`
 	CreateTime              int64                  `json:"create_time"`

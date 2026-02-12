@@ -28,8 +28,7 @@ type RuleCheckFunc func(ctx *RuleContext) []model.Suggestion
 
 // RuleContext provides context for rule checking.
 type RuleContext struct {
-	TaskType       model.TaskType
-	ProfilerType   model.ProfilerType
+	Mode           string
 	ParseResult    *model.ParseResult
 	TopFuncsResult *statistics.TopFuncsResult
 	RequestParams  *model.RequestParams
@@ -203,7 +202,7 @@ func checkLockContention(ctx *RuleContext) []model.Suggestion {
 func checkFrequentAllocation(ctx *RuleContext) []model.Suggestion {
 	suggestions := make([]model.Suggestion, 0)
 
-	if ctx.TopFuncsResult == nil || ctx.ProfilerType != model.ProfilerTypeAsyncAlloc {
+	if ctx.TopFuncsResult == nil || !strings.Contains(ctx.Mode, "alloc") {
 		return suggestions
 	}
 

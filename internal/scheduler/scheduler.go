@@ -17,16 +17,16 @@ import (
 type Task struct {
 	ID                int64
 	UUID              string
-	Type              model.TaskType
-	ProfilerType      model.ProfilerType
+	Mode              string
 	ResultFile        string
 	UserName          string
 	MasterTaskTID     *string
 	COSBucket         string
 	RequestParams     model.RequestParams
-	CallbackURL       string // task-level callback URL (highest priority)
-	SourceCallbackURL string // source-level callback URL (second priority)
-	Priority          int    // Higher value = higher priority
+	CallbackURL       string            // task-level callback URL (highest priority)
+	SourceCallbackURL string            // source-level callback URL (second priority)
+	Metadata          map[string]string // caller-provided metadata, passed through to callbacks
+	Priority          int               // Higher value = higher priority
 }
 
 // TaskProcessor defines the interface for processing tasks.
@@ -207,8 +207,8 @@ func (s *Scheduler) processTask(ctx context.Context, task *Task) {
 		s.wg.Done()
 	}()
 
-	s.logger.Info("Processing task %d (UUID: %s, Type: %d, Profiler: %d)",
-		task.ID, task.UUID, task.Type, task.ProfilerType)
+	s.logger.Info("Processing task %d (UUID: %s, Mode: %s)",
+		task.ID, task.UUID, task.Mode)
 
 	// Get cached rules
 	s.mu.Lock()
@@ -302,8 +302,7 @@ func (s *Scheduler) convertEventToTask(event *source.TaskEvent) *Task {
 	task := &Task{
 		ID:                t.ID,
 		UUID:              t.TaskUUID,
-		Type:              t.Type,
-		ProfilerType:      t.ProfilerType,
+		Mode:              t.Mode,
 		ResultFile:        t.ResultFile,
 		UserName:          t.UserName,
 		MasterTaskTID:     t.MasterTaskTID,
@@ -311,6 +310,7 @@ func (s *Scheduler) convertEventToTask(event *source.TaskEvent) *Task {
 		RequestParams:     t.RequestParams,
 		CallbackURL:       t.CallbackURL,
 		SourceCallbackURL: sourceCallbackURL,
+		Metadata:          t.Metadata,
 		Priority:          event.Priority,
 	}
 	return task

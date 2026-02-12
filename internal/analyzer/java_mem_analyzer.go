@@ -35,22 +35,8 @@ func (a *JavaMemAnalyzer) Name() string {
 	return "java_mem_analyzer"
 }
 
-// SupportedTypes returns the task types supported by this analyzer.
-func (a *JavaMemAnalyzer) SupportedTypes() []model.TaskType {
-	return []model.TaskType{model.TaskTypeJava}
-}
-
-// CanHandle checks if this analyzer can handle the given request.
-func (a *JavaMemAnalyzer) CanHandle(req *model.AnalysisRequest) bool {
-	return req.TaskType == model.TaskTypeJava && req.ProfilerType == model.ProfilerTypeAsyncAlloc
-}
-
 // Analyze performs Java memory profiling analysis using an input file.
 func (a *JavaMemAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
-	if req.ProfilerType != model.ProfilerTypeAsyncAlloc {
-		return nil, fmt.Errorf("java mem analyzer only supports profiler type async_alloc, got %v", req.ProfilerType)
-	}
-
 	file, err := os.Open(req.InputFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open input file: %w", err)
@@ -62,9 +48,6 @@ func (a *JavaMemAnalyzer) Analyze(ctx context.Context, req *model.AnalysisReques
 
 // AnalyzeFromReader performs Java memory profiling analysis from a reader.
 func (a *JavaMemAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResponse, error) {
-	if req.ProfilerType != model.ProfilerTypeAsyncAlloc {
-		return nil, fmt.Errorf("java mem analyzer only supports profiler type async_alloc, got %v", req.ProfilerType)
-	}
 
 	// Step 1: Parse the collapsed data
 	parseResult, err := a.Parse(ctx, dataReader)
@@ -188,7 +171,7 @@ func (a *JavaMemAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Anal
 	// Step 10: Build response
 	return &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
-		TaskType:     req.TaskType,
+		Mode:         req.Mode,
 		TotalRecords: int(parseResult.TotalSamples),
 		OutputFiles:  outputFiles,
 		Data:         allocData,

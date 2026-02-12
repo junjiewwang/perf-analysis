@@ -35,11 +35,6 @@ func (a *PProfCPUAnalyzer) Name() string {
 	return "pprof_cpu_analyzer"
 }
 
-// SupportedTypes returns the task types supported by this analyzer.
-func (a *PProfCPUAnalyzer) SupportedTypes() []model.TaskType {
-	return []model.TaskType{model.TaskTypePProfCPU}
-}
-
 // Analyze performs pprof CPU analysis using an input file.
 func (a *PProfCPUAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
 	file, err := os.Open(req.InputFile)
@@ -194,7 +189,7 @@ func (a *PProfCPUAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 	// Step 11: Build response
 	return &model.AnalysisResponse{
 		TaskUUID:     req.TaskUUID,
-		TaskType:     req.TaskType,
+		Mode:         req.Mode,
 		TotalRecords: int(totalSamples),
 		OutputFiles:  outputFiles,
 		Data:         cpuData,

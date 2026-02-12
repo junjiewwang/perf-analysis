@@ -43,11 +43,10 @@ func TestJavaCPUAnalyzer_FullPipeline(t *testing.T) {
 
 	// Create analysis request
 	req := &model.AnalysisRequest{
-		TaskID:       1,
-		TaskUUID:     "test-integration-uuid",
-		TaskType:     model.TaskTypeJava,
-		ProfilerType: model.ProfilerTypePerf,
-		OutputDir:    taskDir,
+		TaskID:   1,
+		TaskUUID: "test-integration-uuid",
+		Mode:     "async-profiler-cpu",
+		OutputDir: taskDir,
 	}
 
 	// Run analysis
@@ -101,26 +100,27 @@ func TestJavaCPUAnalyzer_FullPipeline(t *testing.T) {
 	})
 }
 
-// TestAnalyzerFactory_CreateJavaCPUAnalyzer tests the factory pattern.
-func TestAnalyzerFactory_CreateJavaCPUAnalyzer(t *testing.T) {
+// TestAnalyzerFactory_CreateAnalyzers tests the factory pattern with mode-based creation.
+func TestAnalyzerFactory_CreateAnalyzers(t *testing.T) {
 	factory := analyzer.NewFactory(nil)
 
-	a, err := factory.CreateAnalyzer(model.TaskTypeJava, model.ProfilerTypePerf)
-	require.NoError(t, err)
-	require.NotNil(t, a)
+	tests := []struct {
+		mode     analyzer.AnalysisMode
+		wantName string
+	}{
+		{analyzer.ModeJavaCPU, "java_cpu_analyzer"},
+		{analyzer.ModeJavaAlloc, "java_mem_analyzer"},
+		{analyzer.ModeJavaHeap, "java_heap_analyzer"},
+	}
 
-	assert.Equal(t, "java_cpu_analyzer", a.Name())
-}
-
-// TestAnalyzerFactory_CreateJavaMemAnalyzer tests creating memory analyzer.
-func TestAnalyzerFactory_CreateJavaMemAnalyzer(t *testing.T) {
-	factory := analyzer.NewFactory(nil)
-
-	a, err := factory.CreateAnalyzer(model.TaskTypeJava, model.ProfilerTypeAsyncAlloc)
-	require.NoError(t, err)
-	require.NotNil(t, a)
-
-	assert.Equal(t, "java_mem_analyzer", a.Name())
+	for _, tt := range tests {
+		t.Run(string(tt.mode), func(t *testing.T) {
+			a, err := factory.CreateAnalyzerForMode(tt.mode)
+			require.NoError(t, err)
+			require.NotNil(t, a)
+			assert.Equal(t, tt.wantName, a.Name())
+		})
+	}
 }
 
 // TestParseAndStatistics tests parsing and statistics calculation.
@@ -267,11 +267,10 @@ func BenchmarkFullPipeline(b *testing.B) {
 		os.MkdirAll(taskDir, 0755)
 
 		req := &model.AnalysisRequest{
-			TaskID:       int64(i),
-			TaskUUID:     "bench-uuid",
-			TaskType:     model.TaskTypeJava,
-			ProfilerType: model.ProfilerTypePerf,
-			OutputDir:    taskDir,
+			TaskID:   int64(i),
+			TaskUUID: "bench-uuid",
+			Mode:     "async-profiler-cpu",
+			OutputDir: taskDir,
 		}
 
 		_, _ = javaCPUAnalyzer.AnalyzeFromReader(context.Background(), req, file)

@@ -1060,22 +1060,20 @@
                     const data = this.summaryData;
                     if (!data) return;
                     
-                    const taskType = data.task_type || '';
                     const metadata = data.metadata || {};
-                    const taskTypeName = metadata.task_type_name || taskType;
                     const mode = metadata.mode || '';
 
                     // Check for pprof-all mode first
-                    if (mode === 'pprof-all' || taskType === 'pprof_all' || data.profile_sets) {
+                    if (mode === 'pprof-all' || data.profile_sets) {
                         this.analysisType = 'pprof-all';
                         // Initialize pprof sub-type to cpu by default
                         if (!this.pprofSubType) {
                             this.pprofSubType = 'cpu';
                         }
-                    } else if (taskTypeName === 'java_heap' || taskType === 'java_heap' ||
+                    } else if (mode === 'heapdump-heap' ||
                         (data.data && data.data.total_heap_size !== undefined)) {
                         this.analysisType = 'heap';
-                    } else if (mode === 'java-alloc' || taskTypeName === 'java_alloc' ||
+                    } else if (mode === 'async-profiler-alloc' ||
                         (data.data && data.data.total_allocations !== undefined)) {
                         this.analysisType = 'alloc';
                     } else {
@@ -1693,27 +1691,34 @@
                 getProfileIcon(profileName) {
                     const iconMap = {
                         'quick': '⚡', 'standard': '⚖️', 'detailed': '🔬',
-                        // Legacy fallbacks
-                        'perf': '🔥', 'async_alloc': '📈', 'pprof': '🐹'
+                        // Profiler name mappings
+                        'perf': '🔥', 'async-profiler': '☕', 'pprof': '🐹',
+                        'heapdump': '📦', 'jeprof': '📊'
                     };
                     return iconMap[profileName] || '📊';
                 },
 
-                // Legacy helper methods (kept for backward compatibility)
+                // Mode helper methods
                 getTaskTypeClass(typeName) {
                     const typeMap = {
-                        'java': 'java', 'generic': 'generic', 'pprof_mem': 'pprof',
-                        'memleak': 'memory', 'java_heap': 'heap', 'phys_mem': 'memory',
-                        'jeprof': 'memory', 'tracing': 'tracing', 'timing': 'tracing'
+                        'async-profiler-cpu': 'java', 'async-profiler-alloc': 'java',
+                        'async-profiler-wall': 'java', 'async-profiler-lock': 'java',
+                        'perf-cpu': 'generic', 'pprof-cpu': 'pprof', 'pprof-heap': 'pprof',
+                        'pprof-goroutine': 'pprof', 'pprof-block': 'pprof',
+                        'pprof-mutex': 'pprof', 'pprof-all': 'pprof',
+                        'heapdump-heap': 'heap', 'jeprof-heap': 'memory'
                     };
                     return typeMap[typeName] || 'generic';
                 },
 
                 getTaskTypeIcon(typeName) {
                     const iconMap = {
-                        'java': '☕', 'generic': '🔧', 'pprof_mem': '🐹', 'memleak': '💾',
-                        'java_heap': '📦', 'phys_mem': '🧠', 'jeprof': '📊', 'tracing': '🔍',
-                        'timing': '⏱️', 'bolt': '⚡'
+                        'async-profiler-cpu': '☕', 'async-profiler-alloc': '📈',
+                        'async-profiler-wall': '⏱️', 'async-profiler-lock': '🔒',
+                        'perf-cpu': '🔥', 'pprof-cpu': '🐹', 'pprof-heap': '🐹',
+                        'pprof-goroutine': '🐹', 'pprof-block': '🐹',
+                        'pprof-mutex': '🐹', 'pprof-all': '🐹',
+                        'heapdump-heap': '📦', 'jeprof-heap': '📊'
                     };
                     return iconMap[typeName] || '📊';
                 },
