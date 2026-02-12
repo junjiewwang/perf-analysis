@@ -3,6 +3,7 @@ package ingress
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sync"
@@ -14,10 +15,67 @@ import (
 	"github.com/perf-analysis/pkg/utils"
 )
 
-// HTTPTaskRequest represents an incoming task request via HTTP.
-type HTTPTaskRequest struct {
-	Task     *model.Task       `json:"task"`
-	Metadata map[string]string `json:"metadata,omitempty"`
+// TaskSubmission is the inbound DTO for task submission via HTTP.
+// It decouples the external API contract from the internal model.Task,
+// exposing only the fields callers need to provide.
+type TaskSubmission struct {
+	TaskUUID      string            `json:"tid"`
+	Profiler      string            `json:"profiler"`
+	Event         string            `json:"event"`
+	ResultFile    string            `json:"result_file"`
+	UserName      string            `json:"user_name,omitempty"`
+	MasterTaskTID *string           `json:"mastertask_tid,omitempty"`
+	COSBucket     string            `json:"cos_bucket,omitempty"`
+	CallbackURL   string            `json:"callback_url,omitempty"`
+	RequestParams *model.RequestParams `json:"request_params,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+// Validate validates the task submission fields.
+func (s *TaskSubmission) Validate() error {
+	if s.TaskUUID == "" {
+		return fmt.Errorf("tid is required")
+	}
+	if s.Profiler == "" {
+		return fmt.Errorf("profiler is required")
+	}
+	if s.Event == "" {
+		return fmt.Errorf("event is required")
+	}
+	profiler := model.Profiler(s.Profiler)
+	if !profiler.IsValid() {
+		return fmt.Errorf("invalid profiler: %s", s.Profiler)
+	}
+	event := model.EventType(s.Event)
+	if !event.IsValid() {
+		return fmt.Errorf("invalid event: %s", s.Event)
+	}
+	return nil
+}
+
+// ToTask converts the DTO to an internal model.Task.
+func (s *TaskSubmission) ToTask() *model.Task {
+	profiler := model.Profiler(s.Profiler)
+	event := model.EventType(s.Event)
+
+	task := &model.Task{
+		TaskUUID:      s.TaskUUID,
+		Profiler:      profiler,
+		Event:         event,
+		Mode:          model.AnalysisMode(profiler, event),
+		ResultFile:    s.ResultFile,
+		UserName:      s.UserName,
+		MasterTaskTID: s.MasterTaskTID,
+		COSBucket:     s.COSBucket,
+		CallbackURL:   s.CallbackURL,
+		Metadata:      s.Metadata,
+	}
+
+	if s.RequestParams != nil {
+		task.RequestParams = *s.RequestParams
+	}
+
+	return task
 }
 
 // HTTPTaskResponse represents the response for a task submission.
@@ -118,49 +176,42 @@ func (h *HTTPIngress) handleTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req HTTPTaskRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	var submission TaskSubmission
+	if err := json.Unmarshal(body, &submission); err != nil {
 		h.sendError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 
-	if req.Task == nil {
-		h.sendError(w, http.StatusBadRequest, "task is required")
+	// Validate the submission DTO
+	if err := submission.Validate(); err != nil {
+		h.sendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Validate required fields
-	if req.Task.TaskUUID == "" {
-		h.sendError(w, http.StatusBadRequest, "task.tid is required")
-		return
-	}
+	// Convert DTO to internal model
+	task := submission.ToTask()
 
 	// Callback URL downgrade-save: if task has no callback_url,
 	// use the ingress-level configured callback_url.
-	if req.Task.CallbackURL == "" && h.cfg.CallbackURL != "" {
-		req.Task.CallbackURL = h.cfg.CallbackURL
+	if task.CallbackURL == "" && h.cfg.CallbackURL != "" {
+		task.CallbackURL = h.cfg.CallbackURL
 	}
 
 	// Set default status for new tasks
-	if req.Task.Status == 0 {
-		req.Task.Status = model.TaskStatusCompleted // ready for analysis
-	}
-	if req.Task.AnalysisStatus == 0 {
-		req.Task.AnalysisStatus = model.AnalysisStatusPending
-	}
-	if req.Task.CreateTime.IsZero() {
-		req.Task.CreateTime = time.Now()
-	}
+	task.Status = model.TaskStatusCompleted // ready for analysis
+	task.AnalysisStatus = model.AnalysisStatusPending
+	task.CreateTime = time.Now()
 
 	// Persist to database
-	if err := h.taskRepo.CreateTask(r.Context(), req.Task); err != nil {
-		h.logger.Error("Failed to create task %s: %v", req.Task.TaskUUID, err)
+	if err := h.taskRepo.CreateTask(r.Context(), task); err != nil {
+		h.logger.Error("Failed to create task %s: %v", task.TaskUUID, err)
 		h.sendError(w, http.StatusInternalServerError, "failed to create task")
 		return
 	}
 
-	h.logger.Info("HTTP ingress received and persisted task %s (id: %d)", req.Task.TaskUUID, req.Task.ID)
-	h.sendSuccess(w, req.Task.TaskUUID, "task created and queued for analysis")
+	h.logger.Info("HTTP ingress received and persisted task %s (id: %d, mode: %s)",
+		task.TaskUUID, task.ID, task.Mode)
+	h.sendSuccess(w, task.TaskUUID, "task created and queued for analysis")
 }
 
 // handleHealth handles health check requests.

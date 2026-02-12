@@ -25,10 +25,19 @@ type CallbackNotifier struct {
 
 // CallbackPayload represents the payload sent to the callback URL.
 type CallbackPayload struct {
-	TaskID  string `json:"task_id"`
-	Status  string `json:"status"` // "completed" or "failed"
-	ViewURL string `json:"view_url,omitempty"`
-	Error   string `json:"error,omitempty"`
+	TaskID   string            `json:"task_id"`
+	Mode     string            `json:"mode,omitempty"`
+	Status   string            `json:"status"` // "completed" or "failed"
+	ViewURL  string            `json:"view_url,omitempty"`
+	Error    string            `json:"error,omitempty"`
+	Summary  *CallbackSummary  `json:"summary,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+// CallbackSummary holds a brief summary of analysis results for the callback.
+type CallbackSummary struct {
+	TotalRecords int `json:"total_records"`
+	Suggestions  int `json:"suggestions"`
 }
 
 // NewCallbackNotifier creates a new CallbackNotifier.
@@ -61,8 +70,8 @@ func (n *CallbackNotifier) ResolveCallbackURL(taskCallbackURL, sourceCallbackURL
 	return n.cfg.Callback.DefaultURL
 }
 
-// NotifySuccess sends a success callback notification with the view URL.
-func (n *CallbackNotifier) NotifySuccess(ctx context.Context, callbackURL, taskUUID string) error {
+// NotifySuccess sends a success callback notification with the view URL and summary.
+func (n *CallbackNotifier) NotifySuccess(ctx context.Context, callbackURL string, taskUUID string, opts *CallbackOptions) error {
 	if callbackURL == "" {
 		return nil
 	}
@@ -74,11 +83,22 @@ func (n *CallbackNotifier) NotifySuccess(ctx context.Context, callbackURL, taskU
 		ViewURL: viewURL,
 	}
 
+	if opts != nil {
+		payload.Mode = opts.Mode
+		payload.Metadata = opts.Metadata
+		if opts.TotalRecords > 0 || opts.SuggestionCount > 0 {
+			payload.Summary = &CallbackSummary{
+				TotalRecords: opts.TotalRecords,
+				Suggestions:  opts.SuggestionCount,
+			}
+		}
+	}
+
 	return n.send(ctx, callbackURL, payload)
 }
 
 // NotifyFailure sends a failure callback notification.
-func (n *CallbackNotifier) NotifyFailure(ctx context.Context, callbackURL, taskUUID string, taskErr error) error {
+func (n *CallbackNotifier) NotifyFailure(ctx context.Context, callbackURL string, taskUUID string, taskErr error, opts *CallbackOptions) error {
 	if callbackURL == "" {
 		return nil
 	}
@@ -94,7 +114,20 @@ func (n *CallbackNotifier) NotifyFailure(ctx context.Context, callbackURL, taskU
 		Error:  errMsg,
 	}
 
+	if opts != nil {
+		payload.Mode = opts.Mode
+		payload.Metadata = opts.Metadata
+	}
+
 	return n.send(ctx, callbackURL, payload)
+}
+
+// CallbackOptions holds optional fields for enriching callback payloads.
+type CallbackOptions struct {
+	Mode            string
+	Metadata        map[string]string
+	TotalRecords    int
+	SuggestionCount int
 }
 
 // send performs the HTTP POST to the callback URL with retry logic.
