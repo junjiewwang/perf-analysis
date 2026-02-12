@@ -990,7 +990,20 @@
                     this.loading = true;
                     try {
                         this.tasks = await API.getTasks() || [];
-                        if (this.tasks.length > 0) {
+
+                        // Check URL parameter for direct task access
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const taskParam = urlParams.get('task');
+
+                        if (taskParam) {
+                            // Direct task access via URL parameter
+                            this.currentTask = taskParam;
+                            // Add to task list if not present
+                            if (!this.tasks.find(t => t.id === taskParam)) {
+                                this.tasks.unshift({ id: taskParam, has_data: true });
+                            }
+                            await this.loadTask(this.currentTask);
+                        } else if (this.tasks.length > 0) {
                             this.currentTask = this.tasks[0].id;
                             await this.loadTask(this.currentTask);
                         }

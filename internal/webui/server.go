@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/perf-analysis/internal/storage"
+	"github.com/perf-analysis/pkg/config"
 	"github.com/perf-analysis/pkg/utils"
 )
 
@@ -33,9 +35,11 @@ type Server struct {
 	server          *http.Server
 	refGraphService *RefGraphService
 	fgService       *FlameGraphService
+	taskCache       *TaskCache
+	authCfg         *config.ViewAuthConfig
 }
 
-// NewServer creates a new web UI server
+// NewServer creates a new web UI server (local filesystem mode)
 func NewServer(dataDir string, port int, logger utils.Logger) *Server {
 	fgService := NewFlameGraphService(dataDir)
 	// Register additional loaders for memory and tracing
@@ -55,6 +59,31 @@ func NewServer(dataDir string, port int, logger utils.Logger) *Server {
 		refGraphService: NewRefGraphService(dataDir),
 		fgService:       fgService,
 	}
+}
+
+// NewServerWithStorage creates a new web UI server with remote storage support.
+// It uses TaskCache to download task data from remote storage on demand.
+func NewServerWithStorage(cfg *config.Config, store storage.Storage, logger utils.Logger) (*Server, error) {
+	port := cfg.WebUI.Port
+	if port == 0 {
+		port = 8080
+	}
+
+	cacheDir := cfg.WebUI.CacheDir
+	if cacheDir == "" {
+		cacheDir = "./cache"
+	}
+
+	tc, err := NewTaskCache(cacheDir, store, cfg.WebUI.CacheMax, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create task cache: %w", err)
+	}
+
+	s := NewServer(cacheDir, port, logger)
+	s.taskCache = tc
+	s.authCfg = &cfg.ViewURL.Auth
+
+	return s, nil
 }
 
 // Start starts the web server
@@ -96,9 +125,18 @@ func (s *Server) Start() error {
 	// Page routes
 	mux.HandleFunc("/", s.handleIndex)
 
+	// Build middleware chain
+	var handler http.Handler = mux
+	if s.authCfg != nil {
+		handler = chainMiddleware(handler,
+			iframeMiddleware(s.authCfg.AllowedOrigins),
+			authMiddleware(s.authCfg),
+		)
+	}
+
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.port),
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
@@ -113,6 +151,27 @@ func (s *Server) Start() error {
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
+}
+
+// resolveTaskDir returns the local filesystem path for a task.
+// If TaskCache is configured, it ensures the task data is downloaded from remote storage.
+// Otherwise, it returns the local data directory path.
+func (s *Server) resolveTaskDir(ctx context.Context, taskID string) string {
+	if taskID == "" {
+		return s.dataDir
+	}
+
+	if s.taskCache != nil {
+		taskDir, err := s.taskCache.EnsureTask(ctx, taskID)
+		if err != nil {
+			s.logger.Warn("failed to ensure task %s in cache: %v", taskID, err)
+			// Fall back to local path
+			return filepath.Join(s.dataDir, taskID)
+		}
+		return taskDir
+	}
+
+	return filepath.Join(s.dataDir, taskID)
 }
 
 // handleIndex serves the main HTML page
@@ -147,14 +206,8 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		taskID = s.getDefaultTask()
 	}
 
-	summaryFile := filepath.Join(s.dataDir, taskID, "summary.json")
-	if taskID != "" && !strings.Contains(taskID, "/") {
-		// Task ID provided, look in task subdirectory
-		summaryFile = filepath.Join(s.dataDir, taskID, "summary.json")
-	} else {
-		// Direct data directory
-		summaryFile = filepath.Join(s.dataDir, "summary.json")
-	}
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
+	summaryFile := filepath.Join(taskDir, "summary.json")
 
 	data, err := os.ReadFile(summaryFile)
 	if err != nil {
@@ -226,10 +279,7 @@ func (s *Server) handleFlameGraph(w http.ResponseWriter, r *http.Request) {
 // handleFlameGraphLegacy provides backward compatible flame graph loading.
 // It directly reads .json.gz files without type-specific processing.
 func (s *Server) handleFlameGraphLegacy(w http.ResponseWriter, r *http.Request, taskID string) {
-	taskDir := filepath.Join(s.dataDir, taskID)
-	if taskID == "" {
-		taskDir = s.dataDir
-	}
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
 
 	// Find the flame graph file (*.json.gz)
 	files, err := os.ReadDir(taskDir)
@@ -281,10 +331,7 @@ func (s *Server) handleCallGraph(w http.ResponseWriter, r *http.Request) {
 	// Determine call graph type from query parameter
 	cgType := r.URL.Query().Get("type")
 
-	taskDir := filepath.Join(s.dataDir, taskID)
-	if taskID == "" {
-		taskDir = s.dataDir
-	}
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
 
 	// Try to find call graph file in order of priority based on type
 	callGraphFile := ""
@@ -393,12 +440,6 @@ func (s *Server) handleCallGraph(w http.ResponseWriter, r *http.Request) {
 
 // handleListTasks lists all available tasks
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
-	entries, err := os.ReadDir(s.dataDir)
-	if err != nil {
-		http.Error(w, "Failed to list tasks", http.StatusInternalServerError)
-		return
-	}
-
 	type TaskInfo struct {
 		ID        string `json:"id"`
 		CreatedAt string `json:"created_at"`
@@ -406,26 +447,49 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var tasks []TaskInfo
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+
+	if s.taskCache != nil {
+		// Remote storage mode: list from TaskCache
+		taskIDs, err := s.taskCache.ListTasks(r.Context())
+		if err != nil {
+			http.Error(w, "Failed to list tasks", http.StatusInternalServerError)
+			return
+		}
+		for _, id := range taskIDs {
+			tasks = append(tasks, TaskInfo{
+				ID:      id,
+				HasData: true,
+			})
+		}
+	} else {
+		// Local filesystem mode
+		entries, err := os.ReadDir(s.dataDir)
+		if err != nil {
+			http.Error(w, "Failed to list tasks", http.StatusInternalServerError)
+			return
 		}
 
-		taskDir := filepath.Join(s.dataDir, entry.Name())
-		summaryFile := filepath.Join(taskDir, "summary.json")
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
 
-		info, _ := entry.Info()
-		createdAt := ""
-		if info != nil {
-			createdAt = info.ModTime().Format(time.RFC3339)
+			taskDir := filepath.Join(s.dataDir, entry.Name())
+			summaryFile := filepath.Join(taskDir, "summary.json")
+
+			info, _ := entry.Info()
+			createdAt := ""
+			if info != nil {
+				createdAt = info.ModTime().Format(time.RFC3339)
+			}
+
+			_, hasData := os.Stat(summaryFile)
+			tasks = append(tasks, TaskInfo{
+				ID:        entry.Name(),
+				CreatedAt: createdAt,
+				HasData:   hasData == nil,
+			})
 		}
-
-		_, hasData := os.Stat(summaryFile)
-		tasks = append(tasks, TaskInfo{
-			ID:        entry.Name(),
-			CreatedAt: createdAt,
-			HasData:   hasData == nil,
-		})
 	}
 
 	// Sort by creation time (newest first)
@@ -474,10 +538,7 @@ func (s *Server) handleRetainers(w http.ResponseWriter, r *http.Request) {
 		taskID = s.getDefaultTask()
 	}
 
-	taskDir := filepath.Join(s.dataDir, taskID)
-	if taskID == "" {
-		taskDir = s.dataDir
-	}
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
 
 	// Try multiple sources for retainer data
 	var data []byte
@@ -540,10 +601,7 @@ func (s *Server) handleBiggestObjects(w http.ResponseWriter, r *http.Request) {
 		taskID = s.getDefaultTask()
 	}
 
-	taskDir := filepath.Join(s.dataDir, taskID)
-	if taskID == "" {
-		taskDir = s.dataDir
-	}
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
 
 	// Query parameters
 	className := r.URL.Query().Get("class")
@@ -643,10 +701,7 @@ func (s *Server) handleObjectFields(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	taskDir := filepath.Join(s.dataDir, taskID)
-	if taskID == "" {
-		taskDir = s.dataDir
-	}
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
 
 	// Try to read from object_fields cache file
 	// Format: object_fields_<objectID>.json
@@ -861,7 +916,7 @@ func (s *Server) handleRefGraphGCRootsSummary(w http.ResponseWriter, r *http.Req
 	}
 
 	// Try to read from gc_roots.json first (fast path)
-	taskDir := filepath.Join(s.dataDir, taskID)
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
 	gcRootsFile := filepath.Join(taskDir, "gc_roots.json")
 	if data, err := os.ReadFile(gcRootsFile); err == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -1032,13 +1087,7 @@ func (s *Server) handlePProfLeakReport(w http.ResponseWriter, r *http.Request) {
 		leakType = "all" // Return all leak reports
 	}
 
-	// Determine task directory
-	var taskDir string
-	if taskID != "" {
-		taskDir = filepath.Join(s.dataDir, taskID)
-	} else {
-		taskDir = s.dataDir
-	}
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
 
 	// Try to read batch_analysis.json which contains leak reports
 	// First try in the task directory, then in subdirectories
@@ -1086,13 +1135,7 @@ func (s *Server) handlePProfLeakReport(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePProfBatchAnalysis(w http.ResponseWriter, r *http.Request) {
 	taskID := r.URL.Query().Get("task")
 
-	// Determine task directory
-	var taskDir string
-	if taskID != "" {
-		taskDir = filepath.Join(s.dataDir, taskID)
-	} else {
-		taskDir = s.dataDir
-	}
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
 
 	// Try to read batch_analysis.json
 	batchFile := filepath.Join(taskDir, "batch_analysis.json")

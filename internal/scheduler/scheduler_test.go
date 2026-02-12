@@ -67,7 +67,7 @@ func TestScheduler_New(t *testing.T) {
 	aggregator := source.NewAggregator(nil, 10, logger)
 
 	t.Run("WithDefaultConfig", func(t *testing.T) {
-		s := New(nil, aggregator, processor, suggestionRepo, nil)
+		s := New(nil, aggregator, processor, suggestionRepo, nil, nil)
 		require.NotNil(t, s)
 		assert.Equal(t, 5, s.config.WorkerCount)
 		assert.Equal(t, 2*time.Second, s.config.PollInterval)
@@ -80,7 +80,7 @@ func TestScheduler_New(t *testing.T) {
 			PrioritySlots: 3,
 			TaskBatchSize: 20,
 		}
-		s := New(config, aggregator, processor, suggestionRepo, nil)
+		s := New(config, aggregator, processor, suggestionRepo, nil, nil)
 		require.NotNil(t, s)
 		assert.Equal(t, 10, s.config.WorkerCount)
 		assert.Equal(t, 5*time.Second, s.config.PollInterval)
@@ -97,7 +97,7 @@ func TestScheduler_Stats(t *testing.T) {
 		WorkerCount: 5,
 	}
 
-	s := New(config, aggregator, processor, suggestionRepo, nil)
+	s := New(config, aggregator, processor, suggestionRepo, nil, nil)
 
 	stats := s.Stats()
 	// Before Start(), workerPool is empty, so ActiveWorkers = WorkerCount - 0 = WorkerCount
@@ -119,7 +119,7 @@ func TestScheduler_ShouldAcceptTask(t *testing.T) {
 		TaskBatchSize: 5,
 	}
 
-	s := New(config, aggregator, processor, suggestionRepo, logger)
+	s := New(config, aggregator, processor, suggestionRepo, logger, nil)
 
 	// Need to initialize worker pool like Start() does
 	for i := 0; i < config.WorkerCount; i++ {
@@ -150,7 +150,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		TaskBatchSize: 5,
 	}
 
-	s := New(config, aggregator, processor, suggestionRepo, logger)
+	s := New(config, aggregator, processor, suggestionRepo, logger, nil)
 
 	// Setup expectations
 	suggestionRepo.On("GetAnalysisRules", mock.Anything).Return([]model.SuggestionRule{}, nil)
@@ -189,7 +189,7 @@ func TestScheduler_ConvertEventToTask(t *testing.T) {
 	logger := utils.NewDefaultLogger(utils.LevelDebug, io.Discard)
 	aggregator := source.NewAggregator(nil, 10, logger)
 
-	s := New(nil, aggregator, processor, suggestionRepo, logger)
+	s := New(nil, aggregator, processor, suggestionRepo, logger, nil)
 
 	masterTID := "master-123"
 	modelTask := &model.Task{
@@ -225,7 +225,7 @@ func TestScheduler_ConvertEventToTask_Priority(t *testing.T) {
 	logger := utils.NewDefaultLogger(utils.LevelDebug, io.Discard)
 	aggregator := source.NewAggregator(nil, 10, logger)
 
-	s := New(nil, aggregator, processor, suggestionRepo, logger)
+	s := New(nil, aggregator, processor, suggestionRepo, logger, nil)
 
 	t.Run("HighPriorityFromEvent", func(t *testing.T) {
 		modelTask := &model.Task{

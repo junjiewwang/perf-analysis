@@ -4,44 +4,39 @@
 analysis:
   version: "1.0.0"
   data_dir: "./data"
-  max_worker: 5
 
 # Database configuration
 database:
   type: postgres  # postgres or mysql
-  host: [[ .Service.postgres_apm.host ]]
+  host: "[[ .Service.postgres_apm.host ]]"
   port: [[ .Service.postgres_apm.port ]]
-  database: [[ index .Service.postgres_apm.databases 0 ]]
-  user: [[ .Service.postgres_apm.user ]]
-  password: [[ .Service.postgres_apm.pass ]]
+  database: "[[ index .Service.postgres_apm.databases 0 ]]"
+  user: "[[ .Service.postgres_apm.user ]]"
+  password: "[[ .Service.postgres_apm.pass ]]"
   max_conns: 10
 
 # Object storage configuration
 storage:
   # type: local  # cos or local
-  # # For local storage
-  # local_path: ./storage
+  # local:
+  #   path: ./storage
   
   # For COS storage (uncomment and fill in)
   type: cos
-  bucket: [[ .Service.perf_bucket.bucket_name ]]-[[.Service.csp_secret.secret_appid]]
-  region: {{ .Values.tad.location.regionName }}
-  secret_id: [[.Service.csp_secret.secret_id]]
-  secret_key: [[.Service.csp_secret.secret_key]]
-  domain: [[ .Service.perf_bucket.host ]]
-  scheme: [[ if .Service.perf_bucket.https ]]https[[ else ]]http[[ end ]]
-
-# APM callback configuration
-apm:
-  enabled: false
-  url: ""
-  request_yunapi: true
+  cos:
+    bucket: "[[ .Service.perf_bucket.bucket_name ]]-[[.Service.csp_secret.secret_appid]]"
+    region: "{{ .Values.tad.location.regionName }}"
+    secret_id: "[[.Service.csp_secret.secret_id]]"
+    secret_key: "[[.Service.csp_secret.secret_key]]"
+    domain: "[[ .Service.perf_bucket.host ]]"
+    scheme: "[[ if .Service.perf_bucket.https ]]https[[ else ]]http[[ end ]]"
 
 # Scheduler configuration
 scheduler:
-  poll_interval: 2  # seconds
+  enabled: true           # whether to enable task analysis scheduler
+  poll_interval: "2s"     # duration string
   worker_count: 5
-  priority_slots: 2  # reserved slots for high-priority tasks
+  priority_slots: 2       # reserved slots for high-priority tasks
   task_batch_size: 10
 
 # Task sources configuration (Strategy Pattern)
@@ -54,6 +49,7 @@ sources:
     options:
       poll_interval: 2s    # how often to poll for new tasks
       batch_size: 10       # max tasks to fetch per poll
+      # callback_url: "https://api.example.com/perf/callback"  # source-level callback URL
 
   # Kafka source - consumes tasks from Kafka topic (optional)
   # - type: kafka
@@ -67,19 +63,98 @@ sources:
   #     auto_commit: false
   #     max_poll_records: 100
 
-  # HTTP source - receives tasks via HTTP webhook (optional)
-  # - type: http
-  #   name: http-webhook
-  #   enabled: false
-  #   options:
-  #     listen_addr: ":8081"
-  #     path: /tasks
-  #     read_timeout: 30s
-  #     write_timeout: 30s
-  #     max_body_size: 1048576  # 1MB
+# Task ingress configuration (independent from sources)
+# Ingress receives tasks via HTTP and persists them to the database.
+# Tasks are then picked up by the DatabaseSource for analysis.
+ingress:
+  http:
+    enabled: true            # whether to enable HTTP task ingress
+    listen_addr: ":8081"      # HTTP listen address
+    path: /tasks              # HTTP path for receiving tasks
+    read_timeout: 30s
+    write_timeout: 30s
+    max_body_size: 1048576    # 1MB
+    callback_url: ""          # ingress-level callback URL (downgrade-save)
+    # When a task arrives without its own callback_url, the ingress-level
+    # callback_url is written into the task before DB insertion.
+    # Example:
+    # callback_url: "https://webhook-client.example.com/callback"
 
 # Logging configuration
 log:
   level: info  # debug, info, warn, error
   output_path: ./logs
   format: text  # text or json
+
+# View URL configuration (for generating signed view URLs in callbacks)
+# Used by analyzer to produce view URLs and by WebUI to validate auth tokens.
+view_url:
+  base_url: ""            # e.g., "https://perf.example.com"
+                          # If empty and webui.enabled=true, auto-derives http://localhost:{webui.port}
+  auth:
+    enabled: false        # enable HMAC signed URL authentication
+    secret: ""            # HMAC-SHA256 signing secret (generate a strong random string)
+    allowed_origins: []   # allowed origins for iframe embedding (CSP frame-ancestors)
+    # Example:
+    # allowed_origins:
+    #   - https://app.example.com
+    #   - https://dashboard.example.com
+
+# WebUI HTTP server configuration (embedded web server for viewing results)
+webui:
+  enabled: true          # whether to start embedded WebUI HTTP server
+  port: 8080              # WebUI listen port
+  cache_dir: ./cache      # local cache directory for remote storage data
+  cache_max: 0            # max cache size in bytes (0 = unlimited)
+
+# Callback notification configuration
+# Three-level fallback: task-level callback_url > source-level callback_url > global default_url
+callback:
+  default_url: ""           # global default callback URL, empty means no callback
+  timeout: "10s"            # callback HTTP request timeout
+  max_retries: 3            # max retry attempts with exponential backoff
+  # Example:
+  # default_url: "https://api.example.com/perf/callback"
+
+# Result retention configuration
+retention:
+  default: "168h"         # default retention duration (7 days)
+  rules: []               # per-task-type overrides
+  # Example:
+  # rules:
+  #   - task_type: java_heap
+  #     duration: "72h"   # 3 days for large heap dumps
+  #   - task_type: pprof_cpu
+  #     duration: "720h"  # 30 days for CPU profiles
+
+# Pprof configuration (for service self-profiling)
+pprof:
+  enabled: false
+  mode: http  # file or http
+  output_dir: ./pprof
+  profiles:
+    - cpu
+    - heap
+    - goroutine
+  # File mode configuration (for periodic snapshots)
+  file:
+    interval: 30s
+    cpu_duration: 10s
+    cpu_rate: 100
+    max_file_size: 104857600  # 100MB
+    max_files: 10
+    auto_rotate: true
+  # HTTP mode configuration (for on-demand profiling)
+  http:
+    addr: ":6060"
+    path: "/debug/pprof"
+    enable_ui: true
+    save_to_file: false
+    default_seconds: 30
+    # Authentication (optional)
+    # auth:
+    #   enabled: true
+    #   username: admin
+    #   password: secret
+    #   # Or use token-based auth
+    #   # token: your-secret-token

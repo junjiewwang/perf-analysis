@@ -12,7 +12,6 @@ func TestNewAnalysisContext(t *testing.T) {
 	assert.NotNil(t, ctx)
 	assert.NotNil(t, ctx.Suggestions)
 	assert.Empty(t, ctx.Suggestions)
-	assert.NotNil(t, ctx.APMConfig)
 	assert.Equal(t, AnalysisStatusPending, ctx.AnalysisStatus)
 }
 

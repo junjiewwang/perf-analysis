@@ -23,6 +23,7 @@ type DefaultTaskProcessor struct {
 	rawDataStorage  storage.Storage // Optional separate storage for raw data
 	repos           *repository.Repositories
 	analyzerFactory *analyzer.Factory
+	notifier        *CallbackNotifier
 	logger          utils.Logger
 }
 
@@ -54,6 +55,7 @@ func NewDefaultTaskProcessor(cfg *ProcessorConfig) *DefaultTaskProcessor {
 		rawDataStorage:  rawDataStorage,
 		repos:           cfg.Repos,
 		analyzerFactory: analyzer.NewFactory(analyzerConfig),
+		notifier:        NewCallbackNotifier(cfg.Config, cfg.Logger),
 		logger:          cfg.Logger,
 	}
 }
@@ -64,7 +66,7 @@ func (p *DefaultTaskProcessor) Process(ctx context.Context, task *Task, rules []
 		task.UUID, task.Type, task.ProfilerType)
 
 	// Create task directory
-	taskDir := p.config.GetTaskDir(task.UUID)
+	taskDir := filepath.Join(p.config.Analysis.DataDir, task.UUID)
 	if err := os.MkdirAll(taskDir, 0755); err != nil {
 		return fmt.Errorf("failed to create task directory: %w", err)
 	}
@@ -126,6 +128,16 @@ func (p *DefaultTaskProcessor) Process(ctx context.Context, task *Task, rules []
 	// Update task status to completed
 	if err := p.repos.Task.UpdateAnalysisStatus(ctx, task.ID, model.AnalysisStatusCompleted); err != nil {
 		return fmt.Errorf("failed to update task status: %w", err)
+	}
+
+	// Send callback notification using three-level fallback resolution
+	if p.notifier != nil {
+		callbackURL := p.notifier.ResolveCallbackURL(task.CallbackURL, task.SourceCallbackURL)
+		if callbackURL != "" {
+			if notifyErr := p.notifier.NotifySuccess(ctx, callbackURL, task.UUID); notifyErr != nil {
+				p.logger.Warn("Failed to send callback for task %s: %v", task.UUID, notifyErr)
+			}
+		}
 	}
 
 	p.logger.Info("Task %s analysis completed successfully", task.UUID)

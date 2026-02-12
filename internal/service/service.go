@@ -4,11 +4,15 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"time"
 
+	"github.com/perf-analysis/internal/ingress"
 	"github.com/perf-analysis/internal/repository"
 	"github.com/perf-analysis/internal/scheduler"
 	"github.com/perf-analysis/internal/scheduler/source"
 	"github.com/perf-analysis/internal/storage"
+	"github.com/perf-analysis/internal/webui"
 	"github.com/perf-analysis/pkg/config"
 	"github.com/perf-analysis/pkg/utils"
 )
@@ -25,6 +29,17 @@ type Service struct {
 	sources []source.TaskSource
 	// aggregator aggregates multiple sources into a single channel
 	aggregator *source.Aggregator
+
+	// ingress is the optional HTTP task ingress component.
+	// Started when config.Ingress.HTTP.Enabled is true.
+	ingress ingress.TaskIngress
+
+	// webuiServer is the optional embedded WebUI server.
+	// Started when config.WebUI.Enabled is true.
+	webuiServer *webui.Server
+
+	// cleaner periodically removes expired analysis results.
+	cleaner *scheduler.ResultCleaner
 
 	running bool
 }
@@ -55,9 +70,25 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
 
-	// Initialize scheduler
-	if err := s.initScheduler(); err != nil {
-		return fmt.Errorf("failed to initialize scheduler: %w", err)
+	// Initialize scheduler (optional, when scheduler.enabled is true)
+	if s.config.Scheduler.Enabled {
+		if err := s.initScheduler(); err != nil {
+			return fmt.Errorf("failed to initialize scheduler: %w", err)
+		}
+		// Initialize result cleaner (only when scheduler is enabled)
+		s.initCleaner()
+	} else {
+		s.logger.Info("Scheduler is disabled, skipping scheduler and cleaner initialization")
+	}
+
+	// Initialize HTTP ingress (optional)
+	if err := s.initIngress(); err != nil {
+		return fmt.Errorf("failed to initialize ingress: %w", err)
+	}
+
+	// Initialize WebUI (optional, when webui.enabled is true)
+	if err := s.initWebUI(); err != nil {
+		return fmt.Errorf("failed to initialize webui: %w", err)
 	}
 
 	s.logger.Info("Service components initialized successfully")
@@ -124,7 +155,18 @@ func (s *Service) initScheduler() error {
 
 	// Create scheduler with aggregator
 	schedulerConfig := scheduler.FromConfig(&s.config.Scheduler)
-	s.scheduler = scheduler.New(schedulerConfig, s.aggregator, processor, s.db.Suggestion, s.logger)
+
+	// Build source configs for callback URL resolution
+	var srcConfigs []source.SourceConfig
+	for _, cfg := range s.config.Sources {
+		srcConfigs = append(srcConfigs, source.SourceConfig{
+			Type:    source.SourceType(cfg.Type),
+			Name:    cfg.Name,
+			Enabled: cfg.Enabled,
+			Options: cfg.Options,
+		})
+	}
+	s.scheduler = scheduler.New(schedulerConfig, s.aggregator, processor, s.db.Suggestion, s.logger, srcConfigs)
 
 	s.logger.Info("Scheduler initialized")
 	return nil
@@ -180,9 +222,6 @@ func (s *Service) initSources() error {
 		if kafkaSource, ok := src.(*source.KafkaSource); ok {
 			kafkaSource.SetLogger(s.logger)
 		}
-		if httpSource, ok := src.(*source.HTTPSource); ok {
-			httpSource.SetLogger(s.logger)
-		}
 	}
 
 	s.sources = sources
@@ -198,12 +237,83 @@ func (s *Service) initSources() error {
 	return nil
 }
 
+// initIngress initializes the HTTP task ingress when enabled.
+func (s *Service) initIngress() error {
+	if !s.config.Ingress.HTTP.Enabled {
+		s.logger.Info("HTTP ingress is disabled, skipping")
+		return nil
+	}
+
+	s.logger.Info("Initializing HTTP ingress...")
+	s.ingress = ingress.NewHTTPIngress(&s.config.Ingress.HTTP, s.db.Task, s.logger)
+	s.logger.Info("HTTP ingress initialized (listen: %s, path: %s)", s.config.Ingress.HTTP.ListenAddr, s.config.Ingress.HTTP.Path)
+	return nil
+}
+
+// initWebUI initializes the embedded WebUI server when webui.enabled is true.
+func (s *Service) initWebUI() error {
+	if !s.config.WebUI.Enabled {
+		s.logger.Info("WebUI is disabled, skipping embedded WebUI server")
+		return nil
+	}
+
+	s.logger.Info("Initializing embedded WebUI server...")
+
+	server, err := webui.NewServerWithStorage(s.config, s.storage, s.logger)
+	if err != nil {
+		return fmt.Errorf("failed to create webui server: %w", err)
+	}
+
+	s.webuiServer = server
+	s.logger.Info("Embedded WebUI server initialized (port: %d)", s.config.WebUI.Port)
+	return nil
+}
+
+// initCleaner initializes the result cleaner for expired results.
+func (s *Service) initCleaner() {
+	s.cleaner = scheduler.NewResultCleaner(
+		s.storage,
+		s.db,
+		&s.config.Retention,
+		1*time.Hour,
+		s.logger,
+	)
+	s.logger.Info("Result cleaner initialized (interval: 1h)")
+}
+
 // Start starts the service.
 func (s *Service) Start(ctx context.Context) error {
 	s.logger.Info("Starting service...")
 
-	if err := s.scheduler.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start scheduler: %w", err)
+	// Start scheduler (if enabled)
+	if s.scheduler != nil {
+		if err := s.scheduler.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start scheduler: %w", err)
+		}
+	}
+
+	// Start HTTP ingress (if enabled)
+	if s.ingress != nil {
+		if err := s.ingress.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start ingress: %w", err)
+		}
+		s.logger.Info("HTTP ingress started on %s", s.config.Ingress.HTTP.ListenAddr)
+	}
+
+	// Start WebUI server in a separate goroutine
+	if s.webuiServer != nil {
+		go func() {
+			if err := s.webuiServer.Start(); err != nil && err != http.ErrServerClosed {
+				s.logger.Error("WebUI server error: %v", err)
+			}
+		}()
+		s.logger.Info("Embedded WebUI server started at http://localhost:%d", s.config.WebUI.Port)
+	}
+
+	// Start result cleaner
+	if s.cleaner != nil {
+		s.cleaner.Start(ctx)
+		s.logger.Info("Result cleaner started")
 	}
 
 	s.running = true
@@ -215,6 +325,32 @@ func (s *Service) Start(ctx context.Context) error {
 // Stop stops the service gracefully.
 func (s *Service) Stop() error {
 	s.logger.Info("Stopping service...")
+
+	// Stop HTTP ingress
+	if s.ingress != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.ingress.Stop(shutdownCtx); err != nil {
+			s.logger.Error("Failed to stop HTTP ingress: %v", err)
+		}
+		s.logger.Info("HTTP ingress stopped")
+	}
+
+	// Stop WebUI server
+	if s.webuiServer != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.webuiServer.Shutdown(shutdownCtx); err != nil {
+			s.logger.Error("Failed to stop WebUI server: %v", err)
+		}
+		s.logger.Info("WebUI server stopped")
+	}
+
+	// Stop result cleaner
+	if s.cleaner != nil {
+		s.cleaner.Stop()
+		s.logger.Info("Result cleaner stopped")
+	}
 
 	if s.scheduler != nil {
 		s.scheduler.Stop()

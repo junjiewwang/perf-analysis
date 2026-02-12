@@ -5,9 +5,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/perf-analysis/pkg/config"
 )
+
+// ObjectInfo holds metadata about a stored object.
+type ObjectInfo struct {
+	Key          string    `json:"key"`
+	Size         int64     `json:"size"`
+	LastModified time.Time `json:"last_modified"`
+}
 
 // Storage defines the interface for object storage operations.
 type Storage interface {
@@ -31,6 +39,12 @@ type Storage interface {
 
 	// GetURL returns the URL for the specified key (if applicable).
 	GetURL(key string) string
+
+	// ListByPrefix lists all objects with the given key prefix.
+	ListByPrefix(ctx context.Context, prefix string) ([]ObjectInfo, error)
+
+	// DeleteByPrefix deletes all objects with the given key prefix.
+	DeleteByPrefix(ctx context.Context, prefix string) error
 }
 
 // StorageType represents the type of storage backend.
@@ -49,18 +63,18 @@ func NewStorage(cfg *config.StorageConfig) (Storage, error) {
 
 	switch StorageType(cfg.Type) {
 	case StorageTypeLocal:
-		return NewLocalStorage(cfg.LocalPath)
+		return NewLocalStorage(cfg.Local.Path)
 	case StorageTypeCOS:
 		return NewCOSStorage(&COSConfig{
-			Bucket:    cfg.Bucket,
-			Region:    cfg.Region,
-			SecretID:  cfg.SecretID,
-			SecretKey: cfg.SecretKey,
-			Domain:    cfg.Domain,
-			Scheme:    cfg.Scheme,
+			Bucket:    cfg.COS.Bucket,
+			Region:    cfg.COS.Region,
+			SecretID:  cfg.COS.SecretID,
+			SecretKey: cfg.COS.SecretKey,
+			Domain:    cfg.COS.Domain,
+			Scheme:    cfg.COS.Scheme,
 		})
 	default:
-		return NewLocalStorage(cfg.LocalPath)
+		return NewLocalStorage(cfg.Local.Path)
 	}
 }
 
@@ -82,19 +96,19 @@ func ValidateConfig(cfg *config.StorageConfig) error {
 	}
 
 	if storageType == StorageTypeCOS {
-		if cfg.Bucket == "" {
+		if cfg.COS.Bucket == "" {
 			return fmt.Errorf("COS bucket is required")
 		}
-		if cfg.Region == "" {
+		if cfg.COS.Region == "" {
 			return fmt.Errorf("COS region is required")
 		}
-		if cfg.SecretID == "" || cfg.SecretKey == "" {
+		if cfg.COS.SecretID == "" || cfg.COS.SecretKey == "" {
 			return fmt.Errorf("COS credentials are required")
 		}
 	}
 
 	if storageType == StorageTypeLocal {
-		if cfg.LocalPath == "" {
+		if cfg.Local.Path == "" {
 			return fmt.Errorf("local storage path is required")
 		}
 	}

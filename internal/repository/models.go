@@ -23,6 +23,7 @@ type HotmethodTask struct {
 	UserName       string               `gorm:"column:user_name;type:varchar(128)"`
 	MasterTaskTID  *string              `gorm:"column:mastertask_tid;type:varchar(64)"`
 	COSBucket      string               `gorm:"column:cos_bucket;type:varchar(128)"`
+	CallbackURL    string               `gorm:"column:callback_url;type:varchar(512)"`
 	RequestParams  JSONField            `gorm:"column:request_params;type:json"`
 	CreateTime     time.Time            `gorm:"column:create_time;autoCreateTime"`
 	BeginTime      *time.Time           `gorm:"column:begin_time"`
@@ -48,6 +49,7 @@ func (t *HotmethodTask) ToModel() *model.Task {
 		UserName:       t.UserName,
 		MasterTaskTID:  t.MasterTaskTID,
 		COSBucket:      t.COSBucket,
+		CallbackURL:    t.CallbackURL,
 		CreateTime:     t.CreateTime,
 		BeginTime:      t.BeginTime,
 		EndTime:        t.EndTime,
@@ -58,6 +60,32 @@ func (t *HotmethodTask) ToModel() *model.Task {
 	}
 
 	return task
+}
+
+// NewHotmethodTaskFromModel converts model.Task to HotmethodTask for database insertion.
+func NewHotmethodTaskFromModel(task *model.Task) *HotmethodTask {
+	var requestParams JSONField
+	if data, err := json.Marshal(task.RequestParams); err == nil {
+		requestParams = data
+	}
+
+	return &HotmethodTask{
+		TID:            task.TaskUUID,
+		Type:           task.Type,
+		ProfilerType:   task.ProfilerType,
+		Status:         task.Status,
+		AnalysisStatus: task.AnalysisStatus,
+		StatusInfo:     task.StatusInfo,
+		ResultFile:     task.ResultFile,
+		UserName:       task.UserName,
+		MasterTaskTID:  task.MasterTaskTID,
+		COSBucket:      task.COSBucket,
+		CallbackURL:    task.CallbackURL,
+		RequestParams:  requestParams,
+		CreateTime:     task.CreateTime,
+		BeginTime:      task.BeginTime,
+		EndTime:        task.EndTime,
+	}
 }
 
 // GeneralAnalysisResult represents the general_analysis_results table.

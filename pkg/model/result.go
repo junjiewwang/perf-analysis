@@ -143,14 +143,12 @@ type AnalysisContext struct {
 	BeginTime               int64                  `json:"begin_time"`
 	EndTime                 int64                  `json:"end_time"`
 	AnalysisStatus          AnalysisStatus         `json:"analysis_status"`
-	APMConfig               map[string]interface{} `json:"apm_config"`
 }
 
 // NewAnalysisContext creates a new AnalysisContext with default values.
 func NewAnalysisContext() *AnalysisContext {
 	return &AnalysisContext{
 		Suggestions:    make([]Suggestion, 0),
-		APMConfig:      make(map[string]interface{}),
 		AnalysisStatus: AnalysisStatusPending,
 	}
 }

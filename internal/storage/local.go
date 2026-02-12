@@ -196,6 +196,98 @@ func (s *LocalStorage) GetURL(key string) string {
 	return s.getFullPath(key)
 }
 
+// ListByPrefix lists all objects with the given key prefix.
+func (s *LocalStorage) ListByPrefix(ctx context.Context, prefix string) ([]ObjectInfo, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	basePath := s.getFullPath(prefix)
+	var objects []ObjectInfo
+
+	// Check if the prefix path exists
+	info, err := os.Stat(basePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return objects, nil
+		}
+		return nil, fmt.Errorf("failed to stat path: %w", err)
+	}
+
+	// If it's a directory, walk it
+	if info.IsDir() {
+		err = filepath.Walk(basePath, func(path string, fi os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if fi.IsDir() {
+				return nil
+			}
+
+			relPath, relErr := filepath.Rel(s.basePath, path)
+			if relErr != nil {
+				return fmt.Errorf("failed to get relative path: %w", relErr)
+			}
+
+			objects = append(objects, ObjectInfo{
+				Key:          relPath,
+				Size:         fi.Size(),
+				LastModified: fi.ModTime(),
+			})
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to walk directory: %w", err)
+		}
+		return objects, nil
+	}
+
+	// Single file matches the prefix exactly
+	relPath, err := filepath.Rel(s.basePath, basePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get relative path: %w", err)
+	}
+	objects = append(objects, ObjectInfo{
+		Key:          relPath,
+		Size:         info.Size(),
+		LastModified: info.ModTime(),
+	})
+	return objects, nil
+}
+
+// DeleteByPrefix deletes all objects with the given key prefix.
+func (s *LocalStorage) DeleteByPrefix(ctx context.Context, prefix string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	basePath := s.getFullPath(prefix)
+
+	info, err := os.Stat(basePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to stat path: %w", err)
+	}
+
+	if info.IsDir() {
+		if err := os.RemoveAll(basePath); err != nil {
+			return fmt.Errorf("failed to remove directory: %w", err)
+		}
+		return nil
+	}
+
+	if err := os.Remove(basePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove file: %w", err)
+	}
+	return nil
+}
+
 // getFullPath returns the full filesystem path for the given key.
 func (s *LocalStorage) getFullPath(key string) string {
 	return filepath.Join(s.basePath, key)

@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	"github.com/perf-analysis/pkg/model"
@@ -13,8 +14,29 @@ import (
 const SourceTypeKafka SourceType = "kafka"
 
 func init() {
-	// Register the Kafka source strategy
 	Register(SourceTypeKafka, NewKafkaSource)
+	RegisterValidator(SourceTypeKafka, validateKafkaOptions)
+}
+
+// validateKafkaOptions validates Kafka source options.
+func validateKafkaOptions(cfg *SourceConfig) error {
+	brokers := cfg.GetStringSlice("brokers", nil)
+	if len(brokers) == 0 {
+		return fmt.Errorf("kafka source %q: brokers is required", cfg.Name)
+	}
+	topic := cfg.GetString("topic", "")
+	if topic == "" {
+		return fmt.Errorf("kafka source %q: topic is required", cfg.Name)
+	}
+	consumerGroup := cfg.GetString("consumer_group", "")
+	if consumerGroup == "" {
+		return fmt.Errorf("kafka source %q: consumer_group is required", cfg.Name)
+	}
+	maxPollRecords := cfg.GetInt("max_poll_records", 100)
+	if maxPollRecords < 1 {
+		return fmt.Errorf("kafka source %q: max_poll_records must be at least 1", cfg.Name)
+	}
+	return nil
 }
 
 // KafkaOptions holds Kafka source specific configuration.

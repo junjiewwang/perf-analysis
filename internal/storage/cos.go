@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/tencentyun/cos-go-sdk-v5"
 )
@@ -141,4 +142,77 @@ func (s *COSStorage) Exists(ctx context.Context, key string) (bool, error) {
 // GetURL returns the public URL for the specified key.
 func (s *COSStorage) GetURL(key string) string {
 	return fmt.Sprintf("%s://%s.cos.%s.%s/%s", s.scheme, s.bucket, s.region, s.domain, key)
+}
+
+// ListByPrefix lists all objects with the given key prefix.
+func (s *COSStorage) ListByPrefix(ctx context.Context, prefix string) ([]ObjectInfo, error) {
+	var objects []ObjectInfo
+	marker := ""
+
+	for {
+		opt := &cos.BucketGetOptions{
+			Prefix:  prefix,
+			Marker:  marker,
+			MaxKeys: 1000,
+		}
+
+		result, _, err := s.client.Bucket.Get(ctx, opt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list objects from COS with prefix %s: %w", prefix, err)
+		}
+
+		for _, item := range result.Contents {
+			lastModified, _ := time.Parse(time.RFC3339, item.LastModified)
+			objects = append(objects, ObjectInfo{
+				Key:          item.Key,
+				Size:         item.Size,
+				LastModified: lastModified,
+			})
+		}
+
+		if !result.IsTruncated {
+			break
+		}
+		marker = result.NextMarker
+	}
+
+	return objects, nil
+}
+
+// DeleteByPrefix deletes all objects with the given key prefix.
+func (s *COSStorage) DeleteByPrefix(ctx context.Context, prefix string) error {
+	objects, err := s.ListByPrefix(ctx, prefix)
+	if err != nil {
+		return fmt.Errorf("failed to list objects for deletion: %w", err)
+	}
+
+	if len(objects) == 0 {
+		return nil
+	}
+
+	// COS batch delete supports up to 1000 objects per request
+	for i := 0; i < len(objects); i += 1000 {
+		end := i + 1000
+		if end > len(objects) {
+			end = len(objects)
+		}
+
+		batch := objects[i:end]
+		deleteObjects := make([]cos.Object, 0, len(batch))
+		for _, obj := range batch {
+			deleteObjects = append(deleteObjects, cos.Object{Key: obj.Key})
+		}
+
+		opt := &cos.ObjectDeleteMultiOptions{
+			Objects: deleteObjects,
+			Quiet:   true,
+		}
+
+		_, _, err := s.client.Object.DeleteMulti(ctx, opt)
+		if err != nil {
+			return fmt.Errorf("failed to batch delete objects from COS: %w", err)
+		}
+	}
+
+	return nil
 }

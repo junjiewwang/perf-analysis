@@ -23,12 +23,14 @@ func TestService_New(t *testing.T) {
 			Port: 5432,
 		},
 		Storage: config.StorageConfig{
-			Type:      "local",
-			LocalPath: "./test_storage",
+			Type: "local",
+			Local: config.LocalStorageConfig{
+				Path: "./test_storage",
+			},
 		},
 		Scheduler: config.SchedulerConfig{
 			WorkerCount:   5,
-			PollInterval:  2,
+			PollInterval:  "2s",
 			PrioritySlots: 2,
 			TaskBatchSize: 10,
 		},

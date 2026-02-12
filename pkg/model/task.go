@@ -123,6 +123,7 @@ type Task struct {
 	MasterTaskTID  *string        `json:"mastertask_tid" db:"mastertask_tid"`
 	COSBucket      string         `json:"cos_bucket" db:"cos_bucket"`
 	RequestParams  RequestParams  `json:"request_params" db:"request_params"`
+	CallbackURL    string         `json:"callback_url,omitempty" db:"callback_url"`
 	CreateTime     time.Time      `json:"create_time" db:"create_time"`
 	BeginTime      *time.Time     `json:"begin_time" db:"begin_time"`
 	EndTime        *time.Time     `json:"end_time" db:"end_time"`

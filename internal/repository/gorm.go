@@ -22,6 +22,16 @@ func NewGormTaskRepository(db *gorm.DB) *GormTaskRepository {
 	return &GormTaskRepository{db: db}
 }
 
+// CreateTask creates a new task record in the database.
+func (r *GormTaskRepository) CreateTask(ctx context.Context, task *model.Task) error {
+	record := NewHotmethodTaskFromModel(task)
+	if err := r.db.WithContext(ctx).Create(record).Error; err != nil {
+		return fmt.Errorf("failed to create task: %w", err)
+	}
+	task.ID = record.ID
+	return nil
+}
+
 // GetPendingTasks retrieves tasks that are pending analysis.
 func (r *GormTaskRepository) GetPendingTasks(ctx context.Context, limit int) ([]*model.Task, error) {
 	var tasks []HotmethodTask
@@ -142,6 +152,25 @@ func (r *GormTaskRepository) LockTaskForAnalysis(ctx context.Context, id int64) 
 	}
 
 	return true, nil
+}
+
+// GetCompletedTasks retrieves tasks that have completed analysis.
+func (r *GormTaskRepository) GetCompletedTasks(ctx context.Context) ([]model.Task, error) {
+	var tasks []HotmethodTask
+
+	err := r.db.WithContext(ctx).
+		Where("analysis_status = ?", model.AnalysisStatusCompleted).
+		Find(&tasks).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get completed tasks: %w", err)
+	}
+
+	result := make([]model.Task, 0, len(tasks))
+	for i := range tasks {
+		result = append(result, *tasks[i].ToModel())
+	}
+
+	return result, nil
 }
 
 // GormResultRepository implements ResultRepository using GORM.

@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -14,8 +15,21 @@ import (
 const SourceTypeDB SourceType = "database"
 
 func init() {
-	// Register the database source strategy
 	Register(SourceTypeDB, NewDatabaseSource)
+	RegisterValidator(SourceTypeDB, validateDatabaseOptions)
+}
+
+// validateDatabaseOptions validates database source options.
+func validateDatabaseOptions(cfg *SourceConfig) error {
+	pollInterval := cfg.GetDuration("poll_interval", 2*time.Second)
+	if pollInterval <= 0 {
+		return fmt.Errorf("database source %q: poll_interval must be positive", cfg.Name)
+	}
+	batchSize := cfg.GetInt("batch_size", 10)
+	if batchSize < 1 {
+		return fmt.Errorf("database source %q: batch_size must be at least 1", cfg.Name)
+	}
+	return nil
 }
 
 // DatabaseOptions holds database source specific configuration.

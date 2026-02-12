@@ -224,8 +224,10 @@ func TestNewStorage(t *testing.T) {
 	t.Run("CreateLocalStorage", func(t *testing.T) {
 		tempDir := t.TempDir()
 		cfg := &config.StorageConfig{
-			Type:      "local",
-			LocalPath: tempDir,
+			Type: "local",
+			Local: config.LocalStorageConfig{
+				Path: tempDir,
+			},
 		}
 
 		storage, err := NewStorage(cfg)
@@ -240,8 +242,10 @@ func TestNewStorage(t *testing.T) {
 	t.Run("CreateDefaultStorage", func(t *testing.T) {
 		tempDir := t.TempDir()
 		cfg := &config.StorageConfig{
-			Type:      "",
-			LocalPath: tempDir,
+			Type: "",
+			Local: config.LocalStorageConfig{
+				Path: tempDir,
+			},
 		}
 
 		storage, err := NewStorage(cfg)

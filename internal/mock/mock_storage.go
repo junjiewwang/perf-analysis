@@ -5,6 +5,8 @@ import (
 	"io"
 
 	"github.com/stretchr/testify/mock"
+
+	"github.com/perf-analysis/internal/storage"
 )
 
 // MockStorage is a mock implementation of the Storage interface.
@@ -49,6 +51,27 @@ func (m *MockStorage) Delete(ctx context.Context, key string) error {
 func (m *MockStorage) Exists(ctx context.Context, key string) (bool, error) {
 	args := m.Called(ctx, key)
 	return args.Bool(0), args.Error(1)
+}
+
+// GetURL mocks the GetURL method.
+func (m *MockStorage) GetURL(key string) string {
+	args := m.Called(key)
+	return args.String(0)
+}
+
+// ListByPrefix mocks the ListByPrefix method.
+func (m *MockStorage) ListByPrefix(ctx context.Context, prefix string) ([]storage.ObjectInfo, error) {
+	args := m.Called(ctx, prefix)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]storage.ObjectInfo), args.Error(1)
+}
+
+// DeleteByPrefix mocks the DeleteByPrefix method.
+func (m *MockStorage) DeleteByPrefix(ctx context.Context, prefix string) error {
+	args := m.Called(ctx, prefix)
+	return args.Error(0)
 }
 
 // ExpectUpload sets up an expectation for Upload.

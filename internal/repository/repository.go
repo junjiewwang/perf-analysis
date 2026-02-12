@@ -9,6 +9,9 @@ import (
 
 // TaskRepository defines the interface for task-related database operations.
 type TaskRepository interface {
+	// CreateTask creates a new task record in the database.
+	CreateTask(ctx context.Context, task *model.Task) error
+
 	// GetPendingTasks retrieves tasks that are pending analysis.
 	GetPendingTasks(ctx context.Context, limit int) ([]*model.Task, error)
 
@@ -26,6 +29,9 @@ type TaskRepository interface {
 
 	// LockTaskForAnalysis attempts to lock a task for analysis (prevents concurrent processing).
 	LockTaskForAnalysis(ctx context.Context, id int64) (bool, error)
+
+	// GetCompletedTasks retrieves tasks that have completed analysis (for cleanup purposes).
+	GetCompletedTasks(ctx context.Context) ([]model.Task, error)
 }
 
 // ResultRepository defines the interface for analysis result operations.

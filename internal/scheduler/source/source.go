@@ -1,5 +1,5 @@
 // Package source provides task source abstractions for the scheduler.
-// It implements the Strategy Pattern where each source type (database, kafka, http)
+// It implements the Strategy Pattern where each source type (database, kafka)
 // is a concrete strategy implementing the TaskSource interface.
 package source
 
@@ -14,8 +14,11 @@ import (
 // Each strategy implementation defines its own constant.
 type SourceType string
 
+// SourceValidator is a function that validates source-specific options.
+type SourceValidator func(cfg *SourceConfig) error
+
 // TaskSource defines the strategy interface for task sources.
-// Each concrete implementation (database, kafka, http) implements this interface.
+// Each concrete implementation (database, kafka) implements this interface.
 type TaskSource interface {
 	// Type returns the source type constant defined by the strategy.
 	Type() SourceType
@@ -44,7 +47,7 @@ type TaskSource interface {
 
 // SourceConfig holds the configuration for a task source.
 type SourceConfig struct {
-	// Type is the source type (database, kafka, http).
+	// Type is the source type (database, kafka).
 	Type SourceType `yaml:"type" mapstructure:"type"`
 
 	// Name is the unique name for this source instance.
@@ -55,6 +58,20 @@ type SourceConfig struct {
 
 	// Options holds source-specific configuration options.
 	Options map[string]interface{} `yaml:"options" mapstructure:"options"`
+}
+
+// Validate validates the source configuration, including type-specific options.
+func (c *SourceConfig) Validate() error {
+	if c.Name == "" {
+		return fmt.Errorf("source name is required")
+	}
+	validatorRegistryMu.RLock()
+	v, exists := validatorRegistry[c.Type]
+	validatorRegistryMu.RUnlock()
+	if !exists {
+		return fmt.Errorf("unknown source type: %s (registered types: %v)", c.Type, RegisteredTypes())
+	}
+	return v(c)
 }
 
 // GetString retrieves a string option with a default value.
@@ -139,10 +156,12 @@ func (c *SourceConfig) GetStringSlice(key string, defaultValue []string) []strin
 // SourceCreator is a function that creates a TaskSource from configuration.
 type SourceCreator func(cfg *SourceConfig) (TaskSource, error)
 
-// registry holds all registered source creators.
+// registry holds all registered source creators and validators.
 var (
-	registry   = make(map[SourceType]SourceCreator)
-	registryMu sync.RWMutex
+	registry            = make(map[SourceType]SourceCreator)
+	registryMu          sync.RWMutex
+	validatorRegistry   = make(map[SourceType]SourceValidator)
+	validatorRegistryMu sync.RWMutex
 )
 
 // Register registers a source creator for a given source type.
@@ -151,6 +170,14 @@ func Register(sourceType SourceType, creator SourceCreator) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	registry[sourceType] = creator
+}
+
+// RegisterValidator registers a source validator for a given source type.
+// This is typically called in the init() function of each strategy implementation.
+func RegisterValidator(sourceType SourceType, v SourceValidator) {
+	validatorRegistryMu.Lock()
+	defer validatorRegistryMu.Unlock()
+	validatorRegistry[sourceType] = v
 }
 
 // IsRegistered checks if a source type is registered.
@@ -173,7 +200,12 @@ func RegisteredTypes() []SourceType {
 }
 
 // CreateSource creates a TaskSource from the given configuration.
+// It validates the configuration before creating the source.
 func CreateSource(cfg *SourceConfig) (TaskSource, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
 	registryMu.RLock()
 	creator, exists := registry[cfg.Type]
 	registryMu.RUnlock()

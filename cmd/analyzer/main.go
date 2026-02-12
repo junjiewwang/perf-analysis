@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -15,6 +16,7 @@ import (
 	"github.com/perf-analysis/pkg/config"
 	"github.com/perf-analysis/pkg/telemetry"
 	"github.com/perf-analysis/pkg/utils"
+	"github.com/perf-analysis/pkg/viewurl"
 )
 
 // Version information (injected by build flags)
@@ -97,7 +99,7 @@ func runService(cmd *cobra.Command, args []string) error {
 	utils.SetGlobalLogger(logger)
 
 	logger.Info("Starting perf-analyzer service...")
-	logger.Info("Version: %s, Commit: %s, Built: %s", Version, GitCommit, BuildTime)
+	bootstrapLogger := logger
 
 	// Create context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -114,11 +116,6 @@ func runService(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	if telemetry.Enabled() {
-		cfg := telemetry.GetConfig()
-		logger.Info("OpenTelemetry tracing enabled, endpoint: %s", cfg.Endpoint)
-	}
-
 	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -132,15 +129,18 @@ func runService(cmd *cobra.Command, args []string) error {
 	}
 	utils.SetGlobalLogger(logger)
 
-	logger.Info("Configuration loaded successfully")
-	logger.Info("Analysis version: %s", cfg.Analysis.Version)
-	logger.Info("Max workers: %d", cfg.Scheduler.WorkerCount)
-	logger.Info("Database: %s://%s:%d/%s", cfg.Database.Type, cfg.Database.Host, cfg.Database.Port, cfg.Database.Database)
-	logger.Info("Storage: %s", cfg.Storage.Type)
+	// Print startup banner to stdout (always visible on console)
+	printStartupBanner(bootstrapLogger, cfg)
+	// If logger writes to file, also record the banner there
+	if logger != bootstrapLogger {
+		printStartupBanner(logger, cfg)
+	}
 
 	// Ensure data directory exists
-	if err := cfg.EnsureDataDir(); err != nil {
-		return fmt.Errorf("failed to create data directory: %w", err)
+	if cfg.Analysis.DataDir != "" {
+		if err := os.MkdirAll(cfg.Analysis.DataDir, 0755); err != nil {
+			return fmt.Errorf("failed to create data directory: %w", err)
+		}
 	}
 
 	// Setup signal handling for graceful shutdown
@@ -180,6 +180,127 @@ func runService(cmd *cobra.Command, args []string) error {
 
 	logger.Info("Service stopped")
 	return nil
+}
+
+// printStartupBanner prints a structured startup banner with version, infrastructure,
+// and component status information.
+func printStartupBanner(logger *utils.DefaultLogger, cfg *config.Config) {
+	separator := strings.Repeat("─", 60)
+
+	logger.Info(separator)
+	logger.Info("  perf-analyzer service")
+	logger.Info(separator)
+
+	// Section 1: Version & Environment
+	logger.Info("  Version:      %s", Version)
+	logger.Info("  Git Commit:   %s", GitCommit)
+	logger.Info("  Build Time:   %s", BuildTime)
+	logger.Info("  Go Version:   %s", runtime.Version())
+	logger.Info("  OS/Arch:      %s/%s", runtime.GOOS, runtime.GOARCH)
+	logger.Info("  PID:          %d", os.Getpid())
+
+	// Section 2: Infrastructure
+	logger.Info(separator)
+	logger.Info("  Infrastructure")
+	logger.Info(separator)
+
+	// Database
+	logger.Info("  Database:     %s://%s:%d/%s (max_conns=%d)",
+		cfg.Database.Type, cfg.Database.Host, cfg.Database.Port,
+		cfg.Database.Database, cfg.Database.MaxConns)
+
+	// Storage
+	switch cfg.Storage.Type {
+	case "cos":
+		logger.Info("  Storage:      COS (bucket=%s, region=%s)", cfg.Storage.COS.Bucket, cfg.Storage.COS.Region)
+	case "local":
+		logger.Info("  Storage:      Local (path=%s)", cfg.Storage.Local.Path)
+	default:
+		logger.Info("  Storage:      %s", cfg.Storage.Type)
+	}
+
+	// Analysis
+	logger.Info("  Analysis:     version=%s, data_dir=%s", cfg.Analysis.Version, cfg.Analysis.DataDir)
+
+	// Section 3: Components
+	logger.Info(separator)
+	logger.Info("  Components")
+	logger.Info(separator)
+
+	// Scheduler
+	if cfg.Scheduler.Enabled {
+		logger.Info("  Scheduler:    ENABLED (workers=%d, poll=%s, batch=%d)",
+			cfg.Scheduler.WorkerCount, cfg.Scheduler.PollInterval, cfg.Scheduler.TaskBatchSize)
+
+		// Sources
+		if len(cfg.Sources) > 0 {
+			var enabledSources []string
+			for _, src := range cfg.Sources {
+				if src.Enabled {
+					enabledSources = append(enabledSources, src.Type)
+				}
+			}
+			if len(enabledSources) > 0 {
+				logger.Info("  Sources:      %s", strings.Join(enabledSources, ", "))
+			} else {
+				logger.Info("  Sources:      (none enabled)")
+			}
+		} else {
+			logger.Info("  Sources:      (none configured)")
+		}
+	} else {
+		logger.Info("  Scheduler:    DISABLED")
+	}
+
+	// Ingress
+	if cfg.Ingress.HTTP.Enabled {
+		logger.Info("  Ingress:      ENABLED (addr=%s, path=%s)",
+			cfg.Ingress.HTTP.ListenAddr, cfg.Ingress.HTTP.Path)
+	} else {
+		logger.Info("  Ingress:      DISABLED")
+	}
+
+	// WebUI
+	if cfg.WebUI.Enabled {
+		logger.Info("  WebUI:        ENABLED (port=%d, cache_dir=%s)",
+			cfg.WebUI.Port, cfg.WebUI.CacheDir)
+	} else {
+		logger.Info("  WebUI:        DISABLED")
+	}
+
+	// ViewURL
+	viewBuilder := viewurl.NewBuilder(&cfg.ViewURL, &cfg.WebUI, &cfg.Retention)
+	viewBaseURL := viewBuilder.GetBaseURL()
+	if viewBaseURL != "" {
+		authStatus := "off"
+		if cfg.ViewURL.Auth.Enabled {
+			authStatus = "on"
+		}
+		logger.Info("  ViewURL:      %s (auth=%s)", viewBaseURL, authStatus)
+	} else {
+		logger.Info("  ViewURL:      (not configured)")
+	}
+
+	// Telemetry
+	if telemetry.Enabled() {
+		teleCfg := telemetry.GetConfig()
+		logger.Info("  Telemetry:    ENABLED (endpoint=%s)", teleCfg.Endpoint)
+	} else {
+		logger.Info("  Telemetry:    DISABLED")
+	}
+
+	// Callback
+	if cfg.Callback.DefaultURL != "" {
+		logger.Info("  Callback:     url=%s, timeout=%s, retries=%d",
+			cfg.Callback.DefaultURL, cfg.Callback.Timeout, cfg.Callback.MaxRetries)
+	} else {
+		logger.Info("  Callback:     (no default URL)")
+	}
+
+	// Retention
+	logger.Info("  Retention:    default=%s", cfg.Retention.Default)
+
+	logger.Info(separator)
 }
 
 // initLoggerFromConfig creates a logger based on configuration settings.

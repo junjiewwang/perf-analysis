@@ -13,6 +13,12 @@ type MockTaskRepository struct {
 	mock.Mock
 }
 
+// CreateTask mocks the CreateTask method.
+func (m *MockTaskRepository) CreateTask(ctx context.Context, task *model.Task) error {
+	args := m.Called(ctx, task)
+	return args.Error(0)
+}
+
 // GetPendingTasks mocks the GetPendingTasks method.
 func (m *MockTaskRepository) GetPendingTasks(ctx context.Context, limit int) ([]*model.Task, error) {
 	args := m.Called(ctx, limit)
@@ -56,6 +62,15 @@ func (m *MockTaskRepository) UpdateAnalysisStatusWithInfo(ctx context.Context, i
 func (m *MockTaskRepository) LockTaskForAnalysis(ctx context.Context, id int64) (bool, error) {
 	args := m.Called(ctx, id)
 	return args.Bool(0), args.Error(1)
+}
+
+// GetCompletedTasks mocks the GetCompletedTasks method.
+func (m *MockTaskRepository) GetCompletedTasks(ctx context.Context) ([]model.Task, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]model.Task), args.Error(1)
 }
 
 // ExpectGetPendingTasks sets up an expectation for GetPendingTasks.

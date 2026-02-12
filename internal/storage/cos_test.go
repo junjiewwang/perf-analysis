@@ -78,11 +78,13 @@ func TestCOSStorage_GetURL(t *testing.T) {
 
 func TestNewStorage_COS(t *testing.T) {
 	cfg := &config.StorageConfig{
-		Type:      "cos",
-		Bucket:    "test-bucket",
-		Region:    "ap-guangzhou",
-		SecretID:  "test-id",
-		SecretKey: "test-key",
+		Type: "cos",
+		COS: config.COSStorageConfig{
+			Bucket:    "test-bucket",
+			Region:    "ap-guangzhou",
+			SecretID:  "test-id",
+			SecretKey: "test-key",
+		},
 	}
 
 	storage, err := NewStorage(cfg)
@@ -112,10 +114,12 @@ func TestValidateConfig(t *testing.T) {
 
 	t.Run("COSMissingBucket", func(t *testing.T) {
 		cfg := &config.StorageConfig{
-			Type:      "cos",
-			Region:    "ap-guangzhou",
-			SecretID:  "test-id",
-			SecretKey: "test-key",
+			Type: "cos",
+			COS: config.COSStorageConfig{
+				Region:    "ap-guangzhou",
+				SecretID:  "test-id",
+				SecretKey: "test-key",
+			},
 		}
 		err := ValidateConfig(cfg)
 		assert.Error(t, err)
@@ -124,10 +128,12 @@ func TestValidateConfig(t *testing.T) {
 
 	t.Run("COSMissingRegion", func(t *testing.T) {
 		cfg := &config.StorageConfig{
-			Type:      "cos",
-			Bucket:    "test-bucket",
-			SecretID:  "test-id",
-			SecretKey: "test-key",
+			Type: "cos",
+			COS: config.COSStorageConfig{
+				Bucket:    "test-bucket",
+				SecretID:  "test-id",
+				SecretKey: "test-key",
+			},
 		}
 		err := ValidateConfig(cfg)
 		assert.Error(t, err)
@@ -136,9 +142,11 @@ func TestValidateConfig(t *testing.T) {
 
 	t.Run("COSMissingCredentials", func(t *testing.T) {
 		cfg := &config.StorageConfig{
-			Type:   "cos",
-			Bucket: "test-bucket",
-			Region: "ap-guangzhou",
+			Type: "cos",
+			COS: config.COSStorageConfig{
+				Bucket: "test-bucket",
+				Region: "ap-guangzhou",
+			},
 		}
 		err := ValidateConfig(cfg)
 		assert.Error(t, err)
@@ -156,11 +164,13 @@ func TestValidateConfig(t *testing.T) {
 
 	t.Run("ValidCOSConfig", func(t *testing.T) {
 		cfg := &config.StorageConfig{
-			Type:      "cos",
-			Bucket:    "test-bucket",
-			Region:    "ap-guangzhou",
-			SecretID:  "test-id",
-			SecretKey: "test-key",
+			Type: "cos",
+			COS: config.COSStorageConfig{
+				Bucket:    "test-bucket",
+				Region:    "ap-guangzhou",
+				SecretID:  "test-id",
+				SecretKey: "test-key",
+			},
 		}
 		err := ValidateConfig(cfg)
 		assert.NoError(t, err)
@@ -168,8 +178,10 @@ func TestValidateConfig(t *testing.T) {
 
 	t.Run("ValidLocalConfig", func(t *testing.T) {
 		cfg := &config.StorageConfig{
-			Type:      "local",
-			LocalPath: "/tmp/storage",
+			Type: "local",
+			Local: config.LocalStorageConfig{
+				Path: "/tmp/storage",
+			},
 		}
 		err := ValidateConfig(cfg)
 		assert.NoError(t, err)

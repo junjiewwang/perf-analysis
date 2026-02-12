@@ -15,16 +15,18 @@ import (
 
 // Task represents a task to be processed by the worker pool.
 type Task struct {
-	ID            int64
-	UUID          string
-	Type          model.TaskType
-	ProfilerType  model.ProfilerType
-	ResultFile    string
-	UserName      string
-	MasterTaskTID *string
-	COSBucket     string
-	RequestParams model.RequestParams
-	Priority      int // Higher value = higher priority
+	ID                int64
+	UUID              string
+	Type              model.TaskType
+	ProfilerType      model.ProfilerType
+	ResultFile        string
+	UserName          string
+	MasterTaskTID     *string
+	COSBucket         string
+	RequestParams     model.RequestParams
+	CallbackURL       string // task-level callback URL (highest priority)
+	SourceCallbackURL string // source-level callback URL (second priority)
+	Priority          int    // Higher value = higher priority
 }
 
 // TaskProcessor defines the interface for processing tasks.
@@ -53,8 +55,15 @@ func DefaultSchedulerConfig() *SchedulerConfig {
 
 // FromConfig creates scheduler config from application config.
 func FromConfig(cfg *config.SchedulerConfig) *SchedulerConfig {
+	pollInterval := 2 * time.Second
+	if cfg.PollInterval != "" {
+		if d, err := time.ParseDuration(cfg.PollInterval); err == nil {
+			pollInterval = d
+		}
+	}
+
 	return &SchedulerConfig{
-		PollInterval:  time.Duration(cfg.PollInterval) * time.Second,
+		PollInterval:  pollInterval,
 		WorkerCount:   cfg.WorkerCount,
 		PrioritySlots: cfg.PrioritySlots,
 		TaskBatchSize: cfg.TaskBatchSize,
@@ -71,6 +80,10 @@ type Scheduler struct {
 	aggregator     *source.Aggregator
 	suggestionRepo repository.SuggestionRepository
 
+	// sourceCallbackURLs maps source name to its configured callback URL.
+	// Used for three-level callback URL fallback: task > source > global.
+	sourceCallbackURLs map[string]string
+
 	workerPool chan struct{}          // Semaphore for worker count
 	taskQueue  chan *Task             // Task queue
 	wg         sync.WaitGroup         // Wait group for workers
@@ -82,7 +95,7 @@ type Scheduler struct {
 }
 
 // New creates a new Scheduler with source aggregator.
-func New(config *SchedulerConfig, aggregator *source.Aggregator, processor TaskProcessor, suggestionRepo repository.SuggestionRepository, logger utils.Logger) *Scheduler {
+func New(config *SchedulerConfig, aggregator *source.Aggregator, processor TaskProcessor, suggestionRepo repository.SuggestionRepository, logger utils.Logger, sourceConfigs []source.SourceConfig) *Scheduler {
 	if config == nil {
 		config = DefaultSchedulerConfig()
 	}
@@ -90,15 +103,24 @@ func New(config *SchedulerConfig, aggregator *source.Aggregator, processor TaskP
 		logger = utils.NewDefaultLogger(utils.LevelInfo, nil)
 	}
 
+	// Build source name -> callback URL mapping
+	callbackURLs := make(map[string]string, len(sourceConfigs))
+	for _, sc := range sourceConfigs {
+		if cbURL := sc.GetString("callback_url", ""); cbURL != "" {
+			callbackURLs[sc.Name] = cbURL
+		}
+	}
+
 	return &Scheduler{
-		config:         config,
-		aggregator:     aggregator,
-		suggestionRepo: suggestionRepo,
-		processor:      processor,
-		logger:         logger,
-		workerPool:     make(chan struct{}, config.WorkerCount),
-		taskQueue:      make(chan *Task, config.TaskBatchSize*2),
-		stopCh:         make(chan struct{}),
+		config:             config,
+		aggregator:         aggregator,
+		suggestionRepo:     suggestionRepo,
+		processor:          processor,
+		logger:             logger,
+		sourceCallbackURLs: callbackURLs,
+		workerPool:         make(chan struct{}, config.WorkerCount),
+		taskQueue:          make(chan *Task, config.TaskBatchSize*2),
+		stopCh:             make(chan struct{}),
 	}
 }
 
@@ -273,17 +295,23 @@ func (s *Scheduler) refreshRules(ctx context.Context) {
 // convertEventToTask converts a source.TaskEvent to a scheduler.Task.
 func (s *Scheduler) convertEventToTask(event *source.TaskEvent) *Task {
 	t := event.Task
+
+	// Look up source-level callback URL
+	sourceCallbackURL := s.sourceCallbackURLs[event.SourceName]
+
 	task := &Task{
-		ID:            t.ID,
-		UUID:          t.TaskUUID,
-		Type:          t.Type,
-		ProfilerType:  t.ProfilerType,
-		ResultFile:    t.ResultFile,
-		UserName:      t.UserName,
-		MasterTaskTID: t.MasterTaskTID,
-		COSBucket:     t.COSBucket,
-		RequestParams: t.RequestParams,
-		Priority:      event.Priority,
+		ID:                t.ID,
+		UUID:              t.TaskUUID,
+		Type:              t.Type,
+		ProfilerType:      t.ProfilerType,
+		ResultFile:        t.ResultFile,
+		UserName:          t.UserName,
+		MasterTaskTID:     t.MasterTaskTID,
+		COSBucket:         t.COSBucket,
+		RequestParams:     t.RequestParams,
+		CallbackURL:       t.CallbackURL,
+		SourceCallbackURL: sourceCallbackURL,
+		Priority:          event.Priority,
 	}
 	return task
 }
