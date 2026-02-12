@@ -19,14 +19,8 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	})
 	require.NoError(t, err)
 
-	// Create tables
-	err = db.AutoMigrate(
-		&HotmethodTask{},
-		&GeneralAnalysisResult{},
-		&AnalysisSuggestion{},
-		&AnalysisSuggestionRule{},
-		&MultipleTask{},
-	)
+	// Create tables using centralized model list
+	err = AutoMigrateModels(db)
 	require.NoError(t, err)
 
 	return db
@@ -47,8 +41,9 @@ func TestGormTaskRepository_GetPendingTasks(t *testing.T) {
 		// Insert test data
 		task := &HotmethodTask{
 			TID:            "test-uuid-1",
-			Type:           model.TaskTypeJava,
-			ProfilerType:   model.ProfilerTypePerf,
+			Profiler:       model.ProfilerAsyncProfiler,
+			Event:          model.EventCPU,
+			Mode:           "async-profiler-cpu",
 			Status:         model.TaskStatusCompleted,
 			AnalysisStatus: model.AnalysisStatusPending,
 			UserName:       "testuser",
@@ -78,8 +73,9 @@ func TestGormTaskRepository_GetTaskByID(t *testing.T) {
 		// Insert test data
 		task := &HotmethodTask{
 			TID:            "test-uuid-2",
-			Type:           model.TaskTypeGeneric,
-			ProfilerType:   model.ProfilerTypePerf,
+			Profiler:       model.ProfilerPerf,
+			Event:          model.EventCPU,
+			Mode:           "perf-cpu",
 			Status:         model.TaskStatusCompleted,
 			AnalysisStatus: model.AnalysisStatusPending,
 		}
@@ -106,8 +102,9 @@ func TestGormTaskRepository_GetTaskByUUID(t *testing.T) {
 	t.Run("GetTaskByUUID_Success", func(t *testing.T) {
 		task := &HotmethodTask{
 			TID:            "test-uuid-3",
-			Type:           model.TaskTypeGeneric,
-			ProfilerType:   model.ProfilerTypePerf,
+			Profiler:       model.ProfilerPerf,
+			Event:          model.EventCPU,
+			Mode:           "perf-cpu",
 			Status:         model.TaskStatusCompleted,
 			AnalysisStatus: model.AnalysisStatusPending,
 		}
@@ -133,8 +130,9 @@ func TestGormTaskRepository_UpdateAnalysisStatus(t *testing.T) {
 	t.Run("UpdateStatus_Success", func(t *testing.T) {
 		task := &HotmethodTask{
 			TID:            "test-uuid-4",
-			Type:           model.TaskTypeGeneric,
-			ProfilerType:   model.ProfilerTypePerf,
+			Profiler:       model.ProfilerPerf,
+			Event:          model.EventCPU,
+			Mode:           "perf-cpu",
 			Status:         model.TaskStatusCompleted,
 			AnalysisStatus: model.AnalysisStatusPending,
 		}
@@ -157,8 +155,9 @@ func TestGormTaskRepository_UpdateAnalysisStatusWithInfo(t *testing.T) {
 
 	task := &HotmethodTask{
 		TID:            "test-uuid-5",
-		Type:           model.TaskTypeGeneric,
-		ProfilerType:   model.ProfilerTypePerf,
+		Profiler:       model.ProfilerPerf,
+		Event:          model.EventCPU,
+		Mode:           "perf-cpu",
 		Status:         model.TaskStatusCompleted,
 		AnalysisStatus: model.AnalysisStatusPending,
 	}
@@ -187,8 +186,9 @@ func TestGormTaskRepository_LockTaskForAnalysis(t *testing.T) {
 	t.Run("Lock_Success", func(t *testing.T) {
 		task := &HotmethodTask{
 			TID:            "test-uuid-6",
-			Type:           model.TaskTypeGeneric,
-			ProfilerType:   model.ProfilerTypePerf,
+			Profiler:       model.ProfilerPerf,
+			Event:          model.EventCPU,
+			Mode:           "perf-cpu",
 			Status:         model.TaskStatusCompleted,
 			AnalysisStatus: model.AnalysisStatusPending,
 		}

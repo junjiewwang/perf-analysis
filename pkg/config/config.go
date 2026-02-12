@@ -44,13 +44,14 @@ type AnalysisConfig struct {
 
 // DatabaseConfig holds database connection configuration.
 type DatabaseConfig struct {
-	Type     string `mapstructure:"type"` // postgres or mysql
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Database string `mapstructure:"database"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
-	MaxConns int    `mapstructure:"max_conns"`
+	Type        string `mapstructure:"type"` // postgres or mysql
+	Host        string `mapstructure:"host"`
+	Port        int    `mapstructure:"port"`
+	Database    string `mapstructure:"database"`
+	User        string `mapstructure:"user"`
+	Password    string `mapstructure:"password"`
+	MaxConns    int    `mapstructure:"max_conns"`
+	AutoMigrate bool   `mapstructure:"auto_migrate"` // auto-migrate database schema on startup
 }
 
 // StorageConfig holds object storage configuration.
@@ -289,6 +290,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.host", "localhost")
 	v.SetDefault("database.port", 5432)
 	v.SetDefault("database.max_conns", 10)
+	v.SetDefault("database.auto_migrate", false)
 
 	// Storage defaults
 	v.SetDefault("storage.type", "local")

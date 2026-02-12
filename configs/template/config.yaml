@@ -8,12 +8,13 @@ analysis:
 # Database configuration
 database:
   type: postgres  # postgres or mysql
-  host: "[[ .Service.postgres_apm.host ]]"
-  port: [[ .Service.postgres_apm.port ]]
-  database: "[[ index .Service.postgres_apm.databases 0 ]]"
-  user: "[[ .Service.postgres_apm.user ]]"
-  password: "[[ .Service.postgres_apm.pass ]]"
+  host: "[[ .Service.perf_analysis_postgres_apm.host ]]"
+  port: [[ .Service.perf_analysis_postgres_apm.port ]]
+  database: "[[ index .Service.perf_analysis_postgres_apm.databases 0 ]]"
+  user: "[[ .Service.perf_analysis_postgres_apm.user ]]"
+  password: "[[ .Service.perf_analysis_postgres_apm.pass ]]"
   max_conns: 10
+  auto_migrate: true  # auto-migrate database schema on startup (adds missing columns/indexes)
 
 # Object storage configuration
 storage:
@@ -122,9 +123,9 @@ retention:
   rules: []               # per-task-type overrides
   # Example:
   # rules:
-  #   - task_type: java_heap
+  #   - task_type: heapdump-heap
   #     duration: "72h"   # 3 days for large heap dumps
-  #   - task_type: pprof_cpu
+  #   - task_type: pprof-cpu
   #     duration: "720h"  # 30 days for CPU profiles
 
 # Pprof configuration (for service self-profiling)

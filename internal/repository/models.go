@@ -14,8 +14,9 @@ import (
 type HotmethodTask struct {
 	ID             int64                `gorm:"column:id;primaryKey;autoIncrement"`
 	TID            string               `gorm:"column:tid;type:varchar(64);uniqueIndex"`
-	Type           model.TaskType       `gorm:"column:type"`
-	ProfilerType   model.ProfilerType   `gorm:"column:profiler_type"`
+	Profiler       model.Profiler       `gorm:"column:profiler;type:varchar(32)"`
+	Event          model.EventType      `gorm:"column:event;type:varchar(32)"`
+	Mode           string               `gorm:"column:mode;type:varchar(64)"`
 	Status         model.TaskStatus     `gorm:"column:status"`
 	AnalysisStatus model.AnalysisStatus `gorm:"column:analysis_status"`
 	StatusInfo     string               `gorm:"column:status_info;type:text"`
@@ -25,6 +26,7 @@ type HotmethodTask struct {
 	COSBucket      string               `gorm:"column:cos_bucket;type:varchar(128)"`
 	CallbackURL    string               `gorm:"column:callback_url;type:varchar(512)"`
 	RequestParams  JSONField            `gorm:"column:request_params;type:json"`
+	Metadata       JSONField            `gorm:"column:metadata;type:json"`
 	CreateTime     time.Time            `gorm:"column:create_time;autoCreateTime"`
 	BeginTime      *time.Time           `gorm:"column:begin_time"`
 	EndTime        *time.Time           `gorm:"column:end_time"`
@@ -40,8 +42,9 @@ func (t *HotmethodTask) ToModel() *model.Task {
 	task := &model.Task{
 		ID:             t.ID,
 		TaskUUID:       t.TID,
-		Type:           t.Type,
-		ProfilerType:   t.ProfilerType,
+		Profiler:       t.Profiler,
+		Event:          t.Event,
+		Mode:           t.Mode,
 		Status:         t.Status,
 		AnalysisStatus: t.AnalysisStatus,
 		StatusInfo:     t.StatusInfo,
@@ -59,6 +62,10 @@ func (t *HotmethodTask) ToModel() *model.Task {
 		_ = json.Unmarshal(t.RequestParams, &task.RequestParams)
 	}
 
+	if t.Metadata != nil {
+		_ = json.Unmarshal(t.Metadata, &task.Metadata)
+	}
+
 	return task
 }
 
@@ -69,10 +76,18 @@ func NewHotmethodTaskFromModel(task *model.Task) *HotmethodTask {
 		requestParams = data
 	}
 
+	var metadata JSONField
+	if len(task.Metadata) > 0 {
+		if data, err := json.Marshal(task.Metadata); err == nil {
+			metadata = data
+		}
+	}
+
 	return &HotmethodTask{
 		TID:            task.TaskUUID,
-		Type:           task.Type,
-		ProfilerType:   task.ProfilerType,
+		Profiler:       task.Profiler,
+		Event:          task.Event,
+		Mode:           task.Mode,
 		Status:         task.Status,
 		AnalysisStatus: task.AnalysisStatus,
 		StatusInfo:     task.StatusInfo,
@@ -82,6 +97,7 @@ func NewHotmethodTaskFromModel(task *model.Task) *HotmethodTask {
 		COSBucket:      task.COSBucket,
 		CallbackURL:    task.CallbackURL,
 		RequestParams:  requestParams,
+		Metadata:       metadata,
 		CreateTime:     task.CreateTime,
 		BeginTime:      task.BeginTime,
 		EndTime:        task.EndTime,

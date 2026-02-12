@@ -114,6 +114,14 @@ func (s *Service) initDatabase() error {
 		return err
 	}
 
+	if s.config.Database.AutoMigrate {
+		s.logger.Info("Running database auto-migration...")
+		if err := repository.AutoMigrateModels(gormDB); err != nil {
+			return fmt.Errorf("failed to auto-migrate database: %w", err)
+		}
+		s.logger.Info("Database auto-migration completed")
+	}
+
 	s.db = repository.NewRepositories(gormDB, s.config.Database.Type, s.config.Analysis.Version)
 	s.logger.Info("Database connection established")
 

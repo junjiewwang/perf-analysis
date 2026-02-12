@@ -150,3 +150,16 @@ func (r *Repositories) DB() *sql.DB {
 func (r *Repositories) GormDB() *gorm.DB {
 	return r.gormDB
 }
+
+// AutoMigrateModels runs GORM AutoMigrate for all known models.
+// AutoMigrate only adds missing columns and indexes; it does NOT drop columns
+// or change existing column types, so it is safe for production use.
+func AutoMigrateModels(db *gorm.DB) error {
+	return db.AutoMigrate(
+		&HotmethodTask{},
+		&GeneralAnalysisResult{},
+		&AnalysisSuggestion{},
+		&AnalysisSuggestionRule{},
+		&MultipleTask{},
+	)
+}
