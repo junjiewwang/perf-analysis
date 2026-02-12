@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +12,8 @@ import (
 
 	"github.com/perf-analysis/internal/analyzer"
 	"github.com/perf-analysis/internal/formatter"
+	"github.com/perf-analysis/internal/publisher"
+	"github.com/perf-analysis/internal/storage"
 	"github.com/perf-analysis/pkg/model"
 )
 
@@ -176,12 +177,11 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 
 	// Create analysis request
 	req := &model.AnalysisRequest{
-		TaskID:       1,
-		TaskUUID:     uuid,
-		TaskType:     mode.ToTaskType(),
-		ProfilerType: mode.ToProfilerType(),
-		InputFile:    inputFile,
-		OutputDir:    taskOutputDir,
+		TaskID:    1,
+		TaskUUID:  uuid,
+		Mode:      string(mode),
+		InputFile: inputFile,
+		OutputDir: taskOutputDir,
 	}
 
 	// Run analysis
@@ -202,11 +202,9 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 
 	// Save result summary with metadata
 	metadata := &AnalysisMetadata{
-		Mode:           string(mode),
 		ModeDesc:       modeInfo.Description,
 		Profile:        string(profile),
 		InputFile:      filepath.Base(inputFile),
-		CreatedAt:      startTime.Format(time.RFC3339),
 		AnalysisTimeMs: analysisTime.Milliseconds(),
 	}
 	saveSummary(result, taskOutputDir, metadata)
@@ -250,42 +248,43 @@ func printResults(_ any, result *model.AnalysisResponse) {
 }
 
 func saveSummary(result *model.AnalysisResponse, outputDir string, metadata *AnalysisMetadata) {
-	// Use the formatter registry to generate summary
-	registry := formatter.NewRegistry()
-	summary := registry.FormatSummary(result)
+	log := GetLogger()
 
-	// Add metadata if provided
-	if metadata != nil {
-		summary["metadata"] = map[string]any{
-			"mode":             metadata.Mode,
-			"mode_description": metadata.ModeDesc,
-			"profile":          metadata.Profile,
-			"input_file":       metadata.InputFile,
-			"created_at":       metadata.CreatedAt,
-			"analysis_time_ms": metadata.AnalysisTimeMs,
-		}
+	// Use LocalStorage so the publisher writes files to the output directory.
+	// For CLI, the "key" is the relative path under outputDir (e.g. "{uuid}/summary.json"),
+	// but since outputDir already includes the UUID segment, we use the parent as base.
+	localStorage, err := storage.NewLocalStorage(filepath.Dir(outputDir))
+	if err != nil {
+		log.Warn("Failed to create local storage: %v", err)
+		return
 	}
 
-	summaryFile := filepath.Join(outputDir, "summary.json")
-	data, _ := json.MarshalIndent(summary, "", "  ")
-	os.WriteFile(summaryFile, data, 0644)
+	taskUUID := filepath.Base(outputDir)
 
-	// For heap analysis, write detailed retainer data to separate file
-	if result.Data != nil && result.Data.Type() == model.DataTypeHeapDump {
-		heapFormatter := &formatter.HeapFormatter{}
-		if err := heapFormatter.WriteDetailedRetainers(result, outputDir); err != nil {
-			// Log but don't fail - detailed file is optional
-			GetLogger().Warn("Failed to write detailed retainer file: %v", err)
-		}
+	req := &publisher.PublishRequest{
+		TaskUUID: taskUUID,
+		Mode:     result.Mode,
+		TaskDir:  outputDir,
+		Response: result,
+	}
+
+	if metadata != nil {
+		req.ModeDescription = metadata.ModeDesc
+		req.Profile = metadata.Profile
+		req.InputFile = metadata.InputFile
+		req.AnalysisTimeMs = metadata.AnalysisTimeMs
+	}
+
+	pub := publisher.New(localStorage, log)
+	if _, err := pub.Publish(context.Background(), req); err != nil {
+		log.Warn("Failed to publish results: %v", err)
 	}
 }
 
-// AnalysisMetadata holds metadata about the analysis task.
+// AnalysisMetadata holds metadata about the analysis task for summary generation.
 type AnalysisMetadata struct {
-	Mode           string `json:"mode"`
-	ModeDesc       string `json:"mode_description"`
-	Profile        string `json:"profile"`
-	InputFile      string `json:"input_file"`
-	CreatedAt      string `json:"created_at"`
-	AnalysisTimeMs int64  `json:"analysis_time_ms"`
+	ModeDesc       string
+	Profile        string
+	InputFile      string
+	AnalysisTimeMs int64
 }

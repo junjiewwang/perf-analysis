@@ -2,13 +2,14 @@ package scheduler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/perf-analysis/internal/advisor"
 	"github.com/perf-analysis/internal/analyzer"
+	"github.com/perf-analysis/internal/publisher"
 	"github.com/perf-analysis/internal/repository"
 	"github.com/perf-analysis/internal/storage"
 	"github.com/perf-analysis/pkg/config"
@@ -23,6 +24,7 @@ type DefaultTaskProcessor struct {
 	rawDataStorage  storage.Storage // Optional separate storage for raw data
 	repos           *repository.Repositories
 	analyzerFactory *analyzer.Factory
+	publisher       publisher.ResultPublisher
 	notifier        *CallbackNotifier
 	logger          utils.Logger
 }
@@ -55,6 +57,7 @@ func NewDefaultTaskProcessor(cfg *ProcessorConfig) *DefaultTaskProcessor {
 		rawDataStorage:  rawDataStorage,
 		repos:           cfg.Repos,
 		analyzerFactory: analyzer.NewFactory(analyzerConfig),
+		publisher:       publisher.New(cfg.Storage, cfg.Logger),
 		notifier:        NewCallbackNotifier(cfg.Config, cfg.Logger),
 		logger:          cfg.Logger,
 	}
@@ -62,13 +65,21 @@ func NewDefaultTaskProcessor(cfg *ProcessorConfig) *DefaultTaskProcessor {
 
 // Process processes a single analysis task.
 func (p *DefaultTaskProcessor) Process(ctx context.Context, task *Task, rules []model.SuggestionRule) error {
-	p.logger.Info("Starting analysis for task %s (Type: %d, Profiler: %d)",
-		task.UUID, task.Type, task.ProfilerType)
+	p.logger.Info("Starting analysis for task %s (Mode: %s)",
+		task.UUID, task.Mode)
+
+	// Resolve callback URL once, used for both success and failure notifications
+	callbackURL := ""
+	if p.notifier != nil {
+		callbackURL = p.notifier.ResolveCallbackURL(task.CallbackURL, task.SourceCallbackURL)
+	}
 
 	// Create task directory
 	taskDir := filepath.Join(p.config.Analysis.DataDir, task.UUID)
 	if err := os.MkdirAll(taskDir, 0755); err != nil {
-		return fmt.Errorf("failed to create task directory: %w", err)
+		processErr := fmt.Errorf("failed to create task directory: %w", err)
+		p.notifyFailure(ctx, callbackURL, task, processErr)
+		return processErr
 	}
 
 	// Clean up task directory after processing
@@ -81,13 +92,17 @@ func (p *DefaultTaskProcessor) Process(ctx context.Context, task *Task, rules []
 	// Download result file
 	localFile := filepath.Join(taskDir, filepath.Base(task.ResultFile))
 	if err := p.downloadResultFile(ctx, task, localFile); err != nil {
-		return fmt.Errorf("failed to download result file: %w", err)
+		processErr := fmt.Errorf("failed to download result file: %w", err)
+		p.notifyFailure(ctx, callbackURL, task, processErr)
+		return processErr
 	}
 
 	// Create the appropriate analyzer
-	a, err := p.analyzerFactory.CreateAnalyzer(task.Type, task.ProfilerType)
+	a, err := p.analyzerFactory.CreateAnalyzerForMode(analyzer.AnalysisMode(task.Mode))
 	if err != nil {
-		return fmt.Errorf("failed to create analyzer: %w", err)
+		processErr := fmt.Errorf("failed to create analyzer: %w", err)
+		p.notifyFailure(ctx, callbackURL, task, processErr)
+		return processErr
 	}
 
 	// Create analysis context
@@ -102,14 +117,20 @@ func (p *DefaultTaskProcessor) Process(ctx context.Context, task *Task, rules []
 	}
 
 	// Execute analysis
+	startTime := time.Now()
 	result, err := p.executeAnalysis(ctx, a, analysisCtx)
+	analysisTimeMs := time.Since(startTime).Milliseconds()
 	if err != nil {
-		return fmt.Errorf("analysis failed: %w", err)
+		processErr := fmt.Errorf("analysis failed: %w", err)
+		p.notifyFailure(ctx, callbackURL, task, processErr)
+		return processErr
 	}
 
 	// Save results
-	if err := p.saveResults(ctx, task, result, analysisCtx); err != nil {
-		return fmt.Errorf("failed to save results: %w", err)
+	if err := p.saveResults(ctx, task, result, analysisCtx, analysisTimeMs); err != nil {
+		processErr := fmt.Errorf("failed to save results: %w", err)
+		p.notifyFailure(ctx, callbackURL, task, processErr)
+		return processErr
 	}
 
 	// Generate and save suggestions
@@ -127,21 +148,45 @@ func (p *DefaultTaskProcessor) Process(ctx context.Context, task *Task, rules []
 
 	// Update task status to completed
 	if err := p.repos.Task.UpdateAnalysisStatus(ctx, task.ID, model.AnalysisStatusCompleted); err != nil {
-		return fmt.Errorf("failed to update task status: %w", err)
+		processErr := fmt.Errorf("failed to update task status: %w", err)
+		p.notifyFailure(ctx, callbackURL, task, processErr)
+		return processErr
 	}
 
-	// Send callback notification using three-level fallback resolution
-	if p.notifier != nil {
-		callbackURL := p.notifier.ResolveCallbackURL(task.CallbackURL, task.SourceCallbackURL)
-		if callbackURL != "" {
-			if notifyErr := p.notifier.NotifySuccess(ctx, callbackURL, task.UUID); notifyErr != nil {
-				p.logger.Warn("Failed to send callback for task %s: %v", task.UUID, notifyErr)
-			}
+	// Send success callback notification
+	if callbackURL != "" && p.notifier != nil {
+		opts := &CallbackOptions{
+			Mode:            task.Mode,
+			Metadata:        task.Metadata,
+			TotalRecords:    result.TotalRecords,
+			SuggestionCount: len(result.Suggestions),
+		}
+		if notifyErr := p.notifier.NotifySuccess(ctx, callbackURL, task.UUID, opts); notifyErr != nil {
+			p.logger.Warn("Failed to send success callback for task %s: %v", task.UUID, notifyErr)
 		}
 	}
 
 	p.logger.Info("Task %s analysis completed successfully", task.UUID)
 	return nil
+}
+
+// notifyFailure sends a failure callback and updates the task status to failed.
+func (p *DefaultTaskProcessor) notifyFailure(ctx context.Context, callbackURL string, task *Task, taskErr error) {
+	// Update task status to failed
+	if updateErr := p.repos.Task.UpdateAnalysisStatusWithInfo(ctx, task.ID, model.AnalysisStatusFailed, taskErr.Error()); updateErr != nil {
+		p.logger.Error("Failed to update task %s status to failed: %v", task.UUID, updateErr)
+	}
+
+	// Send failure callback
+	if callbackURL != "" && p.notifier != nil {
+		opts := &CallbackOptions{
+			Mode:     task.Mode,
+			Metadata: task.Metadata,
+		}
+		if notifyErr := p.notifier.NotifyFailure(ctx, callbackURL, task.UUID, taskErr, opts); notifyErr != nil {
+			p.logger.Warn("Failed to send failure callback for task %s: %v", task.UUID, notifyErr)
+		}
+	}
 }
 
 // downloadResultFile downloads the result file from storage.
@@ -170,8 +215,7 @@ func (p *DefaultTaskProcessor) executeAnalysis(ctx context.Context, a analyzer.A
 	// Create analysis request
 	req := &model.AnalysisRequest{
 		TaskUUID:      analysisCtx.Task.UUID,
-		TaskType:      analysisCtx.Task.Type,
-		ProfilerType:  analysisCtx.Task.ProfilerType,
+		Mode:          analysisCtx.Task.Mode,
 		InputFile:     analysisCtx.LocalFile,
 		OutputDir:     analysisCtx.TaskDir,
 		RequestParams: analysisCtx.Task.RequestParams,
@@ -190,34 +234,32 @@ func (p *DefaultTaskProcessor) executeAnalysis(ctx context.Context, a analyzer.A
 	}, nil
 }
 
-// saveResults uploads generated files and saves results to database.
-func (p *DefaultTaskProcessor) saveResults(ctx context.Context, task *Task, result *AnalysisResult, analysisCtx *AnalysisContext) error {
-	// Upload generated files from OutputFiles
-	uploadedFiles := make(map[string]string)
-	for _, file := range result.Response.OutputFiles {
-		if file.LocalPath == "" {
-			continue
-		}
-
-		// Check if file exists
-		if _, err := os.Stat(file.LocalPath); os.IsNotExist(err) {
-			continue
-		}
-
-		cosKey := file.COSKey
-		if cosKey == "" {
-			cosKey = fmt.Sprintf("%s/%s", task.UUID, filepath.Base(file.LocalPath))
-		}
-
-		if err := p.storage.UploadFile(ctx, cosKey, file.LocalPath); err != nil {
-			p.logger.Error("Failed to upload %s: %v", file.Name, err)
-			continue
-		}
-		uploadedFiles[file.Name] = cosKey
+// saveResults publishes generated files to storage and saves results to database.
+func (p *DefaultTaskProcessor) saveResults(ctx context.Context, task *Task, result *AnalysisResult, analysisCtx *AnalysisContext, analysisTimeMs int64) error {
+	// Resolve mode description from mode registry
+	var modeDescription string
+	if modeInfo := analyzer.AnalysisMode(task.Mode).Info(); modeInfo != nil {
+		modeDescription = modeInfo.Description
 	}
 
-	// Build result data
-	// Convert SuggestionItem to Suggestion
+	// Publish all result files (output files + summary.json + detail files) via publisher
+	pubOutput, err := p.publisher.Publish(ctx, &publisher.PublishRequest{
+		TaskUUID:        task.UUID,
+		Mode:            task.Mode,
+		TaskDir:         analysisCtx.TaskDir,
+		Response:        result.Response,
+		Suggestions:     result.Suggestions,
+		AnalysisVersion: p.config.Analysis.Version,
+		ModeDescription: modeDescription,
+		Profile:         "standard",
+		InputFile:       filepath.Base(task.ResultFile),
+		AnalysisTimeMs:  analysisTimeMs,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to publish results: %w", err)
+	}
+
+	// Convert SuggestionItem to Suggestion for DB persistence
 	suggestions := make([]model.Suggestion, 0, len(result.Suggestions))
 	for _, item := range result.Suggestions {
 		suggestions = append(suggestions, model.Suggestion{
@@ -227,53 +269,16 @@ func (p *DefaultTaskProcessor) saveResults(ctx context.Context, task *Task, resu
 		})
 	}
 
-	// Extract top funcs and thread info from Data
-	topFuncs := ""
-	activeThreadsJSON := ""
-	flameGraphFile := ""
-	callGraphFile := ""
-
-	if result.Response.Data != nil {
-		switch data := result.Response.Data.(type) {
-		case *model.CPUProfilingData:
-			topFuncsJSON, _ := json.Marshal(data.TopFuncs)
-			topFuncs = string(topFuncsJSON)
-			threadsJSON, _ := json.Marshal(data.ThreadStats)
-			activeThreadsJSON = string(threadsJSON)
-			flameGraphFile = uploadedFiles["Flame Graph"]
-			callGraphFile = uploadedFiles["Call Graph"]
-		case *model.AllocationData:
-			topFuncsJSON, _ := json.Marshal(data.TopAllocators)
-			topFuncs = string(topFuncsJSON)
-			threadsJSON, _ := json.Marshal(data.ThreadStats)
-			activeThreadsJSON = string(threadsJSON)
-			flameGraphFile = uploadedFiles["Allocation Flame Graph"]
-			callGraphFile = uploadedFiles["Allocation Call Graph"]
-		case *model.HeapAnalysisData:
-			// For heap analysis, use summary as JSON
-			summaryJSON, _ := json.Marshal(data.Summary())
-			activeThreadsJSON = string(summaryJSON)
-			topClassesJSON, _ := json.Marshal(data.TopClasses)
-			topFuncs = string(topClassesJSON)
-			flameGraphFile = uploadedFiles["Heap Report"]
-			callGraphFile = uploadedFiles["Class Histogram"]
-		case *model.TracingData:
-			topFuncsJSON, _ := json.Marshal(data.TopFuncs)
-			topFuncs = string(topFuncsJSON)
-			threadsJSON, _ := json.Marshal(data.ThreadStats)
-			activeThreadsJSON = string(threadsJSON)
-			flameGraphFile = uploadedFiles["Flame Graph"]
-			callGraphFile = uploadedFiles["Call Graph"]
-		}
-	}
+	// Extract DB-specific fields from analysis data and uploaded file keys
+	fields := publisher.ExtractDBFields(result.Response.Data, pubOutput.UploadedFiles)
 
 	namespaceResult := model.NamespaceResult{
-		TopFuncs:               topFuncs,
+		TopFuncs:               fields.TopFuncs,
 		TotalRecords:           int64(result.TotalRecords),
-		FlameGraphFile:         flameGraphFile,
-		ExtendedFlameGraphFile: flameGraphFile,
-		CallGraphFile:          callGraphFile,
-		ActiveThreadsJSON:      activeThreadsJSON,
+		FlameGraphFile:         fields.FlameGraphKey,
+		ExtendedFlameGraphFile: fields.FlameGraphKey,
+		CallGraphFile:          fields.CallGraphKey,
+		ActiveThreadsJSON:      fields.ActiveThreadsJSON,
 		Suggestions:            suggestions,
 	}
 
@@ -297,8 +302,7 @@ func (p *DefaultTaskProcessor) generateSuggestions(ctx context.Context, task *Ta
 
 	// Generate suggestions using advisor
 	ruleCtx := &advisor.RuleContext{
-		TaskType:     task.Type,
-		ProfilerType: task.ProfilerType,
+		Mode: task.Mode,
 	}
 	suggestions := adv.Advise(ruleCtx)
 
@@ -345,8 +349,8 @@ func (p *DefaultTaskProcessor) updateMasterTask(ctx context.Context, task *Task,
 		Suggestion: groupSuggestions,
 	}
 
-	// Get resource type based on task type
-	resourceType := getResourceType(task.Type)
+	// Get resource type based on mode
+	resourceType := string(analyzer.AnalysisMode(task.Mode).ResourceType())
 
 	// Update master task suggestions
 	if err := p.repos.MasterTask.UpdateMasterTaskSuggestions(ctx, masterTID, resourceType, suggestionGroup); err != nil {
@@ -355,22 +359,6 @@ func (p *DefaultTaskProcessor) updateMasterTask(ctx context.Context, task *Task,
 
 	// Check if all sub-tasks are complete and update master task status
 	return p.repos.MasterTask.CheckAndCompleteIfReady(ctx, masterTID)
-}
-
-// getResourceType returns the resource type string for a task type.
-func getResourceType(taskType model.TaskType) string {
-	switch taskType {
-	case model.TaskTypeGeneric, model.TaskTypeTiming:
-		return "CPU"
-	case model.TaskTypeJava:
-		return "App"
-	case model.TaskTypeTracing:
-		return "Disk"
-	case model.TaskTypeMemLeak:
-		return "Memory"
-	default:
-		return "CPU"
-	}
 }
 
 // AnalysisContext holds context for a single analysis.
