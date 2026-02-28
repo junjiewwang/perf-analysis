@@ -6,15 +6,19 @@ Go 语言编写的性能分析平台，支持 Java 和 Go 生态的多种 Profil
 
 ### 分析能力
 
-- **Java CPU Profiling**：分析 async-profiler / perf 采集的 CPU 热点数据
-- **Java Memory Profiling**：分析 async-profiler 内存分配数据
-- **Java Heap Dump**：解析 hprof 格式堆转储，支持支配树、Retained Size、大对象、GC Roots、Retainer 分析
-- **Go pprof CPU**：分析 Go pprof CPU profile
-- **Go pprof Heap**：分析 Go pprof 堆内存 profile
-- **Go pprof Goroutine**：分析 Goroutine 栈
-- **Go pprof Block / Mutex**：分析并发竞争（Block、Mutex）
-- **IO Tracing**：磁盘 IO 追踪分析
-- **Memory Leak Detection**：内存泄漏检测
+- **Java CPU Profiling**：分析 async-profiler 采集的 CPU 热点数据（`async-profiler-cpu`）
+- **Java Wall-clock**：分析 async-profiler Wall-clock 时间数据（`async-profiler-wall`）
+- **Java Lock Contention**：分析 async-profiler 锁争用数据（`async-profiler-lock`）
+- **Java Memory Allocation**：分析 async-profiler 内存分配数据（`async-profiler-alloc`）
+- **Java Heap Dump**：解析 hprof 格式堆转储，支持支配树、Retained Size、大对象、GC Roots、Retainer 分析（`heapdump-heap`）
+- **Linux perf CPU**：分析 Linux perf 采集的 CPU 数据（`perf-cpu`）
+- **Go pprof CPU**：分析 Go pprof CPU profile（`pprof-cpu`）
+- **Go pprof Heap**：分析 Go pprof 堆内存 profile（`pprof-heap`）
+- **Go pprof Goroutine**：分析 Goroutine 栈（`pprof-goroutine`）
+- **Go pprof Block**：分析 Block 竞争（`pprof-block`）
+- **Go pprof Mutex**：分析 Mutex 竞争（`pprof-mutex`）
+- **Go pprof Batch**：批量分析多种 pprof profile（`pprof-all`）
+- **Jemalloc Heap**：Jemalloc 堆内存分析（`jeprof-heap`）
 
 ### 可视化输出
 
@@ -41,22 +45,23 @@ Go 语言编写的性能分析平台，支持 Java 和 Go 生态的多种 Profil
 
 ## Supported Analysis Types
 
-| TaskType | 说明 | 分析模式 | 资源分类 |
-|----------|------|----------|----------|
-| Generic | 通用 CPU profiling (perf) | `cpu` | CPU |
-| Java | Java async-profiler | `java-cpu` | App |
-| JavaHeap | Java 堆 dump (hprof) | `java-heap` | Memory |
-| Tracing | IO tracing | - | Disk |
-| Timing | Timing 分析 | - | CPU |
-| MemLeak | 内存泄漏分析 | - | Memory |
-| PProfCPU | Go pprof CPU | `pprof-cpu` | CPU |
-| PProfHeap | Go pprof Heap | `pprof-heap` | Memory |
-| PProfGoroutine | Go pprof Goroutine | `pprof-goroutine` | Goroutine |
-| PProfBlock | Go pprof Block | `pprof-block` | Concurrency |
-| PProfMutex | Go pprof Mutex | `pprof-mutex` | Concurrency |
-| PProfMem | Go pprof memory | - | Memory |
-| PhysMem | 物理内存 | - | Memory |
-| Jeprof | Jeprof | - | Memory |
+分析模式采用 `{profiler}-{event}` 命名规则。详细的请求示例和参数说明请参考 [Analysis Modes Reference](docs/analysis-modes.md)。
+
+| Mode | Profiler | Event | 说明 | 输入格式 | 资源分类 |
+|------|----------|-------|------|----------|----------|
+| `async-profiler-cpu` | async-profiler | cpu | Java CPU 热点分析 | collapsed stack | CPU |
+| `async-profiler-wall` | async-profiler | wall | Java Wall-clock 时间分析 | collapsed stack | CPU |
+| `async-profiler-lock` | async-profiler | lock | Java 锁争用分析 | collapsed stack | Concurrency |
+| `async-profiler-alloc` | async-profiler | alloc | Java 内存分配分析 | collapsed stack | Memory |
+| `heapdump-heap` | heapdump | heap | Java 堆内存快照分析 | hprof | Memory |
+| `perf-cpu` | perf | cpu | Linux perf CPU 分析 | collapsed stack | CPU |
+| `pprof-cpu` | pprof | cpu | Go pprof CPU 分析 | pprof binary | CPU |
+| `pprof-heap` | pprof | heap | Go pprof Heap 分析 | pprof binary | Memory |
+| `pprof-goroutine` | pprof | goroutine | Go pprof Goroutine 分析 | pprof binary | Goroutine |
+| `pprof-block` | pprof | block | Go pprof Block 分析 | pprof binary | Concurrency |
+| `pprof-mutex` | pprof | mutex | Go pprof Mutex 分析 | pprof binary | Concurrency |
+| `pprof-all` | pprof | all | Go 批量 pprof 分析 | pprof binary | Multiple |
+| `jeprof-heap` | jeprof | heap | Jemalloc 堆内存分析 | jeprof | Memory |
 
 ## Project Structure
 
@@ -67,10 +72,10 @@ perf-analysis/
 │   └── cli/                   # CLI 工具入口 (perf-analysis)
 │       └── cmd/               # 子命令 (analyze, serve, version)
 ├── internal/
-│   ├── analyzer/              # 核心分析引擎 (Java CPU/Mem/Heap, Go pprof 全系列)
+│   ├── analyzer/              # 核心分析引擎 (模式定义/注册表工厂/各类分析器)
 │   ├── parser/                # 数据解析器
 │   │   ├── collapsed/         #   折叠栈格式 (perf/async-profiler)
-│   │   ├── pprof/             #   Go pprof 格式 + 泄漏检测
+│   │   ├── pprof/             #   Go pprof 格式
 │   │   └── hprof/             #   Java 堆 dump (支配树/引用图/大对象/Retained Size)
 │   ├── flamegraph/            # 火焰图数据生成
 │   ├── callgraph/             # 调用图数据生成
@@ -81,9 +86,11 @@ perf-analysis/
 │   ├── scheduler/             # 任务调度器
 │   │   └── source/            #   数据源策略 (Database/Kafka)
 │   ├── ingress/               # 任务接入层 (HTTP Ingress)
+│   ├── publisher/             # 分析结果发布 (Summary/元数据)
 │   ├── storage/               # 存储抽象层 (COS/本地)
-│   ├── repository/            # 数据库 ORM 层 (GORM)
+│   ├── repository/            # 数据库 ORM 层 (GORM AutoMigrate)
 │   ├── service/               # 顶层服务编排
+│   ├── integration/           # 集成测试
 │   ├── mock/                  # 测试 Mock
 │   └── testutil/              # 测试工具
 ├── pkg/
@@ -101,6 +108,7 @@ perf-analysis/
 │   └── writer/                # JSON 输出写入器
 ├── configs/
 │   └── template/              # 配置模板
+├── docs/                      # 参考文档
 ├── test/                      # 测试数据
 ├── scripts/                   # 脚本工具
 ├── Makefile
@@ -148,20 +156,26 @@ make build-analyzer
 无需数据库和配置文件，直接分析本地 profiling 文件：
 
 ```bash
-# 分析 Java CPU profiling 数据
-./bin/perf-analysis analyze -i data.collapsed -m java-cpu
+# 分析 Java CPU profiling 数据 (async-profiler)
+./bin/perf-analysis analyze -i data.collapsed -m async-profiler-cpu
+
+# 分析 Java Wall-clock 数据
+./bin/perf-analysis analyze -i data.collapsed -m async-profiler-wall
 
 # 分析 Go pprof CPU profile
 ./bin/perf-analysis analyze -i cpu.prof -m pprof-cpu
 
 # 分析 Java Heap Dump
-./bin/perf-analysis analyze -i heap.hprof -m java-heap
+./bin/perf-analysis analyze -i heap.hprof -m heapdump-heap
+
+# 分析 Linux perf 数据
+./bin/perf-analysis analyze -i perf.collapsed -m perf-cpu
 
 # 分析后自动启动 Web 服务查看结果
-./bin/perf-analysis analyze -i data.collapsed -m java-cpu --serve
+./bin/perf-analysis analyze -i data.collapsed -m async-profiler-cpu --serve
 
 # 指定分析深度
-./bin/perf-analysis analyze -i data.collapsed -m java-cpu --profile detailed
+./bin/perf-analysis analyze -i data.collapsed -m async-profiler-cpu --profile detailed
 ```
 
 分析深度：`quick`（快速）、`standard`（标准，默认）、`detailed`（详细）
@@ -246,6 +260,7 @@ cp configs/template/config.yaml configs/config.yaml
 - **接口驱动设计**：所有核心组件通过接口定义，支持 Mock 测试
 - **依赖注入**：通过构造函数注入依赖
 - **策略模式**：任务数据源（Database/Kafka）通过注册表工厂动态创建
+- **注册表模式**：分析器工厂通过 `map[AnalysisMode]AnalyzerConstructor` 注册表管理，支持运行时扩展
 - **分析时计算，展示时读取**：分析阶段生成完整预计算数据，WebUI 仅读取展示
 
 ### 部署模式
@@ -268,6 +283,13 @@ cp configs/template/config.yaml configs/config.yaml
 3. **Global 级别**：全局配置的 `callback.default_url`
 
 HTTP Ingress 支持 **降级保存**：当任务未携带 `callback_url` 时，自动将 Ingress 配置的 `callback_url` 写入任务记录。
+
+## Documentation
+
+| 文档 | 说明 |
+|------|------|
+| [Analysis Modes Reference](docs/analysis-modes.md) | 所有分析模式详解、HTTP API 接口定义、请求示例 |
+| [Callback API Protocol](docs/callback-api-protocol.md) | 入站接口、出站回调协议、重试机制、接收方实现指南 |
 
 ## Configuration
 
