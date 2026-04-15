@@ -1,7 +1,7 @@
 package analyzer
 
 import (
-	libanalyzer "github.com/perf-analysis/perflib/analyzer"
+	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
 )
 
 // Error variables are aliases to perflib/analyzer errors,

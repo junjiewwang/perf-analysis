@@ -5,7 +5,7 @@ import (
 	"container/heap"
 	"sort"
 
-	"github.com/perf-analysis/perflib/internal/filter"
+	"github.com/junjiewwang/perf-analysis/perflib/internal/filter"
 )
 
 // BiggestObjectsBuilder builds the list of biggest objects from the reference graph.

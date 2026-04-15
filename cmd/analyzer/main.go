@@ -12,11 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/perf-analysis/internal/service"
-	"github.com/perf-analysis/pkg/config"
-	"github.com/perf-analysis/pkg/telemetry"
-	"github.com/perf-analysis/pkg/utils"
-	"github.com/perf-analysis/pkg/viewurl"
+	"github.com/junjiewwang/perf-analysis/internal/service"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/telemetry"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/pkg/viewurl"
 )
 
 // Version information (injected by build flags)

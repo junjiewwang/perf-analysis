@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {

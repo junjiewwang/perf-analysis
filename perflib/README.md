@@ -1,6 +1,6 @@
 # perflib
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/perf-analysis/perflib.svg)](https://pkg.go.dev/github.com/perf-analysis/perflib)
+[![Go Reference](https://pkg.go.dev/badge/github.com/junjiewwang/perf-analysis/perflib.svg)](https://pkg.go.dev/github.com/junjiewwang/perf-analysis/perflib)
 
 **perflib** 是一个可复用的 Go 性能分析引擎库，支持 Java/Go/C++ 等多语言的 profiling 数据解析与分析。
 
@@ -18,7 +18,7 @@
 ## 安装
 
 ```bash
-go get github.com/perf-analysis/perflib
+go get github.com/junjiewwang/perf-analysis/perflib
 ```
 
 要求 Go 1.24 或更高版本。
@@ -37,8 +37,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/perf-analysis/perflib/analyzer"
-	"github.com/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 func main() {
@@ -266,7 +266,7 @@ type Timer interface {
 解析 async-profiler、perf 等工具输出的折叠调用栈格式：
 
 ```go
-import "github.com/perf-analysis/perflib/parser/collapsed"
+import "github.com/junjiewwang/perf-analysis/perflib/parser/collapsed"
 
 p := collapsed.NewParser(collapsed.DefaultParserOptions())
 result, err := p.Parse(ctx, reader)
@@ -279,7 +279,7 @@ result, err := p.Parse(ctx, reader)
 解析 Go pprof 格式的 profile 数据（.pprof, .pb.gz）：
 
 ```go
-import "github.com/perf-analysis/perflib/parser/pprof"
+import "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 
 p := pprof.NewParser()
 err := p.Parse(reader)
@@ -339,7 +339,7 @@ type Analyzer interface {
 `analyzer` 包定义了 5 个 sentinel 错误，可用 `errors.Is` 匹配：
 
 ```go
-import "github.com/perf-analysis/perflib/analyzer"
+import "github.com/junjiewwang/perf-analysis/perflib/analyzer"
 
 resp, err := a.Analyze(ctx, req)
 if errors.Is(err, analyzer.ErrEmptyData) {

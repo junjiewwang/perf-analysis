@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/perf-analysis/perflib"
-	pprofparser "github.com/perf-analysis/perflib/parser/pprof"
-	"github.com/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib"
+	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // PProfBatchAnalyzer analyzes a directory of pprof files.

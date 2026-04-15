@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/pkg/config"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 func TestService_New(t *testing.T) {

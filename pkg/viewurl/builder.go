@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/perf-analysis/pkg/auth"
-	"github.com/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/auth"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
 )
 
 // Builder constructs signed view URLs for task results.

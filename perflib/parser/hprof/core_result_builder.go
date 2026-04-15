@@ -6,7 +6,7 @@ import (
 	"context"
 	"sort"
 
-	perflib "github.com/perf-analysis/perflib"
+	perflib "github.com/junjiewwang/perf-analysis/perflib"
 )
 
 // ResultBuilder builds the final HeapAnalysisResult from parsed state.

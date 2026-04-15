@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/internal/statistics"
+	"github.com/junjiewwang/perf-analysis/internal/statistics"
 )
 
 func TestNewAdvisor(t *testing.T) {

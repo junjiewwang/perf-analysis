@@ -5,8 +5,8 @@ import (
 	"io"
 	"path/filepath"
 
-	libanalyzer "github.com/perf-analysis/perflib/analyzer"
-	"github.com/perf-analysis/pkg/model"
+	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // JavaMemAnalyzer analyzes Java async-profiler allocation/memory data.

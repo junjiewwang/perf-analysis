@@ -4,7 +4,7 @@ package hprof
 import (
 	"sort"
 
-	"github.com/perf-analysis/perflib/internal/filter"
+	"github.com/junjiewwang/perf-analysis/perflib/internal/filter"
 )
 
 // RetainerInfo describes what retains a class's instances.

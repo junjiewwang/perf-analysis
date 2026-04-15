@@ -3,7 +3,7 @@ package publisher
 import (
 	"encoding/json"
 
-	"github.com/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // DBResultFields holds the fields extracted from analysis data

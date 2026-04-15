@@ -1,7 +1,7 @@
 package collapsed
 
 import (
-	"github.com/perf-analysis/perflib/parser"
+	"github.com/junjiewwang/perf-analysis/perflib/parser"
 )
 
 // Factory creates new Collapsed format parsers.

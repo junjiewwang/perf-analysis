@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/perf-analysis/pkg/pprof"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/pkg/pprof"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 var (

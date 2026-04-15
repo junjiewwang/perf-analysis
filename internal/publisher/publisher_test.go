@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/internal/storage"
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/storage"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 func testLogger() utils.Logger {

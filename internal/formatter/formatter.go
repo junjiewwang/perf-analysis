@@ -2,8 +2,8 @@
 package formatter
 
 import (
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // ResultFormatter is the interface for formatting analysis results.

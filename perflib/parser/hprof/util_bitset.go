@@ -2,7 +2,7 @@
 package hprof
 
 import (
-	"github.com/perf-analysis/perflib/internal/collections"
+	"github.com/junjiewwang/perf-analysis/perflib/internal/collections"
 )
 
 // ============================================================================

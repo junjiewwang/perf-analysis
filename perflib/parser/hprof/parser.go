@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	perflib "github.com/perf-analysis/perflib"
-	timerPkg "github.com/perf-analysis/perflib/internal/timer"
+	perflib "github.com/junjiewwang/perf-analysis/perflib"
+	timerPkg "github.com/junjiewwang/perf-analysis/perflib/internal/timer"
 )
 
 // SizeCalculationMode defines how shallow sizes are calculated.

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"github.com/perf-analysis/internal/storage"
+	"github.com/junjiewwang/perf-analysis/internal/storage"
 )
 
 // MockStorage is a mock implementation of the Storage interface.

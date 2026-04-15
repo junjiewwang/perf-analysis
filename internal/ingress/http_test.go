@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/pkg/config"
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // fakeTaskRepo is a simple in-memory TaskRepository for testing.

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // HotmethodTask represents the hotmethod_task table.

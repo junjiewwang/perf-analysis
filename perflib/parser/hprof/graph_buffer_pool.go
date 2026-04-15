@@ -4,7 +4,7 @@ package hprof
 import (
 	"sync"
 
-	"github.com/perf-analysis/perflib/internal/collections"
+	"github.com/junjiewwang/perf-analysis/perflib/internal/collections"
 )
 
 // ============================================================================

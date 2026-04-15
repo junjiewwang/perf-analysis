@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package hprof;
 
-option go_package = "github.com/perf-analysis/perflib/parser/hprof/proto";
+option go_package = "github.com/junjiewwang/perf-analysis/perflib/parser/hprof/proto";
 
 // ReferenceGraphProto is the serializable representation of ReferenceGraph.
 // It stores the complete object reference graph for heap analysis.

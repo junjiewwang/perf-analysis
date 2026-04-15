@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/perf-analysis/pkg/auth"
-	"github.com/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/auth"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
 )
 
 // authMiddleware returns an HTTP middleware that validates HMAC signed URL tokens.

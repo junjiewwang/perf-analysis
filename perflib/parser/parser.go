@@ -5,7 +5,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // Parser is the interface for parsing profiling data.

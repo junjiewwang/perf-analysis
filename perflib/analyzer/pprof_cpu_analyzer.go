@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	pprofparser "github.com/perf-analysis/perflib/parser/pprof"
-	"github.com/perf-analysis/perflib/model"
+	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // PProfCPUAnalyzer analyzes Go pprof CPU profile data.

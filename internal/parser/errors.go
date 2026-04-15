@@ -1,7 +1,7 @@
 package parser
 
 import (
-	libparser "github.com/perf-analysis/perflib/parser"
+	libparser "github.com/junjiewwang/perf-analysis/perflib/parser"
 )
 
 // Error variables - delegate to perflib/parser.

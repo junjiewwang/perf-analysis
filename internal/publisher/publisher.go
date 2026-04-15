@@ -7,9 +7,9 @@ package publisher
 import (
 	"context"
 
-	"github.com/perf-analysis/internal/storage"
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/storage"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // ResultPublisher defines the interface for publishing analysis results to storage.

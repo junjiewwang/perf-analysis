@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/perf-analysis/perflib/profiling"
+	"github.com/junjiewwang/perf-analysis/perflib/profiling"
 )
 
 // Node represents a node in the flame graph tree.

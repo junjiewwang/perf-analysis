@@ -1,9 +1,9 @@
 // Package collapsed implements parsing of collapsed stack format data.
-// This is a thin wrapper around github.com/perf-analysis/perflib/parser/collapsed.
+// This is a thin wrapper around github.com/junjiewwang/perf-analysis/perflib/parser/collapsed.
 package collapsed
 
 import (
-	libcollapsed "github.com/perf-analysis/perflib/parser/collapsed"
+	libcollapsed "github.com/junjiewwang/perf-analysis/perflib/parser/collapsed"
 )
 
 // Type aliases - delegate all types to perflib/parser/collapsed.

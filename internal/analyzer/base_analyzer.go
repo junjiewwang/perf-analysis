@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/perf-analysis/internal/callgraph"
-	"github.com/perf-analysis/internal/flamegraph"
-	libanalyzer "github.com/perf-analysis/perflib/analyzer"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/callgraph"
+	"github.com/junjiewwang/perf-analysis/internal/flamegraph"
+	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // AnalysisProfile defines preset analysis configurations for different use cases.

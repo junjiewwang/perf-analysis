@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/perf-analysis/pkg/config"
-	"github.com/perf-analysis/pkg/utils"
-	"github.com/perf-analysis/pkg/viewurl"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/pkg/viewurl"
 )
 
 // CallbackNotifier sends callback notifications to external services

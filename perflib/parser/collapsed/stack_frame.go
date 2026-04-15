@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/perf-analysis/perflib/profiling"
+	"github.com/junjiewwang/perf-analysis/perflib/profiling"
 )
 
 // StackFrame represents a single frame in a call stack.

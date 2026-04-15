@@ -3,7 +3,7 @@ package analyzer
 import (
 	"testing"
 
-	"github.com/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 func TestParseMode(t *testing.T) {

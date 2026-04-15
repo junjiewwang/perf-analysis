@@ -7,7 +7,7 @@
 ## 架构设计
 
 ```
-perflib/                          # 独立子模块 (github.com/perf-analysis/perflib)
+perflib/                          # 独立子模块 (github.com/junjiewwang/perf-analysis/perflib)
 ├── go.mod                        # 外部依赖: google/pprof, stretchr/testify
 ├── model/                        # 分析数据模型（纯净版，无业务耦合）
 │   ├── analysis.go               # 核心接口: AnalysisData, OutputFile, TopItem, Marshal/Unmarshal
@@ -308,7 +308,7 @@ hprof 解析器（Java 堆分析）是最大的迁移包（23个非测试 .go �
    - README 中通过架构说明覆盖消费者视角的迁移路径
 
 4. **发布准备**
-   - `go.mod` 模块路径: `github.com/perf-analysis/perflib`
+   - `go.mod` 模块路径: `github.com/junjiewwang/perf-analysis/perflib`
    - Go 子模块 tag 格式: `perflib/v0.1.0`
    - 编译验证通过 ✅
    - 测试验证通过 ✅

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/perf-analysis/internal/parser/hprof"
+	"github.com/junjiewwang/perf-analysis/internal/parser/hprof"
 )
 
 // RefGraphService manages ReferenceGraph loading, caching, and queries.

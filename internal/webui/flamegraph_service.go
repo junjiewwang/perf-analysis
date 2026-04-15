@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/perf-analysis/internal/flamegraph"
-	"github.com/perf-analysis/internal/parser/collapsed"
+	"github.com/junjiewwang/perf-analysis/internal/flamegraph"
+	"github.com/junjiewwang/perf-analysis/internal/parser/collapsed"
 )
 
 // FlameGraphType represents the type of flame graph analysis.

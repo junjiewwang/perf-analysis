@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/perf-analysis/internal/storage"
-	"github.com/perf-analysis/internal/webui"
-	"github.com/perf-analysis/pkg/config"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/storage"
+	"github.com/junjiewwang/perf-analysis/internal/webui"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 var (

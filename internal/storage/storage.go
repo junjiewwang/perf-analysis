@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
 )
 
 // ObjectInfo holds metadata about a stored object.

@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/internal/scheduler/source"
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/scheduler/source"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // MockSuggestionRepository is a mock implementation of SuggestionRepository.

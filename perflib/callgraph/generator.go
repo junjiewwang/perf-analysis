@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/perf-analysis/perflib/model"
-	"github.com/perf-analysis/perflib/profiling"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/profiling"
 )
 
 // GeneratorOptions holds configuration options for the call graph generator.

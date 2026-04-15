@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/perf-analysis/perflib"
+	"github.com/junjiewwang/perf-analysis/perflib"
 )
 
 // TimerOutput defines the interface for outputting timer results.

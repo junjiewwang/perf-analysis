@@ -1,8 +1,8 @@
 package analyzer
 
 import (
-	libanalyzer "github.com/perf-analysis/perflib/analyzer"
-	"github.com/perf-analysis/pkg/model"
+	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // AnalysisMode represents a user-friendly analysis mode.

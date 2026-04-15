@@ -3,7 +3,7 @@ package statistics
 import (
 	"sort"
 
-	"github.com/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // ThreadStatsCalculator calculates thread statistics from samples.

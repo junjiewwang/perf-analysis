@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/perf-analysis/internal/repository"
-	"github.com/perf-analysis/internal/scheduler/source"
-	"github.com/perf-analysis/pkg/config"
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/repository"
+	"github.com/junjiewwang/perf-analysis/internal/scheduler/source"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // Task represents a task to be processed by the worker pool.

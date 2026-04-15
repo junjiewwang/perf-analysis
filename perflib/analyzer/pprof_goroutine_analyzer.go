@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/pprof/profile"
 
-	pprofparser "github.com/perf-analysis/perflib/parser/pprof"
-	"github.com/perf-analysis/perflib/model"
+	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // PProfGoroutineAnalyzer analyzes Go pprof Goroutine profile data.

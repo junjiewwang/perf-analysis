@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/perf-analysis/pkg/pprof"
+	"github.com/junjiewwang/perf-analysis/pkg/pprof"
 )
 
 // Config holds all configuration for the application.

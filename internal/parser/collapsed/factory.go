@@ -1,9 +1,9 @@
 package collapsed
 
 import (
-	"github.com/perf-analysis/internal/parser"
+	"github.com/junjiewwang/perf-analysis/internal/parser"
 
-	libcollapsed "github.com/perf-analysis/perflib/parser/collapsed"
+	libcollapsed "github.com/junjiewwang/perf-analysis/perflib/parser/collapsed"
 )
 
 // Type aliases - delegate to perflib/parser/collapsed.

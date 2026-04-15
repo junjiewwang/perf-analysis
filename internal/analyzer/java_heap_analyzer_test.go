@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/perflib/parser/hprof"
-	"github.com/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/perflib/parser/hprof"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 func TestNewJavaHeapAnalyzer(t *testing.T) {

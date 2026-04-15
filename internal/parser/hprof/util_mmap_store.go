@@ -2,7 +2,7 @@
 package hprof
 
 import (
-	libhprof "github.com/perf-analysis/perflib/parser/hprof"
+	libhprof "github.com/junjiewwang/perf-analysis/perflib/parser/hprof"
 )
 
 // ============================================================================

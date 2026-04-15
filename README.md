@@ -128,7 +128,7 @@ perf-analysis/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/perf-analysis/perf-analysis.git
+git clone https://github.com/junjiewwang/perf-analysis/perf-analysis.git
 cd perf-analysis
 ```
 

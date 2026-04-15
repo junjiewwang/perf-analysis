@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	libanalyzer "github.com/perf-analysis/perflib/analyzer"
-	"github.com/perf-analysis/pkg/model"
+	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // PProfHeapAnalyzer analyzes Go pprof Heap profile data.

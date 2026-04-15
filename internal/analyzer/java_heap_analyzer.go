@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	libanalyzer "github.com/perf-analysis/perflib/analyzer"
-	"github.com/perf-analysis/perflib/parser/hprof"
-	"github.com/perf-analysis/pkg/model"
+	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	"github.com/junjiewwang/perf-analysis/perflib/parser/hprof"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // JavaHeapAnalyzer analyzes Java heap dump (HPROF) files.

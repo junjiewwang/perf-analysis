@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/pprof/profile"
 
-	"github.com/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // SampleType represents the type of sample in a pprof profile.

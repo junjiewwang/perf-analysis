@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/perf-analysis/pkg/telemetry"
+	"github.com/junjiewwang/perf-analysis/pkg/telemetry"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"

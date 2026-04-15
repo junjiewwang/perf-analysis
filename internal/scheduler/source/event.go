@@ -1,7 +1,7 @@
 package source
 
 import (
-	"github.com/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // TaskEvent represents a unified task event from any source.

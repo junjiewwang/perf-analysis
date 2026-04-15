@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/perf-analysis/internal/formatter"
-	"github.com/perf-analysis/internal/storage"
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/formatter"
+	"github.com/junjiewwang/perf-analysis/internal/storage"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // DefaultResultPublisher is the standard implementation of ResultPublisher.

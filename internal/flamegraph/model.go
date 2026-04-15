@@ -6,8 +6,8 @@ import (
 	"context"
 	"io"
 
-	libfg "github.com/perf-analysis/perflib/flamegraph"
-	"github.com/perf-analysis/perflib/model"
+	libfg "github.com/junjiewwang/perf-analysis/perflib/flamegraph"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // ---- Type aliases delegating to perflib/flamegraph ----

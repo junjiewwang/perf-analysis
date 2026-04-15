@@ -1,11 +1,11 @@
 package analyzer
 
 import (
-	"github.com/perf-analysis/perflib"
-	libanalyzer "github.com/perf-analysis/perflib/analyzer"
-	libmodel "github.com/perf-analysis/perflib/model"
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/perflib"
+	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	libmodel "github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // convertRequest converts a business AnalysisRequest to a library AnalysisRequest.

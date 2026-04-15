@@ -4,7 +4,7 @@
 package model
 
 import (
-	libmodel "github.com/perf-analysis/perflib/model"
+	libmodel "github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // ---- analysis.go types ----

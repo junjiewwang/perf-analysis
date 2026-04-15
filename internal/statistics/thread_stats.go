@@ -1,7 +1,7 @@
 package statistics
 
 import (
-	libstats "github.com/perf-analysis/perflib/statistics"
+	libstats "github.com/junjiewwang/perf-analysis/perflib/statistics"
 )
 
 // ---- Type aliases delegating to perflib/statistics ----

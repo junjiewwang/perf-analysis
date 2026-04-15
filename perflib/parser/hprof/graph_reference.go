@@ -4,7 +4,7 @@ package hprof
 import (
 	"sync"
 
-	perflib "github.com/perf-analysis/perflib"
+	perflib "github.com/junjiewwang/perf-analysis/perflib"
 )
 
 // ReferenceGraph holds the object reference graph with GC root tracking.

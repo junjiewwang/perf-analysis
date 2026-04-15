@@ -1,5 +1,5 @@
 // Package model defines output data abstractions for different analysis types.
-// Core analysis types have been migrated to github.com/perf-analysis/perflib/model.
+// Core analysis types have been migrated to github.com/junjiewwang/perf-analysis/perflib/model.
 // This file retains only the AnalysisMode function that uses fmt (not migrated to avoid
 // breaking the original function signature which differs from perflib's AnalysisModeString).
 package model

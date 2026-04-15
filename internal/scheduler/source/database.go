@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/perf-analysis/internal/repository"
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/repository"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // SourceTypeDB is the source type constant for database source.

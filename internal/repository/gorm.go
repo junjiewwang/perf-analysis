@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

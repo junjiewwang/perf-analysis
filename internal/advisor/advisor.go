@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/perf-analysis/internal/statistics"
-	"github.com/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/internal/statistics"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // Advisor generates analysis suggestions based on profiling data.

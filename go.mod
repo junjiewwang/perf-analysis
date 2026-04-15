@@ -1,11 +1,11 @@
-module github.com/perf-analysis
+module github.com/junjiewwang/perf-analysis
 
 go 1.24.9
 
 toolchain go1.24.11
 
 require (
-	github.com/perf-analysis/perflib v0.0.0
+	github.com/junjiewwang/perf-analysis/perflib v0.0.0
 	github.com/google/pprof v0.0.0-20251213031049-b05bdaca462f
 	github.com/klauspost/compress v1.18.2
 	github.com/spf13/cobra v1.10.2
@@ -90,4 +90,4 @@ require (
 	gorm.io/driver/clickhouse v0.7.0 // indirect
 )
 
-replace github.com/perf-analysis/perflib => ./perflib
+replace github.com/junjiewwang/perf-analysis/perflib => ./perflib

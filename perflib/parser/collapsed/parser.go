@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 const (

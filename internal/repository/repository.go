@@ -4,7 +4,7 @@ package repository
 import (
 	"context"
 
-	"github.com/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // TaskRepository defines the interface for task-related database operations.

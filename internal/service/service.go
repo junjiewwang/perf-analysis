@@ -7,14 +7,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/perf-analysis/internal/ingress"
-	"github.com/perf-analysis/internal/repository"
-	"github.com/perf-analysis/internal/scheduler"
-	"github.com/perf-analysis/internal/scheduler/source"
-	"github.com/perf-analysis/internal/storage"
-	"github.com/perf-analysis/internal/webui"
-	"github.com/perf-analysis/pkg/config"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/ingress"
+	"github.com/junjiewwang/perf-analysis/internal/repository"
+	"github.com/junjiewwang/perf-analysis/internal/scheduler"
+	"github.com/junjiewwang/perf-analysis/internal/scheduler/source"
+	"github.com/junjiewwang/perf-analysis/internal/storage"
+	"github.com/junjiewwang/perf-analysis/internal/webui"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // Service is the main application service.

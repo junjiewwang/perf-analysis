@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/internal/callgraph"
-	"github.com/perf-analysis/internal/flamegraph"
-	"github.com/perf-analysis/internal/parser/collapsed"
-	"github.com/perf-analysis/internal/statistics"
+	"github.com/junjiewwang/perf-analysis/internal/callgraph"
+	"github.com/junjiewwang/perf-analysis/internal/flamegraph"
+	"github.com/junjiewwang/perf-analysis/internal/parser/collapsed"
+	"github.com/junjiewwang/perf-analysis/internal/statistics"
 )
 
 // getTestDataPath returns the path to test data files.

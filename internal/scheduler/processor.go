@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/perf-analysis/internal/advisor"
-	"github.com/perf-analysis/internal/analyzer"
-	"github.com/perf-analysis/internal/publisher"
-	"github.com/perf-analysis/internal/repository"
-	"github.com/perf-analysis/internal/storage"
-	"github.com/perf-analysis/pkg/config"
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/advisor"
+	"github.com/junjiewwang/perf-analysis/internal/analyzer"
+	"github.com/junjiewwang/perf-analysis/internal/publisher"
+	"github.com/junjiewwang/perf-analysis/internal/repository"
+	"github.com/junjiewwang/perf-analysis/internal/storage"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // DefaultTaskProcessor implements TaskProcessor using the analyzer components.

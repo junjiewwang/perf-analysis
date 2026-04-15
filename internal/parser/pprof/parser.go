@@ -1,9 +1,9 @@
 // Package pprof provides parsing functionality for Go pprof profile data.
-// This is a thin wrapper around github.com/perf-analysis/perflib/parser/pprof.
+// This is a thin wrapper around github.com/junjiewwang/perf-analysis/perflib/parser/pprof.
 package pprof
 
 import (
-	libpprof "github.com/perf-analysis/perflib/parser/pprof"
+	libpprof "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 )
 
 // Type aliases - delegate all types to perflib/parser/pprof.

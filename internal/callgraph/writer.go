@@ -1,8 +1,8 @@
 package callgraph
 
 import (
-	libcg "github.com/perf-analysis/perflib/callgraph"
-	"github.com/perf-analysis/perflib/writer"
+	libcg "github.com/junjiewwang/perf-analysis/perflib/callgraph"
+	"github.com/junjiewwang/perf-analysis/perflib/writer"
 )
 
 // ---- Writer type aliases delegating to perflib ----

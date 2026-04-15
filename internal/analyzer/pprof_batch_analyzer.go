@@ -6,9 +6,9 @@ import (
 	"io"
 	"time"
 
-	libanalyzer "github.com/perf-analysis/perflib/analyzer"
-	pprofparser "github.com/perf-analysis/internal/parser/pprof"
-	"github.com/perf-analysis/pkg/model"
+	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	pprofparser "github.com/junjiewwang/perf-analysis/internal/parser/pprof"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
 // PProfBatchAnalyzer analyzes a directory of pprof files.

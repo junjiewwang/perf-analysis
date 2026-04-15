@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/perf-analysis/cmd/cli/cmd"
+	"github.com/junjiewwang/perf-analysis/cmd/cli/cmd"
 )
 
 func main() {

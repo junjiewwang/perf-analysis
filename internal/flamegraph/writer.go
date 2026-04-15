@@ -1,8 +1,8 @@
 package flamegraph
 
 import (
-	libfg "github.com/perf-analysis/perflib/flamegraph"
-	"github.com/perf-analysis/perflib/writer"
+	libfg "github.com/junjiewwang/perf-analysis/perflib/flamegraph"
+	"github.com/junjiewwang/perf-analysis/perflib/writer"
 )
 
 // ---- Writer type aliases delegating to perflib ----

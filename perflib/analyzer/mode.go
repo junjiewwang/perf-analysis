@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // AnalysisMode represents a user-friendly analysis mode.

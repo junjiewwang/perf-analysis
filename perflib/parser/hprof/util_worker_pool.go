@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/perf-analysis/perflib/internal/parallel"
+	"github.com/junjiewwang/perf-analysis/perflib/internal/parallel"
 )
 
 // ============================================================================

@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/perf-analysis/perflib/writer"
+	"github.com/junjiewwang/perf-analysis/perflib/writer"
 )
 
 // JSONWriter writes call graph data as JSON.

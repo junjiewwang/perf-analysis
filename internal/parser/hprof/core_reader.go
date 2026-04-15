@@ -3,7 +3,7 @@ package hprof
 import (
 	"io"
 
-	libhprof "github.com/perf-analysis/perflib/parser/hprof"
+	libhprof "github.com/junjiewwang/perf-analysis/perflib/parser/hprof"
 )
 
 // Reader provides buffered reading of HPROF binary data.

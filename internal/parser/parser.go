@@ -1,9 +1,9 @@
 // Package parser defines the interfaces for parsing profiling data.
-// This is a thin wrapper around github.com/perf-analysis/perflib/parser.
+// This is a thin wrapper around github.com/junjiewwang/perf-analysis/perflib/parser.
 package parser
 
 import (
-	libparser "github.com/perf-analysis/perflib/parser"
+	libparser "github.com/junjiewwang/perf-analysis/perflib/parser"
 )
 
 // Type aliases - delegate all types to perflib/parser.

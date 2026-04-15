@@ -6,7 +6,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // Analyzer is the interface for all profiling data analyzers.

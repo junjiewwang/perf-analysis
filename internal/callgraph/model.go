@@ -3,7 +3,7 @@
 package callgraph
 
 import (
-	libcg "github.com/perf-analysis/perflib/callgraph"
+	libcg "github.com/junjiewwang/perf-analysis/perflib/callgraph"
 )
 
 // ---- Type aliases delegating to perflib/callgraph ----

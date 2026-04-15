@@ -1,4 +1,4 @@
-module github.com/perf-analysis/perflib
+module github.com/junjiewwang/perf-analysis/perflib
 
 go 1.24.9
 

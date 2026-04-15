@@ -7,12 +7,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/perf-analysis/perflib"
-	"github.com/perf-analysis/perflib/callgraph"
-	"github.com/perf-analysis/perflib/flamegraph"
-	"github.com/perf-analysis/perflib/model"
-	"github.com/perf-analysis/perflib/parser/collapsed"
-	"github.com/perf-analysis/perflib/statistics"
+	"github.com/junjiewwang/perf-analysis/perflib"
+	"github.com/junjiewwang/perf-analysis/perflib/callgraph"
+	"github.com/junjiewwang/perf-analysis/perflib/flamegraph"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/parser/collapsed"
+	"github.com/junjiewwang/perf-analysis/perflib/statistics"
 )
 
 // AnalysisProfile defines preset analysis configurations for different use cases.

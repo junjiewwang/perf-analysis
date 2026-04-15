@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	pprofparser "github.com/perf-analysis/perflib/parser/pprof"
-	"github.com/perf-analysis/perflib/model"
+	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
 )
 
 // PProfHeapAnalyzer analyzes Go pprof Heap profile data.

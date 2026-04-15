@@ -10,10 +10,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/perf-analysis/perflib"
-	timerPkg "github.com/perf-analysis/perflib/internal/timer"
-	"github.com/perf-analysis/perflib/model"
-	"github.com/perf-analysis/perflib/parser/hprof"
+	"github.com/junjiewwang/perf-analysis/perflib"
+	timerPkg "github.com/junjiewwang/perf-analysis/perflib/internal/timer"
+	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/parser/hprof"
 )
 
 // JavaHeapAnalyzer analyzes Java heap dump (HPROF) files.

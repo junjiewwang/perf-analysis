@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/perf-analysis/internal/storage"
-	"github.com/perf-analysis/pkg/config"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/internal/storage"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 //go:embed templates/*

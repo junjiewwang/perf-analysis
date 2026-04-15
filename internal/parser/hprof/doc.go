@@ -1,6 +1,6 @@
 // Package hprof provides parsing and analysis functionality for Java HPROF heap dump files.
 //
-// This package is a thin wrapper around github.com/perf-analysis/perflib/parser/hprof,
+// This package is a thin wrapper around github.com/junjiewwang/perf-analysis/perflib/parser/hprof,
 // providing backward compatibility for the internal API.
 //
 // # Key Types

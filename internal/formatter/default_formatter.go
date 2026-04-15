@@ -3,8 +3,8 @@ package formatter
 import (
 	"os"
 
-	"github.com/perf-analysis/pkg/model"
-	"github.com/perf-analysis/pkg/utils"
+	"github.com/junjiewwang/perf-analysis/pkg/model"
+	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
 
 // DefaultFormatter is a fallback formatter for unknown data types.

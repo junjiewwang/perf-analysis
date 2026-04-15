@@ -3,7 +3,7 @@ package storage
 import (
 	"testing"
 
-	"github.com/perf-analysis/pkg/config"
+	"github.com/junjiewwang/perf-analysis/pkg/config"
 	"github.com/stretchr/testify/assert"
 )
 

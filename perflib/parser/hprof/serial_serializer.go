@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	pb "github.com/perf-analysis/perflib/parser/hprof/proto"
+	pb "github.com/junjiewwang/perf-analysis/perflib/parser/hprof/proto"
 	"google.golang.org/protobuf/proto"
 )
 
