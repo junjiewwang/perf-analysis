@@ -104,19 +104,17 @@ func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 
 	// Step 3: Generate heap analysis report
 	heapReportFile := filepath.Join(taskDir, "heap_analysis.json")
-	timer.TimeFuncWithError("Write heap report", func() error {
+	if _, err = timer.TimeFuncWithError("Write heap report", func() error {
 		return a.writeHeapReport(heapResult, heapReportFile)
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, fmt.Errorf("failed to write heap report: %w", err)
 	}
 
 	// Step 4: Generate class histogram (similar to jmap -histo)
 	histogramFile := filepath.Join(taskDir, "class_histogram.json")
-	timer.TimeFuncWithError("Write class histogram", func() error {
+	if _, err = timer.TimeFuncWithError("Write class histogram", func() error {
 		return a.writeClassHistogram(heapResult, histogramFile)
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, fmt.Errorf("failed to write class histogram: %w", err)
 	}
 

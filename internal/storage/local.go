@@ -65,6 +65,13 @@ func (s *LocalStorage) UploadFile(ctx context.Context, key string, localPath str
 
 	fullPath := s.getFullPath(key)
 
+	// Skip copy if source and destination resolve to the same file.
+	// This prevents a self-overwrite bug where os.Create truncates the
+	// source file to 0 bytes before io.Copy can read it.
+	if isSamePath(localPath, fullPath) {
+		return nil
+	}
+
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
@@ -286,6 +293,25 @@ func (s *LocalStorage) DeleteByPrefix(ctx context.Context, prefix string) error 
 		return fmt.Errorf("failed to remove file: %w", err)
 	}
 	return nil
+}
+
+// isSamePath checks if two paths point to the same file using os.SameFile.
+// Falls back to comparing cleaned absolute paths when either file does not exist.
+func isSamePath(path1, path2 string) bool {
+	// Try os.SameFile first (handles hard links, symlinks, etc.)
+	info1, err1 := os.Stat(path1)
+	info2, err2 := os.Stat(path2)
+	if err1 == nil && err2 == nil {
+		return os.SameFile(info1, info2)
+	}
+
+	// Fallback: compare cleaned absolute paths
+	abs1, err1 := filepath.Abs(path1)
+	abs2, err2 := filepath.Abs(path2)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return filepath.Clean(abs1) == filepath.Clean(abs2)
 }
 
 // getFullPath returns the full filesystem path for the given key.

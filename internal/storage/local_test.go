@@ -100,6 +100,63 @@ func TestLocalStorage_UploadFile(t *testing.T) {
 		err := storage.UploadFile(context.Background(), "dest.txt", "/nonexistent/path.txt")
 		assert.Error(t, err)
 	})
+
+	t.Run("UploadFileSamePathSkipsCopy", func(t *testing.T) {
+		// Create a file inside basePath where key resolves to the same file
+		content := []byte("self-overwrite protection test")
+		subDir := filepath.Join(tempDir, "same")
+		require.NoError(t, os.MkdirAll(subDir, 0755))
+		srcFile := filepath.Join(subDir, "data.json")
+		require.NoError(t, os.WriteFile(srcFile, content, 0644))
+
+		// Upload with key that resolves to the same path
+		err := storage.UploadFile(context.Background(), "same/data.json", srcFile)
+		require.NoError(t, err)
+
+		// Verify file content is preserved (not truncated to 0 bytes)
+		data, err := os.ReadFile(srcFile)
+		require.NoError(t, err)
+		assert.Equal(t, content, data)
+	})
+}
+
+func Test_isSamePath(t *testing.T) {
+	tempDir := t.TempDir()
+
+	t.Run("SameExistingFile", func(t *testing.T) {
+		filePath := filepath.Join(tempDir, "test.txt")
+		require.NoError(t, os.WriteFile(filePath, []byte("test"), 0644))
+
+		assert.True(t, isSamePath(filePath, filePath))
+	})
+
+	t.Run("DifferentExistingFiles", func(t *testing.T) {
+		file1 := filepath.Join(tempDir, "file1.txt")
+		file2 := filepath.Join(tempDir, "file2.txt")
+		require.NoError(t, os.WriteFile(file1, []byte("1"), 0644))
+		require.NoError(t, os.WriteFile(file2, []byte("2"), 0644))
+
+		assert.False(t, isSamePath(file1, file2))
+	})
+
+	t.Run("RelativeAndAbsoluteSamePath", func(t *testing.T) {
+		filePath := filepath.Join(tempDir, "rel.txt")
+		require.NoError(t, os.WriteFile(filePath, []byte("rel"), 0644))
+
+		// Both exist, os.SameFile handles this
+		assert.True(t, isSamePath(filePath, filePath))
+	})
+
+	t.Run("NonExistentPaths", func(t *testing.T) {
+		absPath := filepath.Join(tempDir, "noexist", "file.txt")
+		assert.True(t, isSamePath(absPath, absPath))
+	})
+
+	t.Run("DifferentNonExistentPaths", func(t *testing.T) {
+		path1 := filepath.Join(tempDir, "a", "file.txt")
+		path2 := filepath.Join(tempDir, "b", "file.txt")
+		assert.False(t, isSamePath(path1, path2))
+	})
 }
 
 func TestLocalStorage_Download(t *testing.T) {
