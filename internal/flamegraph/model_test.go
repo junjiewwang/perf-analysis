@@ -13,7 +13,6 @@ func TestNewNode(t *testing.T) {
 	assert.Equal(t, "func", node.Name)
 	assert.Equal(t, int64(100), node.Value)
 	assert.NotNil(t, node.Children)
-	assert.NotNil(t, node.childrenMap)
 }
 
 func TestNewNodeWithMetadata(t *testing.T) {
@@ -143,9 +142,6 @@ func TestFlameGraph_Cleanup(t *testing.T) {
 	// Only hot_func should remain
 	assert.Len(t, fg.Root.Children, 1)
 	assert.Equal(t, "hot_func", fg.Root.Children[0].Name)
-
-	// Internal map should be cleared
-	assert.Nil(t, fg.Root.childrenMap)
 }
 
 func TestFlameGraph_CalculateMaxDepth(t *testing.T) {
@@ -255,38 +251,4 @@ func TestMergeNodes_Single(t *testing.T) {
 	node := NewNode("single", 100)
 	merged := MergeNodes([]*Node{node})
 	assert.Equal(t, node, merged)
-}
-
-func TestMakeChildKey(t *testing.T) {
-	// Simple key (no metadata)
-	key1 := makeChildKey("func", "", "", 0)
-	assert.Equal(t, "func", key1)
-
-	// Key with metadata
-	key2 := makeChildKey("func", "mod", "proc", 123)
-	assert.Contains(t, key2, "\x1E")
-	assert.Contains(t, key2, "func")
-	assert.Contains(t, key2, "mod")
-	assert.Contains(t, key2, "proc")
-	assert.Contains(t, key2, "123")
-}
-
-func TestItoa(t *testing.T) {
-	tests := []struct {
-		input int
-		want  string
-	}{
-		{0, "0"},
-		{1, "1"},
-		{-1, "-1"},
-		{123456, "123456"},
-		{-123456, "-123456"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.want, func(t *testing.T) {
-			got := itoa(tt.input)
-			assert.Equal(t, tt.want, got)
-		})
-	}
 }

@@ -12,8 +12,6 @@ func TestNewCallGraph(t *testing.T) {
 
 	assert.NotNil(t, cg.Nodes)
 	assert.NotNil(t, cg.Edges)
-	assert.NotNil(t, cg.nodeMap)
-	assert.NotNil(t, cg.edgeMap)
 	assert.Empty(t, cg.Nodes)
 	assert.Empty(t, cg.Edges)
 }
@@ -143,10 +141,6 @@ func TestCallGraph_Cleanup(t *testing.T) {
 
 	// Edges should be removed (reference removed nodes)
 	assert.Empty(t, cg.Edges)
-
-	// Internal maps should be cleared
-	assert.Nil(t, cg.nodeMap)
-	assert.Nil(t, cg.edgeMap)
 }
 
 func TestCallGraph_GetStats(t *testing.T) {
@@ -164,25 +158,6 @@ func TestCallGraph_GetStats(t *testing.T) {
 	assert.Equal(t, 1, stats.EdgeCount)
 	assert.InDelta(t, 20.0, stats.MaxSelfPct, 0.01)
 	assert.InDelta(t, 50.0, stats.MaxTotalPct, 0.01)
-}
-
-func TestMakeNodeID(t *testing.T) {
-	tests := []struct {
-		name   string
-		module string
-		want   string
-	}{
-		{"func", "", "func"},
-		{"func", "mod", "func(mod)"},
-		{"java.lang.Thread.run", "Thread.java", "java.lang.Thread.run(Thread.java)"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.want, func(t *testing.T) {
-			got := makeNodeID(tt.name, tt.module)
-			assert.Equal(t, tt.want, got)
-		})
-	}
 }
 
 func TestCallGraph_GetCallers(t *testing.T) {
@@ -287,7 +262,6 @@ func TestNewThreadCallGraph(t *testing.T) {
 	assert.Equal(t, "worker-thread", tcg.ThreadName)
 	assert.NotNil(t, tcg.Nodes)
 	assert.NotNil(t, tcg.Edges)
-	assert.NotNil(t, tcg.nodeMap)
 }
 
 func TestThreadCallGraph_AddNode(t *testing.T) {
@@ -309,7 +283,15 @@ func TestThreadCallGraph_CalculatePercentages(t *testing.T) {
 
 	tcg.CalculatePercentages()
 
-	node := tcg.nodeMap["func1"]
-	assert.InDelta(t, 20.0, node.SelfPct, 0.01)
-	assert.InDelta(t, 50.0, node.TotalPct, 0.01)
+	// Verify through GetNode-like approach: iterate Nodes to find func1
+	var func1Node *Node
+	for _, n := range tcg.Nodes {
+		if n.Name == "func1" {
+			func1Node = n
+			break
+		}
+	}
+	require.NotNil(t, func1Node)
+	assert.InDelta(t, 20.0, func1Node.SelfPct, 0.01)
+	assert.InDelta(t, 50.0, func1Node.TotalPct, 0.01)
 }
