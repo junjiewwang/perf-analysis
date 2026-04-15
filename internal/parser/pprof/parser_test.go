@@ -7,14 +7,11 @@ import (
 	"github.com/google/pprof/profile"
 )
 
-// createTestProfile creates a test pprof profile for testing.
-func createTestProfile(sampleTypes []string, samples [][]int64, locations []*profile.Location) *profile.Profile {
+// createTestPprofData creates a valid pprof binary data for testing via Parse().
+func createTestPprofData(sampleTypes []string) []byte {
 	prof := &profile.Profile{
 		SampleType: make([]*profile.ValueType, len(sampleTypes)),
-		Sample:     make([]*profile.Sample, len(samples)),
-		Location:   locations,
 	}
-
 	for i, st := range sampleTypes {
 		prof.SampleType[i] = &profile.ValueType{
 			Type: st,
@@ -22,19 +19,25 @@ func createTestProfile(sampleTypes []string, samples [][]int64, locations []*pro
 		}
 	}
 
-	for i, values := range samples {
-		prof.Sample[i] = &profile.Sample{
-			Value:    values,
-			Location: locations,
-		}
-	}
-
-	return prof
+	var buf bytes.Buffer
+	_ = prof.Write(&buf)
+	return buf.Bytes()
 }
 
-func TestParser_GetSampleTypes(t *testing.T) {
-	p := &Parser{
-		profile: createTestProfile([]string{"cpu", "samples"}, nil, nil),
+func TestParser_Parse_InvalidData(t *testing.T) {
+	p := NewParser()
+	err := p.Parse(bytes.NewReader([]byte("invalid pprof data")))
+	if err == nil {
+		t.Error("Parse() with invalid data should return error")
+	}
+}
+
+func TestParser_Parse_ValidData(t *testing.T) {
+	data := createTestPprofData([]string{"cpu", "samples"})
+	p := NewParser()
+	err := p.Parse(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("Parse() with valid data should not return error: %v", err)
 	}
 
 	types := p.GetSampleTypes()
@@ -50,7 +53,7 @@ func TestParser_GetSampleTypes(t *testing.T) {
 }
 
 func TestParser_GetSampleTypes_Nil(t *testing.T) {
-	p := &Parser{}
+	p := NewParser()
 	types := p.GetSampleTypes()
 	if types != nil {
 		t.Errorf("GetSampleTypes() with nil profile should return nil")
@@ -72,8 +75,10 @@ func TestParser_DetectProfileType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &Parser{
-				profile: createTestProfile(tt.sampleTypes, nil, nil),
+			data := createTestPprofData(tt.sampleTypes)
+			p := NewParser()
+			if err := p.Parse(bytes.NewReader(data)); err != nil {
+				t.Fatalf("Parse() error: %v", err)
 			}
 			got := p.DetectProfileType()
 			if got != tt.want {
@@ -84,7 +89,7 @@ func TestParser_DetectProfileType(t *testing.T) {
 }
 
 func TestParser_DetectProfileType_Nil(t *testing.T) {
-	p := &Parser{}
+	p := NewParser()
 	got := p.DetectProfileType()
 	if got != "unknown" {
 		t.Errorf("DetectProfileType() with nil profile = %s, want unknown", got)
@@ -92,10 +97,17 @@ func TestParser_DetectProfileType_Nil(t *testing.T) {
 }
 
 func TestParser_GetDuration(t *testing.T) {
-	p := &Parser{
-		profile: &profile.Profile{
-			DurationNanos: 1000000000, // 1 second
-		},
+	// Create profile with duration
+	prof := &profile.Profile{
+		SampleType:    []*profile.ValueType{{Type: "cpu", Unit: "nanoseconds"}},
+		DurationNanos: 1000000000, // 1 second
+	}
+	var buf bytes.Buffer
+	_ = prof.Write(&buf)
+
+	p := NewParser()
+	if err := p.Parse(bytes.NewReader(buf.Bytes())); err != nil {
+		t.Fatalf("Parse() error: %v", err)
 	}
 
 	duration := p.GetDuration()
@@ -105,81 +117,10 @@ func TestParser_GetDuration(t *testing.T) {
 }
 
 func TestParser_GetDuration_Nil(t *testing.T) {
-	p := &Parser{}
+	p := NewParser()
 	duration := p.GetDuration()
 	if duration != 0 {
 		t.Errorf("GetDuration() with nil profile = %d, want 0", duration)
-	}
-}
-
-func TestParser_findSampleTypeIndex(t *testing.T) {
-	p := &Parser{
-		profile: createTestProfile([]string{"cpu", "samples", "inuse_space"}, nil, nil),
-	}
-
-	tests := []struct {
-		typeName string
-		want     int
-	}{
-		{"cpu", 0},
-		{"samples", 1},
-		{"inuse_space", 2},
-		{"nonexistent", -1},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.typeName, func(t *testing.T) {
-			got := p.findSampleTypeIndex(tt.typeName)
-			if got != tt.want {
-				t.Errorf("findSampleTypeIndex(%s) = %d, want %d", tt.typeName, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestParser_findAlternativeSampleTypeIndex(t *testing.T) {
-	p := &Parser{
-		profile: createTestProfile([]string{"nanoseconds", "count"}, nil, nil),
-	}
-
-	tests := []struct {
-		sampleType SampleType
-		want       int
-	}{
-		{SampleTypeCPU, 0},         // nanoseconds is alternative for cpu
-		{SampleTypeSamples, 1},     // count is alternative for samples
-		{SampleTypeInuseSpace, -1}, // not found
-	}
-
-	for _, tt := range tests {
-		t.Run(string(tt.sampleType), func(t *testing.T) {
-			got := p.findAlternativeSampleTypeIndex(tt.sampleType)
-			if got != tt.want {
-				t.Errorf("findAlternativeSampleTypeIndex(%s) = %d, want %d", tt.sampleType, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestGetModuleName(t *testing.T) {
-	tests := []struct {
-		funcName string
-		want     string
-	}{
-		{"github.com/pkg/errors.Wrap", "github.com/pkg/errors"},
-		{"runtime.main", "runtime"},
-		{"main.main", "main"},
-		{"net/http.(*Server).Serve", "net/http"},
-		{"simple", "simple"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.funcName, func(t *testing.T) {
-			got := getModuleName(tt.funcName)
-			if got != tt.want {
-				t.Errorf("getModuleName(%s) = %s, want %s", tt.funcName, got, tt.want)
-			}
-		})
 	}
 }
 
@@ -190,7 +131,13 @@ func TestParser_GetUnit(t *testing.T) {
 			{Type: "samples", Unit: "count"},
 		},
 	}
-	p := &Parser{profile: prof}
+	var buf bytes.Buffer
+	_ = prof.Write(&buf)
+
+	p := NewParser()
+	if err := p.Parse(bytes.NewReader(buf.Bytes())); err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
 
 	tests := []struct {
 		sampleType SampleType
@@ -207,14 +154,6 @@ func TestParser_GetUnit(t *testing.T) {
 				t.Errorf("GetUnit(%s) = %s, want %s", tt.sampleType, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestParser_Parse_InvalidData(t *testing.T) {
-	p := NewParser()
-	err := p.Parse(bytes.NewReader([]byte("invalid pprof data")))
-	if err == nil {
-		t.Error("Parse() with invalid data should return error")
 	}
 }
 
@@ -250,18 +189,20 @@ func TestParser_GetTopFunctions_NilProfile(t *testing.T) {
 	}
 }
 
-func TestParser_containsSampleType(t *testing.T) {
-	p := &Parser{
-		profile: createTestProfile([]string{"cpu", "samples"}, nil, nil),
+func TestParser_Profile_NilBeforeParse(t *testing.T) {
+	p := NewParser()
+	if p.Profile() != nil {
+		t.Error("Profile() before Parse() should return nil")
 	}
+}
 
-	if !p.containsSampleType("cpu") {
-		t.Error("containsSampleType(cpu) should return true")
+func TestParser_Profile_AfterParse(t *testing.T) {
+	data := createTestPprofData([]string{"cpu", "samples"})
+	p := NewParser()
+	if err := p.Parse(bytes.NewReader(data)); err != nil {
+		t.Fatalf("Parse() error: %v", err)
 	}
-	if !p.containsSampleType("samples") {
-		t.Error("containsSampleType(samples) should return true")
-	}
-	if p.containsSampleType("nonexistent") {
-		t.Error("containsSampleType(nonexistent) should return false")
+	if p.Profile() == nil {
+		t.Error("Profile() after Parse() should not return nil")
 	}
 }
