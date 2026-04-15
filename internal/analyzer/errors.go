@@ -1,20 +1,24 @@
 package analyzer
 
-import "errors"
+import (
+	libanalyzer "github.com/perf-analysis/perflib/analyzer"
+)
 
+// Error variables are aliases to perflib/analyzer errors,
+// ensuring error identity (errors.Is) works correctly across layers.
 var (
 	// ErrUnsupportedMode is returned when an unknown analysis mode is specified.
-	ErrUnsupportedMode = errors.New("unsupported analysis mode")
+	ErrUnsupportedMode = libanalyzer.ErrUnsupportedMode
 
 	// ErrParseError is returned when parsing profiling data fails.
-	ErrParseError = errors.New("failed to parse profiling data")
+	ErrParseError = libanalyzer.ErrParseError
 
 	// ErrEmptyData is returned when profiling data is empty.
-	ErrEmptyData = errors.New("profiling data is empty")
+	ErrEmptyData = libanalyzer.ErrEmptyData
 
 	// ErrAnalysisFailed is returned when analysis fails.
-	ErrAnalysisFailed = errors.New("analysis failed")
+	ErrAnalysisFailed = libanalyzer.ErrAnalysisFailed
 
 	// ErrContextCanceled is returned when the context is canceled.
-	ErrContextCanceled = errors.New("context canceled")
+	ErrContextCanceled = libanalyzer.ErrContextCanceled
 )

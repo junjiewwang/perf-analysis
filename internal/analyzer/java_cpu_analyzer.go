@@ -2,17 +2,18 @@ package analyzer
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
+	libanalyzer "github.com/perf-analysis/perflib/analyzer"
 	"github.com/perf-analysis/pkg/model"
 )
 
 // JavaCPUAnalyzer analyzes Java async-profiler CPU data.
+// It delegates to the perflib engine and adapts the business model.
 type JavaCPUAnalyzer struct {
-	*BaseAnalyzer
+	engine *libanalyzer.JavaCPUAnalyzer
+	config *BaseAnalyzerConfig
 }
 
 // NewJavaCPUAnalyzer creates a new Java CPU analyzer.
@@ -20,145 +21,41 @@ func NewJavaCPUAnalyzer(config *BaseAnalyzerConfig) *JavaCPUAnalyzer {
 	if config == nil {
 		config = DefaultBaseAnalyzerConfig()
 	}
-	// Default to standard profile for CPU analysis
 	if config.AnalysisProfile == "" {
 		config.AnalysisProfile = ProfileStandard
 	}
 
 	return &JavaCPUAnalyzer{
-		BaseAnalyzer: NewBaseAnalyzer(config),
+		engine: libanalyzer.NewJavaCPUAnalyzer(convertConfig(config)),
+		config: config,
 	}
 }
 
 // Name returns the analyzer name.
 func (a *JavaCPUAnalyzer) Name() string {
-	return "java_cpu_analyzer"
+	return a.engine.Name()
 }
 
 // Analyze performs Java CPU profiling analysis using an input file.
 func (a *JavaCPUAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
-	file, err := os.Open(req.InputFile)
+	libResp, err := a.engine.Analyze(ctx, convertRequest(req))
 	if err != nil {
-		return nil, fmt.Errorf("failed to open input file: %w", err)
+		return nil, err
 	}
-	defer file.Close()
-
-	return a.AnalyzeFromReader(ctx, req, file)
+	return convertResponse(libResp, req.TaskUUID), nil
 }
 
 // AnalyzeFromReader performs Java CPU profiling analysis from a reader.
 func (a *JavaCPUAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResponse, error) {
-	// Step 1: Parse the collapsed data
-	parseResult, err := a.Parse(ctx, dataReader)
+	libResp, err := a.engine.AnalyzeFromReader(ctx, convertRequest(req), dataReader)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrParseError, err)
+		return nil, err
 	}
-
-	if parseResult.TotalSamples == 0 {
-		return nil, ErrEmptyData
-	}
-
-	// Step 2: Determine output directory
-	taskDir := req.OutputDir
-	if taskDir == "" {
-		taskDir, err = a.EnsureOutputDir(req.TaskUUID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create output directory: %w", err)
-		}
-	}
-
-	// Step 3: Generate unified flame graph with thread analysis
-	fg, err := a.GenerateFlameGraphWithAnalysis(ctx, parseResult.Samples)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate flame graph: %w", err)
-	}
-
-	// Step 4: Write flame graph (gzipped JSON)
-	flameGraphFile := filepath.Join(taskDir, "collapsed_data.json.gz")
-	if err := a.WriteFlameGraphGzip(fg, flameGraphFile); err != nil {
-		return nil, fmt.Errorf("failed to write flame graph: %w", err)
-	}
-
-	// Step 5: Generate enhanced call graph with full analysis
-	cg, err := a.GenerateCallGraphWithAnalysis(ctx, parseResult.Samples)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate call graph: %w", err)
-	}
-
-	// Step 6: Write call graph (gzipped JSON for consistency)
-	callGraphFile := filepath.Join(taskDir, "callgraph_data.json.gz")
-	if err := a.WriteCallGraphGzip(cg, callGraphFile); err != nil {
-		return nil, fmt.Errorf("failed to write call graph: %w", err)
-	}
-
-	// Step 7: Calculate statistics from flame graph
-	topFuncsMap := make(model.TopFuncsMap)
-	if fg.ThreadAnalysis != nil {
-		for _, tf := range fg.ThreadAnalysis.TopFunctions {
-			topFuncsMap[tf.Name] = model.TopFuncValue{Self: tf.Percentage}
-		}
-	}
-
-	// Step 8: Build thread stats from flame graph
-	threadStats := make([]model.ThreadInfo, 0)
-	if fg.ThreadAnalysis != nil {
-		for _, t := range fg.ThreadAnalysis.Threads {
-			threadStats = append(threadStats, model.ThreadInfo{
-				TID:        t.TID,
-				ThreadName: t.Name,
-				Samples:    t.Samples,
-				Percentage: t.Percentage,
-			})
-		}
-	}
-
-	// Step 9: Build CPUProfilingData
-	cpuData := &model.CPUProfilingData{
-		FlameGraphFile: flameGraphFile,
-		CallGraphFile:  callGraphFile,
-		ThreadStats:    threadStats,
-		TopFuncs:       topFuncsMap,
-		TotalSamples:   parseResult.TotalSamples,
-	}
-
-	// Step 10: Build output files
-	outputFiles := []model.OutputFile{
-		{
-			Name:        "Flame Graph",
-			LocalPath:   flameGraphFile,
-			COSKey:      req.TaskUUID + "/collapsed_data.json.gz",
-			ContentType: "application/gzip",
-		},
-		{
-			Name:        "Call Graph",
-			LocalPath:   callGraphFile,
-			COSKey:      req.TaskUUID + "/callgraph_data.json.gz",
-			ContentType: "application/gzip",
-		},
-	}
-
-	// Step 11: Convert suggestions
-	suggestions := make([]model.SuggestionItem, 0, len(parseResult.Suggestions))
-	for _, sug := range parseResult.Suggestions {
-		suggestions = append(suggestions, model.SuggestionItem{
-			Suggestion: sug.Suggestion,
-			FuncName:   sug.FuncName,
-			Namespace:  sug.Namespace,
-		})
-	}
-
-	// Step 12: Build response
-	return &model.AnalysisResponse{
-		TaskUUID:     req.TaskUUID,
-		Mode:         req.Mode,
-		TotalRecords: int(parseResult.TotalSamples),
-		OutputFiles:  outputFiles,
-		Data:         cpuData,
-		Suggestions:  suggestions,
-	}, nil
+	return convertResponse(libResp, req.TaskUUID), nil
 }
 
 // GetOutputFiles returns the list of output files generated by the analyzer.
+// This is a business-only method that constructs COSKey from TaskUUID.
 func (a *JavaCPUAnalyzer) GetOutputFiles(taskUUID, taskDir string) []model.OutputFile {
 	return []model.OutputFile{
 		{

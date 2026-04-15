@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/internal/statistics"
 	"github.com/perf-analysis/pkg/model"
 )
 
@@ -19,11 +18,7 @@ func TestNewBaseAnalyzer(t *testing.T) {
 	analyzer := NewBaseAnalyzer(nil)
 	assert.NotNil(t, analyzer)
 	assert.NotNil(t, analyzer.config)
-	assert.NotNil(t, analyzer.parser)
-	assert.NotNil(t, analyzer.flameGraphGen)
-	assert.NotNil(t, analyzer.callGraphGen)
-	assert.NotNil(t, analyzer.topFuncsCalc)
-	assert.NotNil(t, analyzer.threadStatsCalc)
+	assert.NotNil(t, analyzer.BaseAnalyzer) // embedded perflib engine
 
 	// Test with custom config
 	config := &BaseAnalyzerConfig{
@@ -146,51 +141,8 @@ func TestBaseAnalyzer_CleanupOutputDir(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
-func TestBaseAnalyzer_BuildNamespaceResult(t *testing.T) {
-	analyzer := NewBaseAnalyzer(nil)
-
-	parseResult := &model.ParseResult{
-		TotalSamples: 150,
-		Samples:      []*model.Sample{},
-	}
-
-	topFuncsResult := &statistics.TopFuncsResult{
-		TopFuncs: []statistics.TopFuncEntry{
-			{Name: "func1", SelfSamples: 100, SelfPercent: 66.67},
-			{Name: "func2", SelfSamples: 50, SelfPercent: 33.33},
-		},
-		FuncCallstacks: make(map[string]map[string]int64),
-	}
-
-	threadStatsResult := &statistics.ThreadStatsResult{
-		Threads: []statistics.ThreadEntry{
-			{TID: 1, ThreadName: "main", Samples: 100, Percentage: 66.67},
-			{TID: 2, ThreadName: "worker", Samples: 50, Percentage: 33.33},
-		},
-	}
-
-	suggestions := []model.Suggestion{
-		{Suggestion: "test suggestion"},
-	}
-
-	result, err := analyzer.BuildNamespaceResult(
-		"test-uuid",
-		parseResult,
-		topFuncsResult,
-		threadStatsResult,
-		"test-uuid/flamegraph.json.gz",
-		"test-uuid/callgraph.json",
-		suggestions,
-	)
-
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Contains(t, result.TopFuncs, "func1")
-	assert.Contains(t, result.ActiveThreadsJSON, "main")
-	assert.Equal(t, "test-uuid/flamegraph.json.gz", result.FlameGraphFile)
-	assert.Equal(t, "test-uuid/callgraph.json", result.CallGraphFile)
-	assert.Len(t, result.Suggestions, 1)
-}
+// Note: BuildNamespaceResult was removed as dead code in the perflib migration.
+// The method was never called by scheduler or CLI code.
 
 func TestBaseAnalyzer_WriteFlameGraphGzip(t *testing.T) {
 	analyzer := NewBaseAnalyzer(nil)

@@ -17,7 +17,7 @@ func TestNewJavaMemAnalyzer(t *testing.T) {
 	analyzer := NewJavaMemAnalyzer(nil)
 
 	assert.NotNil(t, analyzer)
-	assert.NotNil(t, analyzer.BaseAnalyzer)
+	assert.NotNil(t, analyzer.engine)
 	assert.Equal(t, "java_mem_analyzer", analyzer.Name())
 }
 
@@ -79,20 +79,8 @@ func TestJavaMemAnalyzer_Analyze_EmptyData(t *testing.T) {
 	assert.Equal(t, ErrEmptyData, err)
 }
 
-func TestJavaMemAnalyzer_GenerateMemorySuggestions(t *testing.T) {
-	analyzer := NewJavaMemAnalyzer(nil)
-
-	topAllocators := model.TopFuncsMap{
-		"com.example.App.allocate":   model.TopFuncValue{Self: 15.0},
-		"com.example.Worker.process": model.TopFuncValue{Self: 5.0},
-	}
-
-	suggestions := analyzer.generateMemorySuggestions(topAllocators)
-
-	// Should have suggestion for function > 10%
-	require.Len(t, suggestions, 1)
-	assert.Contains(t, suggestions[0].Suggestion, "com.example.App.allocate")
-}
+// Note: generateMemorySuggestions was moved to perflib as a package-level function.
+// The logic is now tested in perflib/analyzer/java_mem_analyzer_test.go.
 
 func TestJavaMemAnalyzer_GetOutputFiles(t *testing.T) {
 	analyzer := NewJavaMemAnalyzer(nil)

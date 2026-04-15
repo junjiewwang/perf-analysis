@@ -17,7 +17,7 @@ func TestNewJavaCPUAnalyzer(t *testing.T) {
 	analyzer := NewJavaCPUAnalyzer(nil)
 
 	assert.NotNil(t, analyzer)
-	assert.NotNil(t, analyzer.BaseAnalyzer)
+	assert.NotNil(t, analyzer.engine)
 	assert.Equal(t, "java_cpu_analyzer", analyzer.Name())
 }
 

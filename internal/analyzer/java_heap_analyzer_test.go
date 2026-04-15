@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/perf-analysis/internal/parser/hprof"
+	"github.com/perf-analysis/perflib/parser/hprof"
 	"github.com/perf-analysis/pkg/model"
 )
 
@@ -18,7 +18,7 @@ func TestNewJavaHeapAnalyzer(t *testing.T) {
 		analyzer := NewJavaHeapAnalyzer(nil)
 		assert.NotNil(t, analyzer)
 		assert.NotNil(t, analyzer.config)
-		assert.NotNil(t, analyzer.hprofOpts)
+		assert.NotNil(t, analyzer.engine)
 	})
 
 	t.Run("with custom config", func(t *testing.T) {
@@ -27,14 +27,6 @@ func TestNewJavaHeapAnalyzer(t *testing.T) {
 		}
 		analyzer := NewJavaHeapAnalyzer(config)
 		assert.Equal(t, "/tmp/test", analyzer.config.OutputDir)
-	})
-
-	t.Run("with custom hprof options", func(t *testing.T) {
-		opts := &hprof.ParserOptions{
-			TopClassesN: 50,
-		}
-		analyzer := NewJavaHeapAnalyzer(nil, WithHprofOptions(opts))
-		assert.Equal(t, 50, analyzer.hprofOpts.TopClassesN)
 	})
 }
 
@@ -128,48 +120,8 @@ func TestJavaHeapAnalyzer_GetOutputFiles(t *testing.T) {
 	assert.Equal(t, "task-123/class_histogram.json", files[1].COSKey)
 }
 
-func TestJavaHeapAnalyzer_isPotentialLeakClass(t *testing.T) {
-	analyzer := NewJavaHeapAnalyzer(nil)
-
-	tests := []struct {
-		className string
-		expected  bool
-	}{
-		{"java.util.HashMap", true},
-		{"java.util.ArrayList", true},
-		{"java.util.LinkedList", true},
-		{"java.util.HashSet", true},
-		{"java.util.concurrent.ConcurrentHashMap", true},
-		{"java.util.LinkedHashMap", true},
-		{"java.lang.String", false},
-		{"java.lang.Object", false},
-		{"byte[]", false},
-	}
-
-	for _, tt := range tests {
-		result := analyzer.isPotentialLeakClass(tt.className)
-		assert.Equal(t, tt.expected, result, "className: %s", tt.className)
-	}
-}
-
-func TestFormatBytes(t *testing.T) {
-	tests := []struct {
-		bytes    int64
-		expected string
-	}{
-		{100, "100 B"},
-		{1024, "1.00 KB"},
-		{1536, "1.50 KB"},
-		{1024 * 1024, "1.00 MB"},
-		{1024 * 1024 * 1024, "1.00 GB"},
-		{1024 * 1024 * 1024 * 2, "2.00 GB"},
-	}
-
-	for _, tt := range tests {
-		result := formatBytes(tt.bytes)
-		assert.Equal(t, tt.expected, result)
-	}
-}
+// Note: isPotentialLeakClass and formatBytes were moved to perflib as package-level functions.
+// The logic is now tested in perflib/analyzer/java_heap_analyzer_test.go.
 
 func TestSortClassesBySize(t *testing.T) {
 	classes := []*hprof.ClassStats{
