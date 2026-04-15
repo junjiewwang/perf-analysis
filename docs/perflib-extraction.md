@@ -443,3 +443,36 @@ cd .. && go build ./...
 # 运行所有测试
 go test ./...
 ```
+
+## Bug 修复记录
+
+### LocalStorage self-overwrite bug (2026-04-15)
+
+**现象**: CLI 运行 `heapdump-heap` 分析后，`summary.json`、`heap_analysis.json`、`class_histogram.json`、`retainer_analysis.json` 均为 0 字节，WebUI 显示 "Failed to load flame graph: HTTP 404"。
+
+**根因**: `LocalStorage.UploadFile` 当源路径和目标路径相同时发生自覆盖。CLI 的 `saveSummary` 创建 `LocalStorage(basePath=outputDir的父目录)`，然后 `publishOutputFiles` 上传文件时 `key = taskUUID + "/" + filename`，拼接后的 `fullPath` 恰好等于源文件 `localPath`。`os.Create(fullPath)` 先将文件截断为 0 字节，随后 `io.Copy` 从已截断的同一文件读取，得到 0 字节。
+
+**修复**:
+- `internal/storage/local.go`: `UploadFile` 添加 `isSamePath` 检测，源和目标为同一文件时跳过复制
+- `perflib/analyzer/java_heap_analyzer.go`: 修复 Step 3/Step 4 中 `TimeFuncWithError` 返回值被忽略的隐藏 bug
+- `internal/storage/local_test.go`: 添加 self-overwrite 保护测试和 `isSamePath` 测试
+
+**影响范围**: 所有通过 CLI `--serve` 模式查看的 heap 分析结果（其他通过 COS 远程存储的场景不受影响，因为远程存储不会产生路径重叠）
+
+### WebUI 前端状态残留 bug (2026-04-15)
+
+**现象**: 在 WebUI 中切换到 hprof 堆分析任务时，页面仍展示上一个任务（如 alloc）的数据，没有切换到 heap 模式的 tab 展示（Class Histogram、Biggest Objects、GC Roots、Merged Paths）。
+
+**根因**: `loadTask()` 切换任务时未重置 Alpine.js 响应式状态。当新任务的 `summary.json` 为空或加载失败时，`loadSummary` 的 catch 块只输出 console.error，`summaryData` 和 `analysisType` 仍保留上一个任务的值，导致前端显示旧数据。
+
+**修复**:
+- `internal/webui/templates/index_modular.html`:
+  - 在 `appState` 初始化中添加 `loadError: ''` 状态声明
+  - `loadTask()` 入口处重置 `summaryData = null`、`analysisType = 'cpu'`、`loadError = ''`
+  - `loadSummary()` 失败或数据为空时设置 `loadError` 错误信息
+  - `loadTask()` 检测到 `loadError` 时将 `activePanel` 设为空字符串，隐藏所有面板
+  - HTML 中 `<nav>` 添加 `x-show="!loadError"` 条件，有错误时隐藏 tab 导航
+  - 添加红色错误横幅 `x-show="loadError"`，展示具体错误信息并支持关闭
+
+**影响范围**: WebUI 所有任务切换场景，特别是切换到数据缺失或损坏的任务时的用户体验
+

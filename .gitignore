@@ -11,3 +11,4 @@ pprof-report/
 !internal/parser/pprof/
 !perflib/parser/pprof/
 cache/
+cli
