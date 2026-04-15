@@ -9,4 +9,5 @@ pprof/
 pprof-report/
 !pkg/pprof/
 !internal/parser/pprof/
+!perflib/parser/pprof/
 cache/

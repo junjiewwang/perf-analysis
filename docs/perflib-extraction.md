@@ -95,7 +95,7 @@ perflib/                          # 独立子模块 (github.com/perf-analysis/pe
 
 ### Sprint 2: 引擎迁移（进行中）
 
-**状态**: Phase 1-3b 已完成 ✅  
+**状态**: Phase 1-4 已完成 ✅  
 **完成日期**: 2026-04-15
 
 目标: 将分析引擎核心逻辑迁移到 perflib，`internal/` 包变为 thin wrapper
@@ -210,21 +210,126 @@ hprof 解析器（Java 堆分析）是最大的迁移包（23个非测试 .go �
 3. **构造函数处理**: `NewResultBuilder` 接受未导出的 `*parserState` 参数，转换后调用发生在 perflib 内部，wrapper 不需要转发此函数
 4. **变量别名**: `graph_buffer_pool.go` 中的8个 sync.Pool 变量使用 `var X = libhprof.X` 进行别名
 
-#### Phase 4: Analyzer 迁移（待实施）
+#### Phase 4: Analyzer 适配层迁移 ✅
 
-- [ ] 迁移 `internal/analyzer/` → `perflib/analyzer/`（需重新设计接口）
-- [ ] 替换 `utils.Logger` 为 `log/slog`
-- [ ] 完全移除 `OutputFile.COSKey`（用 RelativePath 替代）
-- [ ] 在 `internal/` 建立引擎适配层，桥接 perflib 纯净接口和业务层
+**完成日期**: 2026-04-15
 
-### Sprint 3: 文档 + 发布（待实施）
+将 `internal/analyzer/` 从独立完整实现转换为委托到 `perflib/analyzer/` 的薄适配层（thin wrapper）。
 
-**状态**: 待实施
+**3层架构设计**:
+- **Engine 层** (`perflib/analyzer/`): 纯分析逻辑，使用 `perflib/model`
+- **Adapter 层** (`internal/analyzer/`): 薄 wrapper，桥接 `pkg/model` ↔ `perflib/model`
+- **Business 层** (`internal/scheduler/`, `cmd/`): 任务管理，使用 `pkg/model`
 
-- [ ] perflib README.md
-- [ ] API 使用文档
-- [ ] 从 Java hprof parser 的迁移策略
-- [ ] v0.1.0 release tag
+**Sub-phase 4a**: 创建转换工具 + 错误/模式别名 ✅
+- [x] `convert.go` — `convertRequest`, `convertResponse`, `convertConfig`, `adaptLogger`
+- [x] `errors.go` — 错误别名: `var ErrX = libanalyzer.ErrX`
+- [x] `mode.go` — 模式别名: `type AnalysisMode = libanalyzer.AnalysisMode` + `ModeInfo` 本地保留
+
+**Sub-phase 4b**: BaseAnalyzer 改写 ✅ (325行 → 105行)
+- [x] `base_analyzer.go` — 嵌入 `*libanalyzer.BaseAnalyzer`
+- [x] `AnalysisProfile` 改为类型别名
+- [x] 移除 `BuildNamespaceResult`（死代码，仅在定义处和测试中引用）
+- [x] 保留 `EnsureOutputDir(taskUUID)` 业务方法（perflib 版本用 `subDir`）
+- [x] `factory.go` — 分析后无需修改（69行，创建内部适配器即可）
+
+**Sub-phase 4c**: Java Analyzer 适配器 ✅
+- [x] `java_cpu_analyzer.go` (178行 → 75行) — `engine *libanalyzer.JavaCPUAnalyzer`
+- [x] `java_mem_analyzer.go` (215行 → 75行) — `engine *libanalyzer.JavaMemAnalyzer`
+- [x] `java_heap_analyzer.go` (742行 → 131行) — `engine *libanalyzer.JavaHeapAnalyzer`，最大缩减
+
+**Sub-phase 4d**: PProfAnalyzer 适配器 ✅
+- [x] `pprof_cpu_analyzer.go` (198行 → 56行) — `engine *libanalyzer.PProfCPUAnalyzer`
+- [x] `pprof_heap_analyzer.go` (173行 → 56行) — `engine *libanalyzer.PProfHeapAnalyzer`
+- [x] `pprof_contention_analyzer.go` (173行 → 74行) — `engine *libanalyzer.PProfContentionAnalyzer`
+- [x] `pprof_goroutine_analyzer.go` (219行 → 56行) — `engine *libanalyzer.PProfGoroutineAnalyzer`
+- [x] `pprof_batch_analyzer.go` (531行 → 82行) — `engine *libanalyzer.PProfBatchAnalyzer`
+
+**Sub-phase 4e**: 测试文件适配 ✅
+- [x] `base_analyzer_test.go` — 移除 unexported 字段断言 + `BuildNamespaceResult` 测试
+- [x] `java_cpu_analyzer_test.go` — `BaseAnalyzer` → `engine`
+- [x] `java_mem_analyzer_test.go` — `BaseAnalyzer` → `engine`，移除 `generateMemorySuggestions` 测试
+- [x] `java_heap_analyzer_test.go` — 移除 `hprofOpts`/`WithHprofOptions`/`isPotentialLeakClass`/`formatBytes`
+- [x] 编译验证通过 ✅，所有测试通过 ✅
+
+**代码缩减统计**:
+| 文件 | 改前行数 | 改后行数 | 缩减率 |
+|------|----------|----------|--------|
+| base_analyzer.go | 325 | 105 | -68% |
+| java_cpu_analyzer.go | 178 | 75 | -58% |
+| java_mem_analyzer.go | 215 | 75 | -65% |
+| java_heap_analyzer.go | 742 | 131 | -82% |
+| pprof_cpu_analyzer.go | 198 | 56 | -72% |
+| pprof_heap_analyzer.go | 173 | 56 | -68% |
+| pprof_contention_analyzer.go | 173 | 74 | -57% |
+| pprof_goroutine_analyzer.go | 219 | 56 | -74% |
+| pprof_batch_analyzer.go | 531 | 82 | -85% |
+| **合计** | **2754** | **710** | **-74%** |
+
+**关键设计决策**:
+1. **适配器模式**: 每个 analyzer 持有 `engine *libanalyzer.XxxAnalyzer`，通过 `convertRequest` → engine → `convertResponse` 委托
+2. **RelativePath → COSKey 映射**: `convertResponse` 中自动将 `taskUUID + "/" + RelativePath` 映射为 `COSKey`
+3. **Logger 直接赋值**: `utils.Logger` 是 `perflib.Logger` 的超集，不需要 wrapper struct
+4. **BaseAnalyzer 嵌入**: 由于 internal 包的 flamegraph/callgraph/statistics 都是类型别名，`BaseAnalyzer` 可直接嵌入 `*libanalyzer.BaseAnalyzer`，所有分析方法签名自动兼容
+5. **向后兼容类型保留**: `ProfileSetResult`、`BatchAnalysisResult`、`ClassHistogram`、`HeapDominatorTree` 等导出类型保留
+6. **Factory 不需改动**: 内部 Factory 创建的适配器构造函数内部已经委托给 perflib 引擎
+
+### Sprint 3: 文档 + 发布 ✅
+
+**状态**: 已完成  
+**完成日期**: 2026-04-15
+
+#### 已完成的工作
+
+1. **perflib/README.md** — 完整的模块文档（~350 行）
+   - 概述与特性列表
+   - 安装指南
+   - 3 个端到端快速开始示例（Java CPU / Go pprof / io.Reader）
+   - ASCII 架构图 + 数据流图
+   - 13 种分析模式完整对照表
+   - 配置指南（BaseAnalyzerConfig + AnalysisProfile 三档对比表）
+   - FlameGraphOptions / CallGraphOptions 精细配置示例
+   - Logger 集成指南（perflib.Logger 接口 + slog/zap 适配器示例）
+   - Timer 集成指南（perflib.Timer + NullTimer）
+   - 解析器使用指南（collapsed / pprof / leak detector / hprof）
+   - 扩展指南（Factory.RegisterConstructor + Analyzer 接口）
+   - 错误处理指南（5 个 sentinel errors）
+   - 包参考表（12 个包的一句话描述）
+   - 依赖清单
+
+2. **API 使用文档** — 通过 README + GoDoc 注释覆盖（Go 生态标准实践）
+   - 所有导出类型/函数已有 GoDoc 注释
+   - README 提供入口级使用指南
+   - 详细 API 参考由 `pkg.go.dev` 自动生成
+
+3. **迁移策略** — 已在 `docs/perflib-extraction.md` Phase 3b 完整记录
+   - hprof 解析器 23 个文件的 thin wrapper 迁移细节
+   - 类型别名策略、原子转换策略、空文件策略
+   - README 中通过架构说明覆盖消费者视角的迁移路径
+
+4. **发布准备**
+   - `go.mod` 模块路径: `github.com/perf-analysis/perflib`
+   - Go 子模块 tag 格式: `perflib/v0.1.0`
+   - 编译验证通过 ✅
+   - 测试验证通过 ✅
+
+#### 关键设计决策
+
+1. **不创建独立 API 文档**: Go 生态使用 GoDoc 自动生成 API 文档，README 提供入口链接即可，避免维护双份文档
+2. **README 面向消费者**: 聚焦"如何使用 perflib"，内部实施细节保留在 `perflib-extraction.md`
+3. **迁移策略不单独文档**: hprof 迁移的 3b 记录已足够详细，README 通过架构说明覆盖消费者视角
+
+#### v0.1.0 发布 Tag
+
+```bash
+# 确保所有代码已提交
+git add perflib/
+git commit -m "feat(perflib): v0.1.0 - independent performance analysis engine library"
+
+# 创建子模块 tag（Go Modules 标准格式）
+git tag perflib/v0.1.0
+git push origin perflib/v0.1.0
+```
 
 ## 文件变更清单
 
@@ -262,6 +367,8 @@ hprof 解析器（Java 堆分析）是最大的迁移包（23个非测试 .go �
 | `perflib/parser/pprof/parser_test.go` | pprof 解析器测试 (Sprint 2 Phase 3a) |
 | `perflib/parser/pprof/leak_detector_test.go` | 泄漏检测器测试 (Sprint 2 Phase 3a) |
 | `pkg/model/aliases.go` | 向后兼容类型别名 |
+| `internal/analyzer/convert.go` | 适配层转换工具: convertRequest/Response/Config, adaptLogger (Sprint 2 Phase 4) |
+| `perflib/README.md` | perflib 模块文档: 使用指南、架构、配置、API 参考 (Sprint 3) |
 | `go.work` | Go 工作区文件 |
 
 ### 修改文件
@@ -316,12 +423,12 @@ hprof 解析器（Java 堆分析）是最大的迁移包（23个非测试 .go �
 
 ## 遗留问题
 
-1. **OutputFile.COSKey 未移除**: 为向后兼容暂时保留，Phase 4 处理
+1. **OutputFile.COSKey 保留**: 标记 `Deprecated`，通过 `RelativePath` 替代。完全移除需等消费端全部切换后进行
 2. **Suggestion 业务类型**: `pkg/model/suggestion.go` 中的 `Suggestion` 仍含 DB tags，perflib 使用 `SuggestionItem` 替代
 3. ~~**perflib 尚无测试**~~: Sprint 2 已补充 flamegraph + callgraph 白盒测试 ✅
-4. **go.work.sum**: 会自动生成，已加入 `.gitignore` 考虑
+4. ~~**go.work.sum**~~: 自动生成，已在 `.gitignore` 中处理 ✅
 5. ~~**perflib 零外部依赖**~~: Phase 3a 已添加 google/pprof ✅
-6. **utils.Logger 替换**: Phase 4 迁移 analyzer 时需将 utils.Logger 替换为 log/slog
+6. **utils.Logger 适配**: 已采用 `perflib.Logger` 接口 + 适配器模式，`utils.Logger` 作为超集直接兼容（无需替换为 slog）
 7. ~~**hprof 测试文件处理**~~: 已移除 `parser_test.go` 和 `serializer_test.go`，保留 `worker_pool_test.go` ✅
 
 ## 验证命令
