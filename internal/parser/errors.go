@@ -1,23 +1,26 @@
 package parser
 
-import "errors"
+import (
+	libparser "github.com/perf-analysis/perflib/parser"
+)
 
+// Error variables - delegate to perflib/parser.
 var (
 	// ErrInvalidFormat is returned when the input format is invalid.
-	ErrInvalidFormat = errors.New("invalid input format")
+	ErrInvalidFormat = libparser.ErrInvalidFormat
 
 	// ErrEmptyInput is returned when the input is empty.
-	ErrEmptyInput = errors.New("empty input")
+	ErrEmptyInput = libparser.ErrEmptyInput
 
 	// ErrParseFailed is returned when parsing fails.
-	ErrParseFailed = errors.New("parse failed")
+	ErrParseFailed = libparser.ErrParseFailed
 
 	// ErrUnsupportedFormat is returned when the format is not supported.
-	ErrUnsupportedFormat = errors.New("unsupported format")
+	ErrUnsupportedFormat = libparser.ErrUnsupportedFormat
 
 	// ErrInvalidStackFrame is returned when a stack frame is invalid.
-	ErrInvalidStackFrame = errors.New("invalid stack frame")
+	ErrInvalidStackFrame = libparser.ErrInvalidStackFrame
 
 	// ErrContextCanceled is returned when the context is canceled during parsing.
-	ErrContextCanceled = errors.New("context canceled")
+	ErrContextCanceled = libparser.ErrContextCanceled
 )
