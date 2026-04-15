@@ -138,8 +138,19 @@
 
     <!-- Container -->
     <main class="max-w-[1800px] mx-auto p-5">
+        <!-- Error Banner -->
+        <div x-show="loadError" x-cloak
+            class="mb-5 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
+            <span class="text-red-500 text-xl mt-0.5">⚠️</span>
+            <div class="flex-1">
+                <h3 class="text-sm font-semibold text-red-800 dark:text-red-300">Load Error</h3>
+                <p class="text-sm text-red-700 dark:text-red-400 mt-1" x-text="loadError"></p>
+            </div>
+            <button @click="loadError = ''" class="text-red-400 hover:text-red-600 transition-colors text-lg">&times;</button>
+        </div>
+
         <!-- Tabs: Alpine.js 管理 -->
-        <nav class="flex flex-wrap gap-2.5 mb-5">
+        <nav x-show="!loadError" class="flex flex-wrap gap-2.5 mb-5">
             <!-- CPU Tabs -->
             <button @click="showPanel('overview')" 
                 :class="{'tab-active': activePanel === 'overview'}"
@@ -964,6 +975,7 @@
                 tasks: [],
                 currentTask: '',
                 loading: false,
+                loadError: '',
                 activePanel: 'overview',
                 analysisType: 'cpu', // 'cpu', 'heap', 'alloc', or 'pprof-all'
                 pprofSubType: 'cpu', // For pprof-all mode: 'cpu', 'heap', 'goroutine', 'block', 'mutex'
@@ -1018,6 +1030,11 @@
                 async loadTask(taskId) {
                     this.currentTask = taskId;
                     this.loading = true;
+                    this.loadError = '';
+                    
+                    // Reset state to avoid stale data from previous task
+                    this.summaryData = null;
+                    this.analysisType = 'cpu';
                     
                     // Reset TopFuncsPanel cached data when task changes
                     if (typeof TopFuncsPanel !== 'undefined' && TopFuncsPanel.reset) {
@@ -1026,6 +1043,11 @@
                     
                     try {
                         await this.loadSummary(taskId);
+                        if (this.loadError) {
+                            this.activePanel = '';
+                            return;
+                        }
+                        
                         if (this.analysisType === 'heap') {
                             HeapAnalysis.renderAnalysis(this.summaryData);
                         } else if (this.analysisType === 'pprof-all') {
@@ -1048,10 +1070,15 @@
                 async loadSummary(taskId) {
                     try {
                         this.summaryData = await API.getSummary(taskId);
+                        if (!this.summaryData || Object.keys(this.summaryData).length === 0) {
+                            this.loadError = `Task ${taskId} has no analysis data. The summary file may be empty or corrupted. Please re-run the analysis.`;
+                            return;
+                        }
                         this.detectAnalysisType();
                         this.renderSummary();
                     } catch (err) {
                         console.error('Failed to load summary:', err);
+                        this.loadError = `Failed to load task ${taskId}: ${err.message}. The summary file may be empty or missing.`;
                     }
                 },
 
