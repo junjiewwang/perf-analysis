@@ -36,59 +36,9 @@ type NamespaceResult struct {
 	TotalRecords           int64           `json:"total_records"`
 }
 
-// ThreadInfo represents information about a thread.
-type ThreadInfo struct {
-	TID        int     `json:"tid"`
-	ThreadName string  `json:"thread_name"`
-	Samples    int64   `json:"samples"`
-	Percentage float64 `json:"percentage"`
-}
-
-// TopFunction represents a hot function with its statistics.
-type TopFunction struct {
-	Name         string  `json:"name"`
-	Module       string  `json:"module,omitempty"`
-	SelfSamples  int64   `json:"self"`
-	SelfPercent  float64 `json:"self_pct"`
-	TotalSamples int64   `json:"total,omitempty"`
-	TotalPercent float64 `json:"total_pct,omitempty"`
-}
-
-// TopFuncsMap is a map of function name to its sample count/percentage.
-type TopFuncsMap map[string]TopFuncValue
-
-// TopFuncValue holds the value for a top function entry.
-type TopFuncValue struct {
-	Self  float64 `json:"self"`
-	Total float64 `json:"total,omitempty"`
-}
-
-// CallStackInfo holds call stack information for a top function.
-type CallStackInfo struct {
-	FunctionName string   `json:"func"`
-	CallStacks   []string `json:"callstacks"`
-	Count        int      `json:"count"`
-}
-
-// Sample represents a single profiling sample.
-type Sample struct {
-	ThreadName string   `json:"thread_name"`
-	TID        int      `json:"tid,omitempty"`
-	CallStack  []string `json:"callstack"`
-	Value      int64    `json:"value"`
-}
-
-// ParseResult holds the result of parsing profiling data.
-type ParseResult struct {
-	Samples            []*Sample                 `json:"samples"`
-	TotalSamples       int64                     `json:"total_samples"`
-	ThreadStats        map[string]*ThreadInfo    `json:"thread_stats"`
-	TopFuncs           TopFuncsMap               `json:"top_funcs"`
-	TopFuncsCallstacks map[string]*CallStackInfo `json:"top_funcs_callstacks,omitempty"`
-	Suggestions        []Suggestion              `json:"suggestions,omitempty"`
-}
-
 // AnalysisRequest represents a request to analyze profiling data.
+// This is the business version with task-specific fields.
+// For the library-clean version, use perflib/model.AnalysisRequest.
 type AnalysisRequest struct {
 	TaskID        int64
 	TaskUUID      string
@@ -113,34 +63,25 @@ type AnalysisResponse struct {
 	Error        string           `json:"error,omitempty"`
 }
 
-// SuggestionItem represents a single suggestion from analysis.
-type SuggestionItem struct {
-	Suggestion   string `json:"suggestion"`
-	FuncName     string `json:"func,omitempty"`
-	Namespace    string `json:"namespace,omitempty"`
-	CallStack    string `json:"callstack,omitempty"`
-	AISuggestion string `json:"ai_suggestion,omitempty"`
-}
-
 // AnalysisContext holds the context during analysis.
 type AnalysisContext struct {
-	ActiveThreadJSON        string                 `json:"active_thread_json"`
-	CallGraphFile           string                 `json:"callgraph_file"`
-	ExtendedFlameGraphFile  string                 `json:"extended_flamegraph_file"`
-	FlameGraphFile          string                 `json:"flamegraph_file"`
-	Suggestions             []Suggestion           `json:"suggestions"`
-	TopFuncs                string                 `json:"top_funcs"`
-	TopFuncsWithSwapper     string                 `json:"top_funcs_with_swapper"`
-	TotalRecords            int64                  `json:"total_records"`
-	TotalRecordsWithSwapper int64                  `json:"total_records_with_swapper"`
-	TID                     string                 `json:"tid"`
-	Mode                    string                 `json:"mode"`
-	Status                  TaskStatus             `json:"status"`
-	StatusInfo              string                 `json:"status_info"`
-	CreateTime              int64                  `json:"create_time"`
-	BeginTime               int64                  `json:"begin_time"`
-	EndTime                 int64                  `json:"end_time"`
-	AnalysisStatus          AnalysisStatus         `json:"analysis_status"`
+	ActiveThreadJSON        string         `json:"active_thread_json"`
+	CallGraphFile           string         `json:"callgraph_file"`
+	ExtendedFlameGraphFile  string         `json:"extended_flamegraph_file"`
+	FlameGraphFile          string         `json:"flamegraph_file"`
+	Suggestions             []Suggestion   `json:"suggestions"`
+	TopFuncs                string         `json:"top_funcs"`
+	TopFuncsWithSwapper     string         `json:"top_funcs_with_swapper"`
+	TotalRecords            int64          `json:"total_records"`
+	TotalRecordsWithSwapper int64          `json:"total_records_with_swapper"`
+	TID                     string         `json:"tid"`
+	Mode                    string         `json:"mode"`
+	Status                  TaskStatus     `json:"status"`
+	StatusInfo              string         `json:"status_info"`
+	CreateTime              int64          `json:"create_time"`
+	BeginTime               int64          `json:"begin_time"`
+	EndTime                 int64          `json:"end_time"`
+	AnalysisStatus          AnalysisStatus `json:"analysis_status"`
 }
 
 // NewAnalysisContext creates a new AnalysisContext with default values.
