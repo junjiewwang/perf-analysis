@@ -2,49 +2,42 @@
 package hprof
 
 import (
-	"github.com/perf-analysis/pkg/collections"
+	libhprof "github.com/perf-analysis/perflib/parser/hprof"
 )
 
 // ============================================================================
-// Type Aliases for backward compatibility
+// Type Aliases - delegating to perflib/parser/hprof
 // ============================================================================
 
-// Bitset is an alias to collections.Bitset for backward compatibility.
-// Deprecated: Use collections.Bitset directly.
-type Bitset = collections.Bitset
+// Bitset is an alias to perflib hprof Bitset.
+type Bitset = libhprof.Bitset
 
-// VersionedBitset is an alias to collections.VersionedBitset for backward compatibility.
-// Deprecated: Use collections.VersionedBitset directly.
-type VersionedBitset = collections.VersionedBitset
+// VersionedBitset is an alias to perflib hprof VersionedBitset.
+type VersionedBitset = libhprof.VersionedBitset
 
-// AtomicBitset is an alias to collections.AtomicBitset for backward compatibility.
-// Deprecated: Use collections.AtomicBitset directly.
-type AtomicBitset = collections.AtomicBitset
+// AtomicBitset is an alias to perflib hprof AtomicBitset.
+type AtomicBitset = libhprof.AtomicBitset
 
 // ============================================================================
-// Constructor Aliases for backward compatibility
+// Constructor Forwarding
 // ============================================================================
 
 // NewBitset creates a new bitset with the given size.
-// Deprecated: Use collections.NewBitset directly.
 func NewBitset(size int) *Bitset {
-	return collections.NewBitset(size)
+	return libhprof.NewBitset(size)
 }
 
 // NewBitsetWithCapacity creates a new bitset with extra capacity for growth.
-// Deprecated: Use collections.NewBitsetWithCapacity directly.
 func NewBitsetWithCapacity(size, capacity int) *Bitset {
-	return collections.NewBitsetWithCapacity(size, capacity)
+	return libhprof.NewBitsetWithCapacity(size, capacity)
 }
 
 // NewVersionedBitset creates a new versioned bitset.
-// Deprecated: Use collections.NewVersionedBitset directly.
 func NewVersionedBitset(size int) *VersionedBitset {
-	return collections.NewVersionedBitset(size)
+	return libhprof.NewVersionedBitset(size)
 }
 
 // NewAtomicBitset creates a new atomic bitset.
-// Deprecated: Use collections.NewAtomicBitset directly.
 func NewAtomicBitset(size int) *AtomicBitset {
-	return collections.NewAtomicBitset(size)
+	return libhprof.NewAtomicBitset(size)
 }

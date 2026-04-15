@@ -2,94 +2,73 @@
 package hprof
 
 import (
-	"github.com/perf-analysis/pkg/compression"
+	libhprof "github.com/perf-analysis/perflib/parser/hprof"
 )
 
 // ============================================================================
-// Type Aliases for backward compatibility
+// Type Aliases - delegating to perflib/parser/hprof
 // ============================================================================
 
-// CompressionType is an alias to compression.Type for backward compatibility.
-// Deprecated: Use compression.Type directly.
-type CompressionType = compression.Type
+// CompressionType is an alias to perflib hprof CompressionType.
+type CompressionType = libhprof.CompressionType
 
-// CompressionLevel is an alias to compression.Level for backward compatibility.
-// Deprecated: Use compression.Level directly.
-type CompressionLevel = compression.Level
+// CompressionLevel is an alias to perflib hprof CompressionLevel.
+type CompressionLevel = libhprof.CompressionLevel
 
-// Compressor is an alias to compression.Compressor for backward compatibility.
-// Deprecated: Use compression.Compressor directly.
-type Compressor = compression.Compressor
+// Compressor is an alias to perflib hprof Compressor.
+type Compressor = libhprof.Compressor
 
-// GzipCompressor is an alias to compression.GzipCompressor for backward compatibility.
-// Deprecated: Use compression.GzipCompressor directly.
-type GzipCompressor = compression.GzipCompressor
+// GzipCompressor is an alias to perflib hprof GzipCompressor.
+type GzipCompressor = libhprof.GzipCompressor
 
-// ZstdCompressor is an alias to compression.ZstdCompressor for backward compatibility.
-// Deprecated: Use compression.ZstdCompressor directly.
-type ZstdCompressor = compression.ZstdCompressor
+// ZstdCompressor is an alias to perflib hprof ZstdCompressor.
+type ZstdCompressor = libhprof.ZstdCompressor
 
 // ============================================================================
-// Constant Aliases for backward compatibility
+// Constant Aliases
 // ============================================================================
 
 const (
 	// CompressionGzip uses gzip compression (legacy, slower but widely compatible)
-	// Deprecated: Use compression.TypeGzip directly.
-	CompressionGzip = compression.TypeGzip
+	CompressionGzip = libhprof.CompressionGzip
 	// CompressionZstd uses zstd compression (faster and better compression ratio)
-	// Deprecated: Use compression.TypeZstd directly.
-	CompressionZstd = compression.TypeZstd
+	CompressionZstd = libhprof.CompressionZstd
 )
 
 const (
 	// CompressionFastest prioritizes speed over compression ratio
-	// Deprecated: Use compression.LevelFastest directly.
-	CompressionFastest = compression.LevelFastest
+	CompressionFastest = libhprof.CompressionFastest
 	// CompressionDefault balances speed and compression ratio
-	// Deprecated: Use compression.LevelDefault directly.
-	CompressionDefault = compression.LevelDefault
+	CompressionDefault = libhprof.CompressionDefault
 	// CompressionBest prioritizes compression ratio over speed
-	// Deprecated: Use compression.LevelBest directly.
-	CompressionBest = compression.LevelBest
+	CompressionBest = libhprof.CompressionBest
 )
 
 // ============================================================================
-// Function Aliases for backward compatibility
+// Function Forwarding
 // ============================================================================
 
 // NewGzipCompressor creates a new gzip compressor.
-// Deprecated: Use compression.NewGzipCompressor directly.
 func NewGzipCompressor(level CompressionLevel) *GzipCompressor {
-	return compression.NewGzipCompressor(level)
+	return libhprof.NewGzipCompressor(level)
 }
 
 // NewZstdCompressor creates a new zstd compressor.
-// Deprecated: Use compression.NewZstdCompressor directly.
 func NewZstdCompressor(level CompressionLevel) (*ZstdCompressor, error) {
-	return compression.NewZstdCompressor(level)
+	return libhprof.NewZstdCompressor(level)
 }
 
 // DefaultCompressor returns the default compressor (zstd with default level).
-// Deprecated: Use compression.Default directly.
 func DefaultCompressor() Compressor {
-	return compression.Default()
+	return libhprof.DefaultCompressor()
 }
 
 // FastCompressor returns a fast compressor optimized for speed.
-// Deprecated: Use compression.Fast directly.
 func FastCompressor() Compressor {
-	return compression.Fast()
-}
-
-// detectCompressionType detects the compression type from magic bytes.
-// Deprecated: Use compression.DetectType directly.
-func detectCompressionType(data []byte) CompressionType {
-	return compression.DetectType(data)
+	return libhprof.FastCompressor()
 }
 
 // AutoDecompress automatically detects compression type and decompresses data.
-// Deprecated: Use compression.AutoDecompress directly.
 func AutoDecompress(data []byte) ([]byte, error) {
-	return compression.AutoDecompress(data)
+	return libhprof.AutoDecompress(data)
 }
