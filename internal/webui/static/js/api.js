@@ -92,6 +92,41 @@ const API = {
             throw new Error(`HTTP ${response.status}`);
         }
         return response.json();
+    },
+
+    // Fetch dominator tree children for a given object (or virtual root if no id)
+    async getDominatorChildren(taskId, objectId = '', topN = 50, sortBy = 'retained') {
+        let url = `/api/refgraph/dominator-tree?task=${taskId}&top=${topN}&sort=${sortBy}`;
+        if (objectId) {
+            url += `&id=${encodeURIComponent(objectId)}`;
+        }
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    },
+
+    // Fetch dominator path from root to a specific object
+    async getDominatorPath(taskId, objectId) {
+        const response = await fetch(`/api/refgraph/dominator-path?task=${taskId}&id=${encodeURIComponent(objectId)}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    },
+
+    // Fetch retained size treemap data
+    async getRetainedSizeTreemap(taskId, rootId = '', maxNodes = 200) {
+        let url = `/api/refgraph/treemap?task=${taskId}&maxNodes=${maxNodes}`;
+        if (rootId) {
+            url += `&root=${encodeURIComponent(rootId)}`;
+        }
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
     }
 };
 

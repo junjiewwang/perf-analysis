@@ -205,6 +205,16 @@
                 class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
                 🔀 Merged Paths
             </button>
+            <button @click="showPanel('heapdominatortree')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heapdominatortree'}"
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
+                🏛️ Dominator Tree
+            </button>
+            <button @click="showPanel('heapretainedtreemap')" x-show="analysisType === 'heap'"
+                :class="{'tab-active': activePanel === 'heapretainedtreemap'}"
+                class="tab-btn px-5 py-2.5 bg-card rounded-lg text-sm font-medium shadow-sm hover:bg-muted transition-colors border border-theme text-base">
+                📊 Retained Treemap
+            </button>
         </nav>
 
         <!-- Overview Panel: Alpine.js 控制显示 -->
@@ -839,6 +849,68 @@
             <div class="merged-paths-container" id="mergedPathsContainer">
                 <div class="loading text-center py-10 text-muted">加载 Retainer 数据中...</div>
             </div>
+        </div>
+
+        <!-- Heap Dominator Tree Panel -->
+        <div x-show="activePanel === 'heapdominatortree'" x-cloak class="bg-card rounded-xl shadow-md p-4 border border-theme">
+            <div class="flex items-center justify-between mb-3 pb-2 border-b-2 border-indigo-500">
+                <h2 class="text-base font-semibold text-base">🏛️ Dominator Tree</h2>
+                <div class="flex items-center gap-1.5">
+                    <button onclick="HeapDominatorTree.expandAll()" class="px-2 py-1 text-[11px] bg-muted hover:bg-elevated rounded transition-colors text-base">
+                        Expand All
+                    </button>
+                    <button onclick="HeapDominatorTree.collapseAll()" class="px-2 py-1 text-[11px] bg-muted hover:bg-elevated rounded transition-colors text-base">
+                        Collapse All
+                    </button>
+                    <select onchange="HeapDominatorTree.changeSort(this.value)" class="px-2 py-1 text-[11px] bg-card border border-theme rounded text-base">
+                        <option value="retained">Sort: Retained</option>
+                        <option value="shallow">Sort: Shallow</option>
+                    </select>
+                    <button onclick="HeapDominatorTree.refresh()" class="px-2 py-1 text-[11px] bg-indigo-500 text-white hover:bg-indigo-600 rounded transition-colors">
+                        🔄 Refresh
+                    </button>
+                </div>
+            </div>
+            <p class="text-[10px] text-muted mb-2">
+                <span>💡 Dominator tree shows object ownership hierarchy — each object is "dominated" by its parent</span>
+                <span class="ml-3">📊 Retained size = size of everything exclusively owned by this object</span>
+            </p>
+
+            <!-- 摘要统计 -->
+            <div id="dominatorTreeSummary" class="mb-3"></div>
+
+            <!-- 树列表 -->
+            <div id="dominatorTreeList" class="max-h-[calc(100vh-320px)] min-h-[400px] overflow-y-auto border border-theme rounded-lg bg-card">
+                <div class="text-center py-8 text-muted">
+                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-3 border-indigo-500 border-t-transparent"></div>
+                    <p class="mt-3 text-sm">Loading dominator tree...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Heap Retained Size Treemap Panel -->
+        <div x-show="activePanel === 'heapretainedtreemap'" x-cloak class="bg-card rounded-xl shadow-md p-4 border border-theme">
+            <div class="flex items-center justify-between mb-3 pb-2 border-b-2 border-orange-500">
+                <h2 class="text-base font-semibold text-base">📊 Retained Size Treemap</h2>
+                <div class="flex items-center gap-1.5">
+                    <button onclick="HeapRetainedTreemap.navigateToRoot()" class="px-2 py-1 text-[11px] bg-muted hover:bg-elevated rounded transition-colors text-base">
+                        ⬆ Back to Root
+                    </button>
+                    <button onclick="HeapRetainedTreemap.refresh()" class="px-2 py-1 text-[11px] bg-orange-500 text-white hover:bg-orange-600 rounded transition-colors">
+                        🔄 Refresh
+                    </button>
+                </div>
+            </div>
+            <p class="text-[10px] text-muted mb-2">
+                <span>💡 Area = retained size of each object — larger blocks retain more memory</span>
+                <span class="ml-3">🔍 Click to drill into a class group</span>
+            </p>
+
+            <!-- 导航面包屑 -->
+            <div id="retainedTreemapNav" class="mb-2"></div>
+
+            <!-- Treemap 图表容器 -->
+            <div id="retainedTreemapChart" class="w-full" style="height: calc(100vh - 340px); min-height: 450px;"></div>
         </div>
 
         <!-- Heap Histogram Panel: Alpine.js 控制显示 -->
@@ -1526,6 +1598,24 @@
                                 }
                             });
                         });
+                    } else if (panelId === 'heapdominatortree') {
+                        // 加载 Dominator Tree 数据
+                        this.$nextTick(() => {
+                            requestAnimationFrame(() => {
+                                if (typeof HeapDominatorTree !== 'undefined') {
+                                    HeapDominatorTree.load(this.currentTask);
+                                }
+                            });
+                        });
+                    } else if (panelId === 'heapretainedtreemap') {
+                        // 加载 Retained Size Treemap 数据
+                        this.$nextTick(() => {
+                            requestAnimationFrame(() => {
+                                if (typeof HeapRetainedTreemap !== 'undefined') {
+                                    HeapRetainedTreemap.load(this.currentTask);
+                                }
+                            });
+                        });
                     } else if (panelId === 'threads') {
                         // 加载线程分析数据
                         this.$nextTick(() => {
@@ -1795,6 +1885,8 @@
     <script src="/static/js/heap-histogram.js"></script>
     <script src="/static/js/heap-gcroots.js"></script>
     <script src="/static/js/heap-merged-paths.js"></script>
+    <script src="/static/js/heap-dominator-tree.js"></script>
+    <script src="/static/js/heap-retained-treemap.js"></script>
     <script src="/static/js/heap.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
