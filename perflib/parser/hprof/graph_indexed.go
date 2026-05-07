@@ -318,6 +318,9 @@ func (e *CompactEdgeList) TotalEdges() int32 {
 // IndexedReferenceGraph - Optimized reference graph using indexed storage
 // ============================================================================
 
+// Compile-time interface compliance check.
+var _ HeapGraph = (*IndexedReferenceGraph)(nil)
+
 // IndexedReferenceGraph is an optimized version of ReferenceGraph using
 // slice-based storage instead of maps for better memory efficiency and cache locality.
 type IndexedReferenceGraph struct {
@@ -501,6 +504,15 @@ func (g *IndexedReferenceGraph) BuildClassToObjectsIndex() {
 func (g *IndexedReferenceGraph) GetObjectsByClass(classID uint64) []int32 {
 	g.BuildClassToObjectsIndex()
 	return g.classToObjects[classID]
+}
+
+// GetFieldName resolves a field name ID to its string representation.
+// It looks up the field name from the outgoing edge list's interned string table.
+func (g *IndexedReferenceGraph) GetFieldName(fieldID int32) string {
+	if g.outgoing == nil {
+		return ""
+	}
+	return g.outgoing.GetFieldName(fieldID)
 }
 
 // GetOutgoing returns the outgoing edge list (CSR format).

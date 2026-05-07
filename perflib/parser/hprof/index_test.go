@@ -29,12 +29,41 @@ func TestIndexRoundtrip(t *testing.T) {
 	assert.True(t, info.Size() > 0, "index file should not be empty")
 	t.Logf("Index file size: %d bytes", info.Size())
 
-	// Read back
+	// Read back (v1 format)
 	loaded, err := ReadHeapIndex(indexPath)
 	require.NoError(t, err, "ReadHeapIndex should succeed")
 
-	// Verify all data matches
-	verifyGraphEquality(t, graph, loaded)
+	// Verify via HeapGraph interface
+	loadedGraph, ok := loaded.(*IndexedReferenceGraph)
+	require.True(t, ok, "v1 file should return *IndexedReferenceGraph")
+	verifyGraphEquality(t, graph, loadedGraph)
+}
+
+// TestIndexV2Roundtrip tests v2 format write→read roundtrip.
+func TestIndexV2Roundtrip(t *testing.T) {
+	graph := buildTestGraph(t)
+
+	tmpDir := t.TempDir()
+	indexPath := filepath.Join(tmpDir, "heap_index_v2.bin")
+
+	// Write v2 format
+	err := WriteHeapIndexV2(indexPath, graph)
+	require.NoError(t, err, "WriteHeapIndexV2 should succeed")
+
+	info, err := os.Stat(indexPath)
+	require.NoError(t, err)
+	t.Logf("V2 index file size: %d bytes", info.Size())
+
+	// Read back (should detect v2 and use mmap)
+	loaded, err := ReadHeapIndex(indexPath)
+	require.NoError(t, err, "ReadHeapIndex v2 should succeed")
+
+	mmapIndex, ok := loaded.(*MmapHeapIndex)
+	require.True(t, ok, "v2 file should return *MmapHeapIndex")
+	defer mmapIndex.Close()
+
+	// Verify via HeapGraph interface
+	verifyHeapGraphEquality(t, graph, loaded)
 }
 
 // TestIndexRoundtripInMemory tests roundtrip using in-memory buffers.
@@ -372,6 +401,85 @@ func verifyGraphEquality(t *testing.T, original, loaded *IndexedReferenceGraph) 
 	}
 }
 
+// verifyHeapGraphEquality checks that two HeapGraph implementations have identical data.
+// This validates through the interface without requiring concrete type access.
+func verifyHeapGraphEquality(t *testing.T, original, loaded HeapGraph) {
+	t.Helper()
+
+	// Verify object count
+	n := original.ObjectCount()
+	assert.Equal(t, n, loaded.ObjectCount(), "object count mismatch")
+
+	// Verify all object data
+	for i := int32(0); i < n; i++ {
+		assert.Equal(t, original.GetObjectID(i), loaded.GetObjectID(i), "objectID mismatch at idx %d", i)
+		assert.Equal(t, original.GetClassID(i), loaded.GetClassID(i), "classID mismatch at idx %d", i)
+		assert.Equal(t, original.GetShallowSize(i), loaded.GetShallowSize(i), "shallowSize mismatch at idx %d", i)
+		assert.Equal(t, original.GetRetainedSize(i), loaded.GetRetainedSize(i), "retainedSize mismatch at idx %d", i)
+		assert.Equal(t, original.GetDominator(i), loaded.GetDominator(i), "dominator mismatch at idx %d", i)
+	}
+
+	// Verify objectID→index mapping
+	for i := int32(0); i < n; i++ {
+		objID := original.GetObjectID(i)
+		assert.Equal(t, i, loaded.GetObjectIndex(objID), "objectIndex mismatch for objID 0x%x", objID)
+	}
+
+	// Verify class names via GetClassName
+	for i := int32(0); i < n; i++ {
+		classID := original.GetClassID(i)
+		assert.Equal(t, original.GetClassName(classID), loaded.GetClassName(classID),
+			"className mismatch for classID %d at idx %d", classID, i)
+	}
+
+	// Verify outgoing edges
+	for i := int32(0); i < n; i++ {
+		origTargets, origFields, origClassIDs := original.GetOutgoingEdges(i)
+		loadTargets, loadFields, loadClassIDs := loaded.GetOutgoingEdges(i)
+		assert.Equal(t, origTargets, loadTargets, "outgoing targets mismatch at idx %d", i)
+		assert.Equal(t, origFields, loadFields, "outgoing fieldIDs mismatch at idx %d", i)
+		assert.Equal(t, origClassIDs, loadClassIDs, "outgoing classIDs mismatch at idx %d", i)
+	}
+
+	// Verify incoming edges
+	for i := int32(0); i < n; i++ {
+		origSources, origFields, origClassIDs := original.GetIncomingEdges(i)
+		loadSources, loadFields, loadClassIDs := loaded.GetIncomingEdges(i)
+		assert.Equal(t, origSources, loadSources, "incoming sources mismatch at idx %d", i)
+		assert.Equal(t, origFields, loadFields, "incoming fieldIDs mismatch at idx %d", i)
+		assert.Equal(t, origClassIDs, loadClassIDs, "incoming classIDs mismatch at idx %d", i)
+	}
+
+	// Verify GC roots
+	origRoots := original.GetGCRoots()
+	loadRoots := loaded.GetGCRoots()
+	assert.Equal(t, len(origRoots), len(loadRoots), "GC root count mismatch")
+	for i, origRoot := range origRoots {
+		assert.Equal(t, origRoot.ObjectID, loadRoots[i].ObjectID, "GC root objectID mismatch at %d", i)
+		assert.Equal(t, origRoot.Type, loadRoots[i].Type, "GC root type mismatch at %d", i)
+		assert.Equal(t, origRoot.ThreadID, loadRoots[i].ThreadID, "GC root threadID mismatch at %d", i)
+		assert.Equal(t, origRoot.FrameIndex, loadRoots[i].FrameIndex, "GC root frameIndex mismatch at %d", i)
+	}
+
+	// Verify bitsets
+	for i := int32(0); i < n; i++ {
+		assert.Equal(t, original.IsGCRoot(i), loaded.IsGCRoot(i), "gcRoot bit mismatch at idx %d", i)
+		assert.Equal(t, original.IsClassObject(i), loaded.IsClassObject(i), "classObject bit mismatch at idx %d", i)
+		assert.Equal(t, original.IsReachable(i), loaded.IsReachable(i), "reachable bit mismatch at idx %d", i)
+	}
+
+	// Verify field names resolution
+	for i := int32(0); i < n; i++ {
+		_, origFieldIDs, _ := original.GetOutgoingEdges(i)
+		_, loadFieldIDs, _ := loaded.GetOutgoingEdges(i)
+		for j, fid := range origFieldIDs {
+			origName := original.GetFieldName(fid)
+			loadName := loaded.GetFieldName(loadFieldIDs[j])
+			assert.Equal(t, origName, loadName, "field name mismatch at idx %d, edge %d (fieldID %d)", i, j, fid)
+		}
+	}
+}
+
 func classNameForTest(i int) string {
 	names := []string{
 		"java.lang.String", "java.util.ArrayList", "java.util.HashMap",
@@ -406,6 +514,282 @@ func fieldNameForTest(i int) string {
 	names := []string{"value", "next", "items", "data", "buffer", "handler", "name", "instance", "ref", "parent"}
 	return names[i%len(names)]
 }
+
+// ============================================================================
+// Boundary Tests
+// ============================================================================
+
+// TestIndexV2EmptyGraph tests v2 format roundtrip with an empty graph.
+func TestIndexV2EmptyGraph(t *testing.T) {
+	graph := NewIndexedReferenceGraph(0)
+	graph.FinalizeObjects()
+	outBuilder := NewCompactEdgeListBuilder(0, 0)
+	inBuilder := NewCompactEdgeListBuilder(0, 0)
+	graph.BuildEdges(outBuilder, inBuilder)
+
+	tmpDir := t.TempDir()
+	indexPath := filepath.Join(tmpDir, "heap_index_v2_empty.bin")
+
+	err := WriteHeapIndexV2(indexPath, graph)
+	require.NoError(t, err)
+
+	loaded, err := ReadHeapIndex(indexPath)
+	require.NoError(t, err)
+
+	mmapIndex, ok := loaded.(*MmapHeapIndex)
+	require.True(t, ok)
+	defer mmapIndex.Close()
+
+	assert.Equal(t, int32(0), loaded.ObjectCount())
+}
+
+// TestIndexSingleObjectRoundtrip tests roundtrip with exactly 1 object (v1 + v2).
+func TestIndexSingleObjectRoundtrip(t *testing.T) {
+	graph := NewIndexedReferenceGraph(1)
+	graph.AddObject(0xDEADBEEF, 999, 128)
+	graph.SetClassName(999, "com.example.SingleObject")
+	graph.AddGCRoot(GCRoot{ObjectID: 0xDEADBEEF, Type: GCRootThreadObject, ThreadID: 7})
+	graph.FinalizeObjects()
+
+	outBuilder := NewCompactEdgeListBuilder(1, 0)
+	inBuilder := NewCompactEdgeListBuilder(1, 0)
+	graph.BuildEdges(outBuilder, inBuilder)
+
+	graph.SetRetainedSize(0, 256)
+	graph.SetDominator(0, -1)
+	graph.MarkReachable(0)
+
+	t.Run("v1", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := writeHeapIndexTo(&buf, graph)
+		require.NoError(t, err)
+
+		loaded, err := readHeapIndexFrom(&buf)
+		require.NoError(t, err)
+		verifyGraphEquality(t, graph, loaded)
+	})
+
+	t.Run("v2", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		indexPath := filepath.Join(tmpDir, "single_v2.bin")
+		err := WriteHeapIndexV2(indexPath, graph)
+		require.NoError(t, err)
+
+		loaded, err := ReadHeapIndex(indexPath)
+		require.NoError(t, err)
+
+		mmapIndex, ok := loaded.(*MmapHeapIndex)
+		require.True(t, ok)
+		defer mmapIndex.Close()
+
+		verifyHeapGraphEquality(t, graph, loaded)
+	})
+}
+
+// TestIndexLargeFieldNames tests roundtrip with very long field names.
+func TestIndexLargeFieldNames(t *testing.T) {
+	graph := NewIndexedReferenceGraph(3)
+	graph.AddObject(0x1001, 100, 32)
+	graph.AddObject(0x1002, 100, 48)
+	graph.AddObject(0x1003, 100, 64)
+	graph.SetClassName(100, "TestClass")
+	graph.AddGCRoot(GCRoot{ObjectID: 0x1001, Type: GCRootJNIGlobal})
+	graph.FinalizeObjects()
+
+	// Create a very long field name (1000 chars)
+	longFieldName := ""
+	for i := 0; i < 100; i++ {
+		longFieldName += "longField_"
+	}
+
+	// Unicode field name
+	unicodeFieldName := "字段名_フィールド_필드명_поле"
+
+	outBuilder := NewCompactEdgeListBuilder(3, 2)
+	inBuilder := NewCompactEdgeListBuilder(3, 2)
+	outBuilder.AddEdge(0, 1, longFieldName, 100)
+	outBuilder.AddEdge(0, 2, unicodeFieldName, 100)
+	inBuilder.AddEdge(1, 0, longFieldName, 100)
+	inBuilder.AddEdge(2, 0, unicodeFieldName, 100)
+	graph.BuildEdges(outBuilder, inBuilder)
+
+	t.Run("v1", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := writeHeapIndexTo(&buf, graph)
+		require.NoError(t, err)
+
+		loaded, err := readHeapIndexFrom(&buf)
+		require.NoError(t, err)
+		verifyGraphEquality(t, graph, loaded)
+
+		// Verify the long field name is preserved
+		outgoing := loaded.GetOutgoing()
+		_, fieldIDs, _ := loaded.GetOutgoingEdges(0)
+		require.Len(t, fieldIDs, 2)
+		assert.Equal(t, longFieldName, outgoing.GetFieldName(fieldIDs[0]))
+		assert.Equal(t, unicodeFieldName, outgoing.GetFieldName(fieldIDs[1]))
+	})
+
+	t.Run("v2", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		indexPath := filepath.Join(tmpDir, "longfield_v2.bin")
+		err := WriteHeapIndexV2(indexPath, graph)
+		require.NoError(t, err)
+
+		loaded, err := ReadHeapIndex(indexPath)
+		require.NoError(t, err)
+
+		mmapIndex, ok := loaded.(*MmapHeapIndex)
+		require.True(t, ok)
+		defer mmapIndex.Close()
+
+		verifyHeapGraphEquality(t, graph, loaded)
+	})
+}
+
+// TestIndexLongUnicodeClassNames tests roundtrip with Unicode class names.
+func TestIndexLongUnicodeClassNames(t *testing.T) {
+	graph := NewIndexedReferenceGraph(2)
+	graph.AddObject(0x1001, 100, 32)
+	graph.AddObject(0x1002, 200, 48)
+
+	// Long class names with various Unicode characters
+	graph.SetClassName(100, "com.example.very.deep.package.hierarchy.level1.level2.level3.SuperLongClassName$$Lambda$12345/0x00000001234abcde")
+	graph.SetClassName(200, "中文类名.日本語クラス.한국어클래스.КлассНаРусском")
+
+	graph.AddGCRoot(GCRoot{ObjectID: 0x1001, Type: GCRootJNIGlobal})
+	graph.FinalizeObjects()
+
+	outBuilder := NewCompactEdgeListBuilder(2, 1)
+	inBuilder := NewCompactEdgeListBuilder(2, 1)
+	outBuilder.AddEdge(0, 1, "ref", 100)
+	inBuilder.AddEdge(1, 0, "ref", 100)
+	graph.BuildEdges(outBuilder, inBuilder)
+
+	t.Run("v1", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := writeHeapIndexTo(&buf, graph)
+		require.NoError(t, err)
+
+		loaded, err := readHeapIndexFrom(&buf)
+		require.NoError(t, err)
+		verifyGraphEquality(t, graph, loaded)
+	})
+
+	t.Run("v2", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		indexPath := filepath.Join(tmpDir, "unicode_v2.bin")
+		err := WriteHeapIndexV2(indexPath, graph)
+		require.NoError(t, err)
+
+		loaded, err := ReadHeapIndex(indexPath)
+		require.NoError(t, err)
+
+		mmapIndex, ok := loaded.(*MmapHeapIndex)
+		require.True(t, ok)
+		defer mmapIndex.Close()
+
+		verifyHeapGraphEquality(t, graph, loaded)
+	})
+}
+
+// TestIndexNoEdgesGraph tests roundtrip of graph with objects but no edges.
+func TestIndexNoEdgesGraph(t *testing.T) {
+	graph := NewIndexedReferenceGraph(5)
+	for i := 0; i < 5; i++ {
+		graph.AddObject(uint64(0x1000+i), 100, int64(16*(i+1)))
+	}
+	graph.SetClassName(100, "IsolatedObject")
+	graph.AddGCRoot(GCRoot{ObjectID: 0x1000, Type: GCRootJNIGlobal})
+	graph.FinalizeObjects()
+
+	outBuilder := NewCompactEdgeListBuilder(5, 0)
+	inBuilder := NewCompactEdgeListBuilder(5, 0)
+	graph.BuildEdges(outBuilder, inBuilder)
+
+	t.Run("v1", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := writeHeapIndexTo(&buf, graph)
+		require.NoError(t, err)
+
+		loaded, err := readHeapIndexFrom(&buf)
+		require.NoError(t, err)
+		verifyGraphEquality(t, graph, loaded)
+
+		// Verify all edges are empty
+		for i := int32(0); i < 5; i++ {
+			targets, _, _ := loaded.GetOutgoingEdges(i)
+			assert.Empty(t, targets, "object %d should have no outgoing edges", i)
+		}
+	})
+
+	t.Run("v2", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		indexPath := filepath.Join(tmpDir, "noedges_v2.bin")
+		err := WriteHeapIndexV2(indexPath, graph)
+		require.NoError(t, err)
+
+		loaded, err := ReadHeapIndex(indexPath)
+		require.NoError(t, err)
+
+		mmapIndex, ok := loaded.(*MmapHeapIndex)
+		require.True(t, ok)
+		defer mmapIndex.Close()
+
+		verifyHeapGraphEquality(t, graph, loaded)
+	})
+}
+
+// TestIndexMaxObjectIDValues tests roundtrip with extreme object ID values.
+func TestIndexMaxObjectIDValues(t *testing.T) {
+	graph := NewIndexedReferenceGraph(3)
+	graph.AddObject(0, 1, 16)                      // minimum objectID
+	graph.AddObject(0x7FFFFFFFFFFFFFFF, 2, 32)     // max signed int64
+	graph.AddObject(0xFFFFFFFFFFFFFFFF, 3, 64)     // max uint64
+	graph.SetClassName(1, "MinID")
+	graph.SetClassName(2, "MaxSigned")
+	graph.SetClassName(3, "MaxUnsigned")
+	graph.AddGCRoot(GCRoot{ObjectID: 0, Type: GCRootJNIGlobal})
+	graph.FinalizeObjects()
+
+	outBuilder := NewCompactEdgeListBuilder(3, 2)
+	inBuilder := NewCompactEdgeListBuilder(3, 2)
+	outBuilder.AddEdge(0, 1, "next", 1)
+	outBuilder.AddEdge(1, 2, "prev", 2)
+	inBuilder.AddEdge(1, 0, "next", 1)
+	inBuilder.AddEdge(2, 1, "prev", 2)
+	graph.BuildEdges(outBuilder, inBuilder)
+
+	t.Run("v1", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := writeHeapIndexTo(&buf, graph)
+		require.NoError(t, err)
+
+		loaded, err := readHeapIndexFrom(&buf)
+		require.NoError(t, err)
+		verifyGraphEquality(t, graph, loaded)
+	})
+
+	t.Run("v2", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		indexPath := filepath.Join(tmpDir, "maxid_v2.bin")
+		err := WriteHeapIndexV2(indexPath, graph)
+		require.NoError(t, err)
+
+		loaded, err := ReadHeapIndex(indexPath)
+		require.NoError(t, err)
+
+		mmapIndex, ok := loaded.(*MmapHeapIndex)
+		require.True(t, ok)
+		defer mmapIndex.Close()
+
+		verifyHeapGraphEquality(t, graph, loaded)
+	})
+}
+
+// ============================================================================
+// Internal helpers
+// ============================================================================
 
 // writeHeaderForTest writes just a header (for error case tests).
 func writeHeaderForTest(buf *bytes.Buffer, header *IndexFileHeader) error {

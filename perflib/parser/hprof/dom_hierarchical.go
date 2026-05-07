@@ -137,7 +137,7 @@ func NewLevelDominatorState(nodeCount int, config HierarchicalDominatorConfig) *
 		idom:               make([]int32, nodeCount),
 		semi:               make([]int32, nodeCount),
 		dfn:                make([]int32, nodeCount),
-		vertex:             make([]int32, nodeCount),
+		vertex:             make([]int32, nodeCount+1), // 1-based indexing: vertex[1..nodeCount]
 		parent:             make([]int32, nodeCount),
 		ancestor:           make([]int32, nodeCount),
 		label:              make([]int32, nodeCount),
@@ -551,10 +551,11 @@ func (s *LevelDominatorState) ComputeDominators(ctx context.Context) {
 	s.ComputeLevels()
 
 	// Initialize
+	// NOTE: ancestor sentinel is -1 (not 0) because super root uses index 0
 	for i := int32(0); i < s.nodeCount; i++ {
 		s.idom[i] = -1
 		s.semi[i] = 0
-		s.ancestor[i] = 0
+		s.ancestor[i] = -1
 		s.label[i] = i
 		s.dfn[i] = 0
 	}
@@ -690,7 +691,7 @@ func (s *LevelDominatorState) link(v, w int32) {
 // eval finds node with minimum semi on path to root.
 // Optimized with iterative path compression.
 func (s *LevelDominatorState) eval(v int32) int32 {
-	if s.ancestor[v] == 0 {
+	if s.ancestor[v] == -1 {
 		return v
 	}
 	s.compressIterative(v)
@@ -703,7 +704,7 @@ func (s *LevelDominatorState) compressIterative(v int32) {
 	// First, collect the path from v to the root of its tree
 	path := make([]int32, 0, 32)
 	current := v
-	for s.ancestor[current] != 0 && s.ancestor[s.ancestor[current]] != 0 {
+	for s.ancestor[current] != -1 && s.ancestor[s.ancestor[current]] != -1 {
 		path = append(path, current)
 		current = s.ancestor[current]
 	}

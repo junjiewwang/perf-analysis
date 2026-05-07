@@ -13,9 +13,47 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// ReadHeapIndex loads a compact heap index file into an IndexedReferenceGraph.
-// For a 450MB file, target load time is <2s.
-func ReadHeapIndex(filePath string) (*IndexedReferenceGraph, error) {
+// ReadHeapIndex loads a compact heap index file.
+// It auto-detects format version:
+//   - v1: loads into IndexedReferenceGraph (full memory allocation)
+//   - v2: returns MmapHeapIndex (mmap-based, lazy page-fault access)
+//
+// Both return types implement HeapGraph interface.
+func ReadHeapIndex(filePath string) (HeapGraph, error) {
+	// Peek at the version to determine format
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("open index file: %w", err)
+	}
+
+	var magic [4]byte
+	var version uint32
+	if _, err := io.ReadFull(f, magic[:]); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("read magic: %w", err)
+	}
+	if err := binary.Read(f, indexByteOrder, &version); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("read version: %w", err)
+	}
+	f.Close()
+
+	if magic != IndexFileMagic {
+		return nil, fmt.Errorf("invalid magic: expected HPIX, got %s", string(magic[:]))
+	}
+
+	switch version {
+	case IndexFileVersionV2:
+		return OpenMmapHeapIndex(filePath)
+	case IndexFileVersion:
+		return readHeapIndexV1(filePath)
+	default:
+		return nil, fmt.Errorf("unsupported version: %d", version)
+	}
+}
+
+// readHeapIndexV1 loads a v1 format heap index file into an IndexedReferenceGraph.
+func readHeapIndexV1(filePath string) (*IndexedReferenceGraph, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("open index file: %w", err)
