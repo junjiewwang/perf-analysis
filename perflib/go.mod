@@ -8,7 +8,6 @@ require (
 	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936
 	github.com/klauspost/compress v1.18.5
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/protobuf v1.36.11
 )
 
 require (
