@@ -609,78 +609,95 @@ func (s *Server) handleBiggestObjects(w http.ResponseWriter, r *http.Request) {
 	if sortBy == "" {
 		sortBy = "retained"
 	}
+	topN := 50
+	if tn := r.URL.Query().Get("top"); tn != "" {
+		if n, err := parseInt(tn); err == nil && n > 0 {
+			topN = n
+		}
+	}
 
 	var data []byte
 	var err error
 
-	// Try to read from biggest_objects.json file first
+	// Try to read from biggest_objects.json file first (fast path - pre-computed)
 	biggestObjectsFile := filepath.Join(taskDir, "biggest_objects.json")
 	data, err = os.ReadFile(biggestObjectsFile)
-	if err != nil {
-		// Fall back to extracting from summary.json
-		summaryFile := filepath.Join(taskDir, "summary.json")
-		summaryData, summaryErr := os.ReadFile(summaryFile)
-		if summaryErr != nil {
-			http.Error(w, "Biggest objects data not found", http.StatusNotFound)
-			return
+	if err == nil {
+		// File exists, filter by class if needed
+		if className != "" {
+			var objects []interface{}
+			if jsonErr := json.Unmarshal(data, &objects); jsonErr == nil {
+				var filtered []interface{}
+				for _, obj := range objects {
+					if objMap, ok := obj.(map[string]interface{}); ok {
+						if objClassName, ok := objMap["class_name"].(string); ok {
+							if objClassName == className {
+								filtered = append(filtered, obj)
+							}
+						}
+					}
+				}
+				data, _ = json.Marshal(filtered)
+			}
 		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Write(data)
+		return
+	}
 
-		// Parse summary and extract biggest_objects
-		var summary map[string]interface{}
-		if jsonErr := json.Unmarshal(summaryData, &summary); jsonErr != nil {
-			http.Error(w, "Failed to parse summary", http.StatusInternalServerError)
-			return
-		}
+	// Fall back to HeapQueryEngine (on-demand computation from heap_index.bin)
+	objects, queryErr := s.refGraphService.GetBiggestObjects(taskID, topN, sortBy, className)
+	if queryErr == nil && len(objects) > 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		json.NewEncoder(w).Encode(objects)
+		return
+	}
 
-		// Extract biggest_objects from data section
-		if dataSection, ok := summary["data"].(map[string]interface{}); ok {
-			if biggestObjects, ok := dataSection["biggest_objects"]; ok {
-				// Filter by class if specified
-				if className != "" {
-					if objects, ok := biggestObjects.([]interface{}); ok {
-						var filtered []interface{}
-						for _, obj := range objects {
-							if objMap, ok := obj.(map[string]interface{}); ok {
-								if objClassName, ok := objMap["class_name"].(string); ok {
-									if objClassName == className {
-										filtered = append(filtered, obj)
-									}
+	// Last resort: try extracting from summary.json
+	summaryFile := filepath.Join(taskDir, "summary.json")
+	summaryData, summaryErr := os.ReadFile(summaryFile)
+	if summaryErr != nil {
+		http.Error(w, "Biggest objects data not found", http.StatusNotFound)
+		return
+	}
+
+	var summary map[string]interface{}
+	if jsonErr := json.Unmarshal(summaryData, &summary); jsonErr != nil {
+		http.Error(w, "Failed to parse summary", http.StatusInternalServerError)
+		return
+	}
+
+	if dataSection, ok := summary["data"].(map[string]interface{}); ok {
+		if biggestObjects, ok := dataSection["biggest_objects"]; ok {
+			if className != "" {
+				if objs, ok := biggestObjects.([]interface{}); ok {
+					var filtered []interface{}
+					for _, obj := range objs {
+						if objMap, ok := obj.(map[string]interface{}); ok {
+							if objClassName, ok := objMap["class_name"].(string); ok {
+								if objClassName == className {
+									filtered = append(filtered, obj)
 								}
 							}
 						}
-						biggestObjects = filtered
 					}
+					biggestObjects = filtered
 				}
-
-				data, err = json.Marshal(biggestObjects)
-				if err != nil {
-					http.Error(w, "Failed to marshal biggest objects", http.StatusInternalServerError)
-					return
-				}
-			} else {
-				http.Error(w, "Biggest objects not found in summary", http.StatusNotFound)
+			}
+			data, err = json.Marshal(biggestObjects)
+			if err != nil {
+				http.Error(w, "Failed to marshal biggest objects", http.StatusInternalServerError)
 				return
 			}
 		} else {
-			http.Error(w, "Data section not found in summary", http.StatusNotFound)
+			http.Error(w, "Biggest objects not found in summary", http.StatusNotFound)
 			return
 		}
-	} else if className != "" {
-		// Filter the loaded data by class name
-		var objects []interface{}
-		if jsonErr := json.Unmarshal(data, &objects); jsonErr == nil {
-			var filtered []interface{}
-			for _, obj := range objects {
-				if objMap, ok := obj.(map[string]interface{}); ok {
-					if objClassName, ok := objMap["class_name"].(string); ok {
-						if objClassName == className {
-							filtered = append(filtered, obj)
-						}
-					}
-				}
-			}
-			data, _ = json.Marshal(filtered)
-		}
+	} else {
+		http.Error(w, "Data section not found in summary", http.StatusNotFound)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -820,13 +837,11 @@ func (s *Server) handleRefGraphFields(w http.ResponseWriter, r *http.Request) {
 			Name:         f.Name,
 			Type:         f.Type,
 			Value:        f.Value,
+			RefID:        f.RefID,
 			RefClass:     f.RefClass,
 			ShallowSize:  f.ShallowSize,
 			RetainedSize: f.RetainedSize,
 			HasChildren:  f.HasChildren,
-		}
-		if f.RefID != 0 {
-			fr.RefID = formatObjectID(f.RefID)
 		}
 		response = append(response, fr)
 	}
@@ -857,11 +872,10 @@ func (s *Server) handleRefGraphObjectInfo(w http.ResponseWriter, r *http.Request
 
 	// Convert to JSON-friendly format
 	response := map[string]interface{}{
-		"object_id":     formatObjectID(info.RefID),
-		"class_name":    info.RefClass,
+		"object_id":     info.ObjectID,
+		"class_name":    info.ClassName,
 		"shallow_size":  info.ShallowSize,
 		"retained_size": info.RetainedSize,
-		"has_children":  info.HasChildren,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1042,41 +1056,18 @@ func (s *Server) handleRefGraphBiggestByClass(w http.ResponseWriter, r *http.Req
 		sortBy = "retained"
 	}
 
-	objects, err := s.refGraphService.GetBiggestObjectsByClass(taskID, className, topN, sortBy)
+	objects, err := s.refGraphService.GetBiggestObjects(taskID, topN, sortBy, className)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	// Convert to JSON-friendly format
-	type ObjectResponse struct {
-		ObjectID     string `json:"object_id"`
-		ClassName    string `json:"class_name"`
-		ShallowSize  int64  `json:"shallow_size"`
-		RetainedSize int64  `json:"retained_size"`
-	}
-
-	response := make([]ObjectResponse, 0, len(objects))
-	for _, obj := range objects {
-		response = append(response, ObjectResponse{
-			ObjectID:     formatObjectID(obj.ObjectID),
-			ClassName:    obj.ClassName,
-			ShallowSize:  obj.ShallowSize,
-			RetainedSize: obj.RetainedSize,
-		})
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(objects)
 }
 
-// parseInt parses an integer from a string.
-func parseInt(s string) (int, error) {
-	var n int
-	_, err := fmt.Sscanf(s, "%d", &n)
-	return n, err
-}
+
 
 // handlePProfLeakReport returns the pprof leak detection report.
 func (s *Server) handlePProfLeakReport(w http.ResponseWriter, r *http.Request) {

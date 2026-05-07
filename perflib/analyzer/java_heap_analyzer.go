@@ -64,6 +64,8 @@ func (a *JavaHeapAnalyzer) Name() string {
 }
 
 // Analyze performs Java heap dump analysis using an input file.
+// It uses the Two-Pass CSR strategy which produces a compact IndexedReferenceGraph
+// for on-demand queries, with lightweight pre-computation (class histogram + summary).
 func (a *JavaHeapAnalyzer) Analyze(ctx context.Context, req *model.AnalysisRequest) (*model.AnalysisResponse, error) {
 	file, err := os.Open(req.InputFile)
 	if err != nil {
@@ -71,180 +73,18 @@ func (a *JavaHeapAnalyzer) Analyze(ctx context.Context, req *model.AnalysisReque
 	}
 	defer file.Close()
 
-	return a.AnalyzeFromReader(ctx, req, file)
+	return a.analyzeTwoPass(ctx, req, file)
 }
 
 // AnalyzeFromReader performs Java heap dump analysis from a reader.
+// The reader must implement io.ReadSeeker for Two-Pass CSR parsing.
+// Non-seekable readers are not supported for heap dump analysis.
 func (a *JavaHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.AnalysisRequest, dataReader io.Reader) (*model.AnalysisResponse, error) {
-	// Create timer for post-parse operations (uses dependency injection via Logger)
-	timer := a.createTimer("Post-Parse Operations")
-
-	// Step 1: Parse the HPROF data (has its own internal timer)
-	parser := hprof.NewParser(a.hprofOpts)
-	heapResult, err := parser.Parse(ctx, dataReader)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrParseError, err)
+	rs, ok := dataReader.(io.ReadSeeker)
+	if !ok {
+		return nil, fmt.Errorf("heap dump analysis requires a seekable reader (io.ReadSeeker); streaming from non-seekable sources is not supported")
 	}
-
-	if heapResult.TotalInstances == 0 {
-		return nil, ErrEmptyData
-	}
-
-	// Step 2: Determine output directory
-	var taskDir string
-	timer.TimeFunc("Ensure output directory", func() {
-		taskDir = req.OutputDir
-		if taskDir == "" {
-			taskDir, err = a.ensureOutputDir("heap-analysis")
-		}
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	// Step 3: Generate heap analysis report
-	heapReportFile := filepath.Join(taskDir, "heap_analysis.json")
-	if _, err = timer.TimeFuncWithError("Write heap report", func() error {
-		return a.writeHeapReport(heapResult, heapReportFile)
-	}); err != nil {
-		return nil, fmt.Errorf("failed to write heap report: %w", err)
-	}
-
-	// Step 4: Generate class histogram (similar to jmap -histo)
-	histogramFile := filepath.Join(taskDir, "class_histogram.json")
-	if _, err = timer.TimeFuncWithError("Write class histogram", func() error {
-		return a.writeClassHistogram(heapResult, histogramFile)
-	}); err != nil {
-		return nil, fmt.Errorf("failed to write class histogram: %w", err)
-	}
-
-	// Step 5-7: Build data structures
-	var topClasses []model.HeapClassStats
-	var suggestions []model.SuggestionItem
-	var heapData *model.HeapAnalysisData
-
-	timer.TimeFunc("Build top classes", func() {
-		topClasses = buildTopClasses(heapResult)
-	})
-
-	timer.TimeFunc("Generate suggestions", func() {
-		suggestions = generateHeapSuggestions(heapResult)
-	})
-
-	timer.TimeFunc("Build HeapAnalysisData", func() {
-		heapData = &model.HeapAnalysisData{
-			HeapReportFile:    heapReportFile,
-			HistogramFile:     histogramFile,
-			TotalClasses:      heapResult.TotalClasses,
-			TotalInstances:    heapResult.TotalInstances,
-			TotalHeapSize:     heapResult.TotalHeapSize,
-			HeapSizeHuman:     formatBytes(heapResult.TotalHeapSize),
-			TopClasses:        topClasses,
-			BiggestObjects:    buildBiggestObjects(heapResult),
-			ReferenceGraphs:   buildReferenceGraphs(heapResult),
-			BusinessRetainers: buildBusinessRetainers(heapResult),
-		}
-
-		if heapResult.Header != nil {
-			heapData.Format = heapResult.Header.Format
-			heapData.IDSize = heapResult.Header.IDSize
-			heapData.Timestamp = heapResult.Header.Timestamp.Unix()
-		}
-
-		if heapResult.Summary != nil {
-			heapData.LiveBytes = heapResult.Summary.TotalLiveBytes
-			heapData.LiveObjects = heapResult.Summary.TotalLiveObjects
-		}
-	})
-
-	// Step 8: Write biggest objects file
-	if len(heapData.BiggestObjects) > 0 {
-		timer.TimeFunc("Write biggest objects file", func() {
-			biggestObjectsFile := filepath.Join(taskDir, "biggest_objects.json")
-			if writeErr := writeBiggestObjects(heapData.BiggestObjects, biggestObjectsFile); writeErr != nil {
-				if a.config.Logger != nil {
-					a.config.Logger.Warn("Failed to write biggest objects file: %v", writeErr)
-				}
-			}
-		})
-	}
-
-	// Step 8.5: Write GC roots file
-	if heapResult.GCRootsAnalysis != nil {
-		timer.TimeFunc("Write GC roots file", func() {
-			gcRootsFile := filepath.Join(taskDir, "gc_roots.json")
-			gcRootsData := buildGCRootsData(heapResult.GCRootsAnalysis)
-			if writeErr := writeGCRoots(gcRootsData, gcRootsFile); writeErr != nil {
-				if a.config.Logger != nil {
-					a.config.Logger.Warn("Failed to write GC roots file: %v", writeErr)
-				}
-			}
-		})
-	}
-
-	// Step 9: Serialize ReferenceGraph for advanced analysis in serve mode
-	// Uses async serialization to avoid blocking the main analysis flow
-	var serializeResultChan <-chan *hprof.AsyncSerializationResult
-	if heapResult.RefGraph != nil {
-		timer.TimeFunc("Serialize reference graph", func() {
-			refGraphFile := filepath.Join(taskDir, "refgraph.bin")
-			opts := hprof.FastSerializeOptions() // Use fast options with zstd
-			opts.SourceFile = req.InputFile
-
-			// Start async serialization - this returns immediately
-			var serializeErr error
-			serializeResultChan, serializeErr = hprof.SerializeToFileAsync(context.Background(), heapResult.RefGraph, refGraphFile, opts)
-			if serializeErr != nil {
-				if a.config.Logger != nil {
-					a.config.Logger.Warn("Failed to start reference graph serialization: %v", serializeErr)
-				}
-			} else if a.config.Logger != nil {
-				a.config.Logger.Info("Reference graph serialization started (async)")
-			}
-		})
-	}
-
-	// Wait for async serialization to complete before printing summary
-	if serializeResultChan != nil {
-		result := <-serializeResultChan
-		if result.Error != nil {
-			if a.config.Logger != nil {
-				a.config.Logger.Warn("Reference graph serialization failed: %v", result.Error)
-			}
-		} else if result.Stats != nil && a.config.Logger != nil {
-			a.config.Logger.Info("Reference graph serialized: %d objects, %d refs, %.2f KB (ratio: %.2fx)",
-				result.Stats.Objects, result.Stats.References,
-				float64(result.Stats.CompressedSize)/1024, result.Stats.CompressionRatio)
-		}
-	}
-
-	// Print timing summary for post-parse operations
-	timer.PrintSummary()
-
-	// Step 10: Build output files
-	outputFiles := []model.OutputFile{
-		{
-			Name:         "Heap Report",
-			LocalPath:    heapReportFile,
-			RelativePath: "heap_analysis.json",
-			ContentType:  "application/json",
-		},
-		{
-			Name:         "Class Histogram",
-			LocalPath:    histogramFile,
-			RelativePath: "class_histogram.json",
-			ContentType:  "application/json",
-		},
-	}
-
-	// Step 11: Build response
-	return &model.AnalysisResponse{
-		Mode:         req.Mode,
-		TotalRecords: int(heapResult.TotalInstances),
-		OutputFiles:  outputFiles,
-		Data:         heapData,
-		Suggestions:  suggestions,
-	}, nil
+	return a.analyzeTwoPass(ctx, req, rs)
 }
 
 // createTimer creates a perflib.Timer with the appropriate logger configuration.
@@ -273,376 +113,12 @@ func (a *JavaHeapAnalyzer) ensureOutputDir(subDir string) (string, error) {
 	return taskDir, nil
 }
 
-// writeHeapReport writes the complete heap analysis report.
-func (a *JavaHeapAnalyzer) writeHeapReport(result *hprof.HeapAnalysisResult, outputPath string) error {
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(result)
-}
-
-// writeClassHistogram writes the class histogram.
-func (a *JavaHeapAnalyzer) writeClassHistogram(result *hprof.HeapAnalysisResult, outputPath string) error {
-	histogram := &classHistogram{
-		TotalClasses:   result.TotalClasses,
-		TotalInstances: result.TotalInstances,
-		TotalSize:      result.TotalHeapSize,
-		Classes:        result.TopClasses,
-	}
-
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(histogram)
-}
-
 // classHistogram represents a class histogram report.
 type classHistogram struct {
 	TotalClasses   int                 `json:"total_classes"`
 	TotalInstances int64               `json:"total_instances"`
 	TotalSize      int64               `json:"total_size"`
 	Classes        []*hprof.ClassStats `json:"classes"`
-}
-
-// buildTopClasses builds the top classes list from heap result.
-func buildTopClasses(result *hprof.HeapAnalysisResult) []model.HeapClassStats {
-	topClasses := make([]model.HeapClassStats, 0, len(result.TopClasses))
-	for _, cls := range result.TopClasses {
-		heapClass := model.HeapClassStats{
-			ClassName:     cls.ClassName,
-			InstanceCount: cls.InstanceCount,
-			TotalSize:     cls.TotalSize,
-			Percentage:    cls.Percentage,
-			RetainedSize:  cls.RetainedSize,
-		}
-
-		// Add retainer information if available
-		if result.ClassRetainers != nil {
-			if retainers, ok := result.ClassRetainers[cls.ClassName]; ok {
-				// Override retained size if available from retainer analysis
-				if retainers.RetainedSize > 0 {
-					heapClass.RetainedSize = retainers.RetainedSize
-				}
-
-				// Add retainers with depth info
-				for _, r := range retainers.Retainers {
-					heapClass.Retainers = append(heapClass.Retainers, model.HeapRetainer{
-						RetainerClass: r.RetainerClass,
-						FieldName:     r.FieldName,
-						RetainedSize:  r.RetainedSize,
-						RetainedCount: r.RetainedCount,
-						Percentage:    r.Percentage,
-						Depth:         r.Depth,
-					})
-				}
-
-				// Add GC root paths
-				for _, path := range retainers.GCRootPaths {
-					gcPath := &model.GCRootPath{
-						RootType: string(path.RootType),
-						Depth:    path.Depth,
-					}
-					for _, node := range path.Path {
-						gcPath.Path = append(gcPath.Path, &model.GCRootPathNode{
-							ClassName: node.ClassName,
-							FieldName: node.FieldName,
-							Size:      node.Size,
-						})
-					}
-					heapClass.GCRootPaths = append(heapClass.GCRootPaths, gcPath)
-				}
-			}
-		}
-
-		topClasses = append(topClasses, heapClass)
-	}
-	return topClasses
-}
-
-// buildReferenceGraphs builds reference graph data for visualization.
-func buildReferenceGraphs(result *hprof.HeapAnalysisResult) map[string]*model.HeapReferenceGraph {
-	if result.ReferenceGraphs == nil {
-		return nil
-	}
-
-	graphs := make(map[string]*model.HeapReferenceGraph)
-	for className, graphData := range result.ReferenceGraphs {
-		graph := &model.HeapReferenceGraph{
-			ClassName: className,
-			Nodes:     make([]model.HeapReferenceNode, 0, len(graphData.Nodes)),
-			Edges:     make([]model.HeapReferenceEdge, 0, len(graphData.Edges)),
-		}
-
-		for _, node := range graphData.Nodes {
-			graph.Nodes = append(graph.Nodes, model.HeapReferenceNode{
-				ID:           node.ID,
-				ClassName:    node.ClassName,
-				Size:         node.Size,
-				RetainedSize: node.RetainedSize,
-				IsGCRoot:     node.IsGCRoot,
-				GCRootType:   node.GCRootType,
-			})
-		}
-
-		for _, edge := range graphData.Edges {
-			graph.Edges = append(graph.Edges, model.HeapReferenceEdge{
-				Source:    edge.Source,
-				Target:    edge.Target,
-				FieldName: edge.FieldName,
-			})
-		}
-
-		graphs[className] = graph
-	}
-
-	return graphs
-}
-
-// buildBusinessRetainers builds business-level retainer information for root cause analysis.
-func buildBusinessRetainers(result *hprof.HeapAnalysisResult) map[string][]model.HeapBusinessRetainer {
-	if result.BusinessRetainers == nil {
-		return nil
-	}
-
-	retainers := make(map[string][]model.HeapBusinessRetainer)
-	for className, businessRetainers := range result.BusinessRetainers {
-		var modelRetainers []model.HeapBusinessRetainer
-		for _, r := range businessRetainers {
-			modelRetainers = append(modelRetainers, model.HeapBusinessRetainer{
-				ClassName:     r.ClassName,
-				FieldPath:     r.FieldPath,
-				RetainedSize:  r.RetainedSize,
-				RetainedCount: r.RetainedCount,
-				Percentage:    r.Percentage,
-				Depth:         r.Depth,
-				IsGCRoot:      r.IsGCRoot,
-				GCRootType:    r.GCRootType,
-			})
-		}
-		if len(modelRetainers) > 0 {
-			retainers[className] = modelRetainers
-		}
-	}
-
-	return retainers
-}
-
-// buildBiggestObjects builds the biggest objects list from heap result.
-func buildBiggestObjects(result *hprof.HeapAnalysisResult) []model.HeapBiggestObject {
-	if result.BiggestObjects == nil {
-		return nil
-	}
-
-	biggestObjects := make([]model.HeapBiggestObject, 0, len(result.BiggestObjects))
-	for _, obj := range result.BiggestObjects {
-		bigObj := model.HeapBiggestObject{
-			ObjectID:     formatObjectID(obj.ObjectID),
-			ClassName:    obj.ClassName,
-			ShallowSize:  obj.ShallowSize,
-			RetainedSize: obj.RetainedSize,
-		}
-
-		// Convert fields with size information
-		for _, f := range obj.Fields {
-			field := model.HeapObjectField{
-				Name:         f.Name,
-				Type:         f.Type,
-				Value:        f.Value,
-				ShallowSize:  f.ShallowSize,
-				RetainedSize: f.RetainedSize,
-				HasChildren:  f.HasChildren,
-				IsStatic:     f.IsStatic,
-			}
-			if f.RefID != 0 {
-				field.RefID = formatObjectID(f.RefID)
-				field.RefClass = f.RefClass
-			}
-			bigObj.Fields = append(bigObj.Fields, field)
-		}
-
-		// Convert GC root path
-		if obj.GCRootPath != nil {
-			gcPath := &model.HeapGCRootPath{
-				RootType: string(obj.GCRootPath.RootType),
-				Depth:    obj.GCRootPath.Depth,
-			}
-			for _, node := range obj.GCRootPath.Path {
-				gcPath.Path = append(gcPath.Path, model.HeapGCRootPathNode{
-					ClassName: node.ClassName,
-					FieldName: node.FieldName,
-					Size:      node.Size,
-				})
-			}
-			bigObj.GCRootPath = gcPath
-		}
-
-		biggestObjects = append(biggestObjects, bigObj)
-	}
-
-	return biggestObjects
-}
-
-// writeBiggestObjects writes the biggest objects to a JSON file.
-func writeBiggestObjects(objects []model.HeapBiggestObject, outputPath string) error {
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(objects)
-}
-
-// buildGCRootsData converts hprof.GCRootsAnalysis to model.HeapGCRootsData.
-func buildGCRootsData(analysis *hprof.GCRootsAnalysis) *model.HeapGCRootsData {
-	if analysis == nil {
-		return nil
-	}
-
-	data := &model.HeapGCRootsData{
-		Summary: model.HeapGCRootsSummary{
-			TotalRoots:    analysis.TotalRoots,
-			TotalClasses:  analysis.TotalClasses,
-			TotalRetained: analysis.TotalRetained,
-			TotalShallow:  analysis.TotalShallow,
-		},
-		Classes: make([]model.HeapGCRootClass, 0, len(analysis.Classes)),
-	}
-
-	for _, cls := range analysis.Classes {
-		classData := model.HeapGCRootClass{
-			ClassName:     cls.ClassName,
-			RootType:      string(cls.RootType),
-			TotalShallow:  cls.TotalShallow,
-			TotalRetained: cls.TotalRetained,
-			InstanceCount: cls.InstanceCount,
-			Roots:         make([]model.HeapGCRootInstance, 0, len(cls.Roots)),
-		}
-
-		for _, root := range cls.Roots {
-			classData.Roots = append(classData.Roots, model.HeapGCRootInstance{
-				ObjectID:     formatObjectID(root.ObjectID),
-				RootType:     string(root.RootType),
-				ShallowSize:  root.ShallowSize,
-				RetainedSize: root.RetainedSize,
-				ThreadID:     formatObjectID(root.ThreadID),
-				FrameIndex:   root.FrameIndex,
-			})
-		}
-
-		data.Classes = append(data.Classes, classData)
-	}
-
-	return data
-}
-
-// writeGCRoots writes the GC roots data to a JSON file.
-func writeGCRoots(data *model.HeapGCRootsData, outputPath string) error {
-	if data == nil {
-		return nil
-	}
-
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(data)
-}
-
-// formatObjectID formats an object ID as a hex string.
-func formatObjectID(id uint64) string {
-	return fmt.Sprintf("0x%x", id)
-}
-
-// generateHeapSuggestions generates heap-specific suggestions.
-func generateHeapSuggestions(result *hprof.HeapAnalysisResult) []model.SuggestionItem {
-	var suggestions []model.SuggestionItem
-
-	// Analyze top classes for potential issues
-	for i, cls := range result.TopClasses {
-		if i >= 10 {
-			break
-		}
-
-		// Large memory consumers
-		if cls.Percentage > 10.0 {
-			suggestions = append(suggestions, model.SuggestionItem{
-				Suggestion: fmt.Sprintf("类 %s 占用堆内存 %.2f%% (%.2f MB, %d 个实例)，建议检查是否存在内存泄漏或过度分配",
-					cls.ClassName, cls.Percentage, float64(cls.TotalSize)/(1024*1024), cls.InstanceCount),
-				FuncName: cls.ClassName,
-			})
-		}
-
-		// Potential memory leak patterns
-		if isPotentialLeakClass(cls.ClassName) && cls.InstanceCount > 10000 {
-			suggestions = append(suggestions, model.SuggestionItem{
-				Suggestion: fmt.Sprintf("类 %s 有 %d 个实例，可能存在集合类内存泄漏，建议检查是否有未清理的缓存或集合",
-					cls.ClassName, cls.InstanceCount),
-				FuncName: cls.ClassName,
-			})
-		}
-
-		// Large number of String instances
-		if cls.ClassName == "java.lang.String" && cls.InstanceCount > 100000 {
-			suggestions = append(suggestions, model.SuggestionItem{
-				Suggestion: fmt.Sprintf("String 对象数量过多 (%d 个)，建议检查是否有字符串拼接问题或考虑使用 String.intern()",
-					cls.InstanceCount),
-				FuncName: "java.lang.String",
-			})
-		}
-
-		// Large byte arrays (often indicate large buffers or serialization issues)
-		if cls.ClassName == "byte[]" && cls.TotalSize > 100*1024*1024 {
-			suggestions = append(suggestions, model.SuggestionItem{
-				Suggestion: fmt.Sprintf("byte[] 数组占用 %.2f MB，建议检查是否有大缓冲区或序列化问题",
-					float64(cls.TotalSize)/(1024*1024)),
-				FuncName: "byte[]",
-			})
-		}
-
-		// char[] arrays (often from String objects)
-		if cls.ClassName == "char[]" && cls.TotalSize > 100*1024*1024 {
-			suggestions = append(suggestions, model.SuggestionItem{
-				Suggestion: fmt.Sprintf("char[] 数组占用 %.2f MB (通常来自 String 对象)，建议优化字符串使用",
-					float64(cls.TotalSize)/(1024*1024)),
-				FuncName: "char[]",
-			})
-		}
-	}
-
-	// Overall heap size warning
-	if result.TotalHeapSize > 1024*1024*1024 { // > 1GB
-		suggestions = append(suggestions, model.SuggestionItem{
-			Suggestion: fmt.Sprintf("堆内存总量 %.2f GB，建议分析是否可以优化内存使用或调整 JVM 堆大小",
-				float64(result.TotalHeapSize)/(1024*1024*1024)),
-		})
-	}
-
-	// Too many classes loaded
-	if result.TotalClasses > 50000 {
-		suggestions = append(suggestions, model.SuggestionItem{
-			Suggestion: fmt.Sprintf("加载了 %d 个类，可能存在类加载器泄漏，建议检查动态代理或热部署机制",
-				result.TotalClasses),
-		})
-	}
-
-	return suggestions
 }
 
 // isPotentialLeakClass checks if a class name suggests potential memory leak.
@@ -687,28 +163,6 @@ func formatBytes(bytes int64) string {
 	}
 }
 
-// heapAnalysisReport represents the complete heap analysis report.
-type heapAnalysisReport struct {
-	Summary       *model.HeapAnalysisData `json:"summary"`
-	TopClasses    []*hprof.ClassStats     `json:"top_classes"`
-	Suggestions   []model.SuggestionItem  `json:"suggestions"`
-	DominatorTree *heapDominatorTree      `json:"dominator_tree,omitempty"`
-}
-
-// heapDominatorTree represents a dominator tree for retained size analysis.
-type heapDominatorTree struct {
-	Roots []*dominatorNode `json:"roots"`
-}
-
-// dominatorNode represents a node in the dominator tree.
-type dominatorNode struct {
-	ClassName    string           `json:"class_name"`
-	ObjectID     uint64           `json:"object_id,omitempty"`
-	ShallowSize  int64            `json:"shallow_size"`
-	RetainedSize int64            `json:"retained_size"`
-	Children     []*dominatorNode `json:"children,omitempty"`
-}
-
 // SortClassesBySize sorts classes by total size in descending order.
 func SortClassesBySize(classes []*hprof.ClassStats) {
 	sort.Slice(classes, func(i, j int) bool {
@@ -721,4 +175,273 @@ func SortClassesByCount(classes []*hprof.ClassStats) {
 	sort.Slice(classes, func(i, j int) bool {
 		return classes[i].InstanceCount > classes[j].InstanceCount
 	})
+}
+
+// analyzeTwoPass performs heap analysis using the Two-Pass CSR strategy.
+// It produces a compact IndexedReferenceGraph for on-demand queries and
+// generates lightweight output files (summary + class histogram).
+// Heavy computations (GC root paths, retainers, biggest objects expansion)
+// are deferred to serve-time HeapQueryEngine.
+func (a *JavaHeapAnalyzer) analyzeTwoPass(ctx context.Context, req *model.AnalysisRequest, readSeeker io.ReadSeeker) (*model.AnalysisResponse, error) {
+	timer := a.createTimer("Two-Pass Analysis")
+
+	// Step 1: Two-Pass CSR parsing
+	parser := hprof.NewParser(a.hprofOpts)
+	var graph *hprof.IndexedReferenceGraph
+	var scanResult *hprof.ScanResult
+	var parseErr error
+
+	timer.TimeFunc("ParseTwoPass", func() {
+		graph, scanResult, parseErr = parser.ParseTwoPass(ctx, readSeeker)
+	})
+	if parseErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrParseError, parseErr)
+	}
+
+	if scanResult.TotalInstances == 0 {
+		return nil, ErrEmptyData
+	}
+
+	// Step 2: Determine output directory
+	var taskDir string
+	var err error
+	timer.TimeFunc("Ensure output directory", func() {
+		taskDir = req.OutputDir
+		if taskDir == "" {
+			taskDir, err = a.ensureOutputDir("heap-analysis")
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Step 3: Build class histogram from scan result
+	var topClasses []*hprof.ClassStats
+	timer.TimeFunc("Build class histogram", func() {
+		topClasses = a.buildClassHistogramFromScan(scanResult, graph)
+	})
+
+	// Step 4: Write class histogram
+	histogramFile := filepath.Join(taskDir, "class_histogram.json")
+	if _, err = timer.TimeFuncWithError("Write class histogram", func() error {
+		histogram := &classHistogram{
+			TotalClasses:   scanResult.TotalClasses,
+			TotalInstances: scanResult.TotalInstances,
+			TotalSize:      scanResult.TotalHeapSize,
+			Classes:        topClasses,
+		}
+		file, createErr := os.Create(histogramFile)
+		if createErr != nil {
+			return createErr
+		}
+		defer file.Close()
+		encoder := json.NewEncoder(file)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(histogram)
+	}); err != nil {
+		return nil, fmt.Errorf("failed to write class histogram: %w", err)
+	}
+
+	// Step 5: Build response data
+	var heapData *model.HeapAnalysisData
+	timer.TimeFunc("Build heap data", func() {
+		modelTopClasses := make([]model.HeapClassStats, 0, len(topClasses))
+		for _, cls := range topClasses {
+			modelTopClasses = append(modelTopClasses, model.HeapClassStats{
+				ClassName:     cls.ClassName,
+				InstanceCount: cls.InstanceCount,
+				TotalSize:     cls.TotalSize,
+				Percentage:    cls.Percentage,
+				RetainedSize:  cls.RetainedSize,
+			})
+		}
+
+		heapData = &model.HeapAnalysisData{
+			HistogramFile:  histogramFile,
+			TotalClasses:   scanResult.TotalClasses,
+			TotalInstances: scanResult.TotalInstances,
+			TotalHeapSize:  scanResult.TotalHeapSize,
+			HeapSizeHuman:  formatBytes(scanResult.TotalHeapSize),
+			TopClasses:     modelTopClasses,
+			// Note: BiggestObjects, ReferenceGraphs, BusinessRetainers are
+			// intentionally empty — they will be computed on-demand by HeapQueryEngine.
+		}
+
+		if scanResult.Header != nil {
+			heapData.Format = scanResult.Header.Format
+			heapData.IDSize = scanResult.Header.IDSize
+			heapData.Timestamp = scanResult.Header.Timestamp.Unix()
+		}
+		if scanResult.HeapSummary != nil {
+			heapData.LiveBytes = scanResult.HeapSummary.TotalLiveBytes
+			heapData.LiveObjects = scanResult.HeapSummary.TotalLiveObjects
+		}
+	})
+
+	// Step 7: Generate suggestions
+	var suggestions []model.SuggestionItem
+	timer.TimeFunc("Generate suggestions", func() {
+		suggestions = generateTwoPassSuggestions(topClasses, scanResult)
+	})
+
+	// Step 8: Compute dominator tree and retained sizes
+	timer.TimeFunc("Compute dominator tree", func() {
+		hprof.ComputeDominatorForIndexedGraph(ctx, graph)
+	})
+
+	// Step 9: Write heap_index.bin (for fast serve-time loading)
+	indexFile := filepath.Join(taskDir, "heap_index.bin")
+	if _, err = timer.TimeFuncWithError("Write heap index", func() error {
+		return hprof.WriteHeapIndex(indexFile, graph)
+	}); err != nil {
+		// Non-fatal: log warning but don't fail the analysis
+		if a.config.Logger != nil {
+			a.config.Logger.Warn("Failed to write heap index file: %v", err)
+		}
+	}
+
+	timer.PrintSummary()
+
+	if a.config.Logger != nil {
+		a.config.Logger.Info("Two-pass analysis complete: %d objects, %d edges, %d GC roots, %d classes",
+			scanResult.ObjectCount, scanResult.EdgeCount, len(scanResult.GCRoots), scanResult.TotalClasses)
+		reachableCount := int32(0)
+		for i := int32(0); i < graph.ObjectCount(); i++ {
+			if graph.IsReachable(i) {
+				reachableCount++
+			}
+		}
+		a.config.Logger.Info("Reachable objects: %d (%.1f%%)",
+			reachableCount, float64(reachableCount)/float64(scanResult.ObjectCount)*100)
+	}
+
+	// Step 9: Build output files list
+	outputFiles := []model.OutputFile{
+		{
+			Name:         "Class Histogram",
+			LocalPath:    histogramFile,
+			RelativePath: "class_histogram.json",
+			ContentType:  "application/json",
+		},
+	}
+	// Add heap index if successfully written
+	if _, statErr := os.Stat(indexFile); statErr == nil {
+		outputFiles = append(outputFiles, model.OutputFile{
+			Name:         "Heap Index",
+			LocalPath:    indexFile,
+			RelativePath: "heap_index.bin",
+			ContentType:  "application/octet-stream",
+		})
+	}
+
+	return &model.AnalysisResponse{
+		Mode:         req.Mode,
+		TotalRecords: int(scanResult.TotalInstances),
+		OutputFiles:  outputFiles,
+		Data:         heapData,
+		Suggestions:  suggestions,
+	}, nil
+}
+
+// buildClassHistogramFromScan builds class statistics from scan result and graph.
+// It aggregates shallow sizes and instance counts per class from the IndexedObjectStore.
+func (a *JavaHeapAnalyzer) buildClassHistogramFromScan(scanResult *hprof.ScanResult, graph *hprof.IndexedReferenceGraph) []*hprof.ClassStats {
+	type classAgg struct {
+		className     string
+		instanceCount int64
+		totalSize     int64
+		retainedSize  int64
+	}
+
+	classMap := make(map[uint64]*classAgg)
+	objectCount := graph.ObjectCount()
+
+	for i := int32(0); i < objectCount; i++ {
+		if !graph.IsReachable(i) {
+			continue
+		}
+		classID := graph.GetClassID(i)
+		agg, ok := classMap[classID]
+		if !ok {
+			className := graph.GetClassName(classID)
+			if className == "" {
+				className = fmt.Sprintf("<class@0x%x>", classID)
+			}
+			agg = &classAgg{className: className}
+			classMap[classID] = agg
+		}
+		agg.instanceCount++
+		agg.totalSize += graph.GetShallowSize(i)
+		agg.retainedSize += graph.GetRetainedSize(i)
+	}
+
+	// Convert to ClassStats slice and sort
+	classes := make([]*hprof.ClassStats, 0, len(classMap))
+	for _, agg := range classMap {
+		pct := 0.0
+		if scanResult.TotalHeapSize > 0 {
+			pct = float64(agg.totalSize) / float64(scanResult.TotalHeapSize) * 100
+		}
+		classes = append(classes, &hprof.ClassStats{
+			ClassName:     agg.className,
+			InstanceCount: agg.instanceCount,
+			TotalSize:     agg.totalSize,
+			Percentage:    pct,
+			RetainedSize:  agg.retainedSize,
+		})
+	}
+
+	sort.Slice(classes, func(i, j int) bool {
+		return classes[i].TotalSize > classes[j].TotalSize
+	})
+
+	// Keep top 200 classes for the histogram
+	if len(classes) > 200 {
+		classes = classes[:200]
+	}
+
+	return classes
+}
+
+// generateTwoPassSuggestions generates heap-specific suggestions based on TwoPass results.
+func generateTwoPassSuggestions(topClasses []*hprof.ClassStats, scanResult *hprof.ScanResult) []model.SuggestionItem {
+	var suggestions []model.SuggestionItem
+
+	for i, cls := range topClasses {
+		if i >= 10 {
+			break
+		}
+
+		if cls.Percentage > 10.0 {
+			suggestions = append(suggestions, model.SuggestionItem{
+				Suggestion: fmt.Sprintf("类 %s 占用堆内存 %.2f%% (%.2f MB, %d 个实例)，建议检查是否存在内存泄漏或过度分配",
+					cls.ClassName, cls.Percentage, float64(cls.TotalSize)/(1024*1024), cls.InstanceCount),
+				FuncName: cls.ClassName,
+			})
+		}
+
+		if isPotentialLeakClass(cls.ClassName) && cls.InstanceCount > 10000 {
+			suggestions = append(suggestions, model.SuggestionItem{
+				Suggestion: fmt.Sprintf("类 %s 有 %d 个实例，可能存在集合类内存泄漏，建议检查是否有未清理的缓存或集合",
+					cls.ClassName, cls.InstanceCount),
+				FuncName: cls.ClassName,
+			})
+		}
+	}
+
+	if scanResult.TotalHeapSize > 1024*1024*1024 {
+		suggestions = append(suggestions, model.SuggestionItem{
+			Suggestion: fmt.Sprintf("堆内存总量 %.2f GB，建议分析是否可以优化内存使用或调整 JVM 堆大小",
+				float64(scanResult.TotalHeapSize)/(1024*1024*1024)),
+		})
+	}
+
+	if scanResult.TotalClasses > 50000 {
+		suggestions = append(suggestions, model.SuggestionItem{
+			Suggestion: fmt.Sprintf("加载了 %d 个类，可能存在类加载器泄漏，建议检查动态代理或热部署机制",
+				scanResult.TotalClasses),
+		})
+	}
+
+	return suggestions
 }
