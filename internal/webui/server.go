@@ -118,6 +118,11 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/refgraph/retainers", s.handleRefGraphRetainers)
 	mux.HandleFunc("/api/refgraph/biggest-by-class", s.handleRefGraphBiggestByClass)
 
+	// Dominator tree and treemap APIs
+	mux.HandleFunc("/api/refgraph/dominator-tree", s.handleRefGraphDominatorTree)
+	mux.HandleFunc("/api/refgraph/dominator-path", s.handleRefGraphDominatorPath)
+	mux.HandleFunc("/api/refgraph/treemap", s.handleRefGraphTreemap)
+
 	// pprof analysis APIs
 	mux.HandleFunc("/api/pprof/leak-report", s.handlePProfLeakReport)
 	mux.HandleFunc("/api/pprof/batch-analysis", s.handlePProfBatchAnalysis)
@@ -1065,6 +1070,91 @@ func (s *Server) handleRefGraphBiggestByClass(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(objects)
+}
+
+// handleRefGraphDominatorTree returns dominated children of an object in the dominator tree.
+func (s *Server) handleRefGraphDominatorTree(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	objectIDStr := r.URL.Query().Get("id")
+	// objectIDStr can be empty (meaning virtual root)
+
+	topN := 50
+	if tn := r.URL.Query().Get("top"); tn != "" {
+		if n, err := parseInt(tn); err == nil && n > 0 {
+			topN = n
+		}
+	}
+
+	sortBy := r.URL.Query().Get("sort")
+	if sortBy == "" {
+		sortBy = "retained"
+	}
+
+	children, err := s.refGraphService.GetDominatorChildren(taskID, objectIDStr, topN, sortBy)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(children)
+}
+
+// handleRefGraphDominatorPath returns the dominator chain from root to a given object.
+func (s *Server) handleRefGraphDominatorPath(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	objectIDStr := r.URL.Query().Get("id")
+	if objectIDStr == "" {
+		http.Error(w, "Object ID is required", http.StatusBadRequest)
+		return
+	}
+
+	path, err := s.refGraphService.GetDominatorPath(taskID, objectIDStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(path)
+}
+
+// handleRefGraphTreemap returns treemap data for retained size visualization.
+func (s *Server) handleRefGraphTreemap(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	objectIDStr := r.URL.Query().Get("root")
+	// root can be empty (meaning virtual root)
+
+	maxNodes := 200
+	if mn := r.URL.Query().Get("maxNodes"); mn != "" {
+		if n, err := parseInt(mn); err == nil && n > 0 {
+			maxNodes = n
+		}
+	}
+
+	treemap, err := s.refGraphService.GetRetainedSizeTreemap(taskID, objectIDStr, maxNodes)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(treemap)
 }
 
 

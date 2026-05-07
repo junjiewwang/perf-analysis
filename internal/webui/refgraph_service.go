@@ -23,6 +23,9 @@ type HeapDataProvider interface {
 	GetGCRootsSummary() (interface{}, error)
 	GetGCRootsList() (interface{}, error)
 	GetRetainedObjectsByGCRoot(objectIDStr string, maxObjects int) (interface{}, error)
+	GetDominatorChildren(objectIDStr string, topN int, sortBy string) (interface{}, error)
+	GetDominatorPath(objectIDStr string) (interface{}, error)
+	GetRetainedSizeTreemap(objectIDStr string, maxNodes int) (interface{}, error)
 }
 
 // ObjectFieldResponse is the unified field response used by all providers.
@@ -141,6 +144,33 @@ func (s *RefGraphService) GetRetainedObjectsByGCRoot(taskID string, objectIDStr 
 		return nil, err
 	}
 	return entry.provider.GetRetainedObjectsByGCRoot(objectIDStr, maxObjects)
+}
+
+// GetDominatorChildren returns dominated children of a given object in the dominator tree.
+func (s *RefGraphService) GetDominatorChildren(taskID string, objectIDStr string, topN int, sortBy string) (interface{}, error) {
+	entry, err := s.getOrLoadProvider(taskID)
+	if err != nil {
+		return nil, err
+	}
+	return entry.provider.GetDominatorChildren(objectIDStr, topN, sortBy)
+}
+
+// GetDominatorPath returns the dominator chain from virtual root to the given object.
+func (s *RefGraphService) GetDominatorPath(taskID string, objectIDStr string) (interface{}, error) {
+	entry, err := s.getOrLoadProvider(taskID)
+	if err != nil {
+		return nil, err
+	}
+	return entry.provider.GetDominatorPath(objectIDStr)
+}
+
+// GetRetainedSizeTreemap returns treemap data for retained size visualization.
+func (s *RefGraphService) GetRetainedSizeTreemap(taskID string, objectIDStr string, maxNodes int) (interface{}, error) {
+	entry, err := s.getOrLoadProvider(taskID)
+	if err != nil {
+		return nil, err
+	}
+	return entry.provider.GetRetainedSizeTreemap(objectIDStr, maxNodes)
 }
 
 // HasRefGraph checks if any heap data source exists for the given task.
@@ -278,17 +308,16 @@ func (p *indexedProvider) GetObjectInfo(objectIDStr string) (*ObjectInfoResponse
 		return nil, fmt.Errorf("invalid object ID: %w", err)
 	}
 
-	idx := p.engine.graph.GetObjectIndex(objectID)
-	if idx < 0 {
+	info := p.engine.QueryObjectInfo(objectID)
+	if info == nil {
 		return nil, fmt.Errorf("object not found: %s", objectIDStr)
 	}
 
-	classID := p.engine.graph.GetClassID(idx)
 	return &ObjectInfoResponse{
-		ObjectID:     objectIDStr,
-		ClassName:    p.engine.graph.GetClassName(classID),
-		ShallowSize:  p.engine.graph.GetShallowSize(idx),
-		RetainedSize: p.engine.graph.GetRetainedSize(idx),
+		ObjectID:     info.ObjectID,
+		ClassName:    info.ClassName,
+		ShallowSize:  info.ShallowSize,
+		RetainedSize: info.RetainedSize,
 	}, nil
 }
 
@@ -352,6 +381,38 @@ func (p *indexedProvider) GetRetainedObjectsByGCRoot(objectIDStr string, maxObje
 	// Use QueryObjectFields to get outgoing references from the GC root
 	fields := p.engine.QueryObjectFields(objectID)
 	return fields, nil
+}
+
+func (p *indexedProvider) GetDominatorChildren(objectIDStr string, topN int, sortBy string) (interface{}, error) {
+	var objectID uint64
+	if objectIDStr != "" && objectIDStr != "0" {
+		var err error
+		objectID, err = parseObjectID(objectIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid object ID: %w", err)
+		}
+	}
+	return p.engine.QueryDominatorChildren(objectID, topN, sortBy), nil
+}
+
+func (p *indexedProvider) GetDominatorPath(objectIDStr string) (interface{}, error) {
+	objectID, err := parseObjectID(objectIDStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid object ID: %w", err)
+	}
+	return p.engine.QueryDominatorPath(objectID), nil
+}
+
+func (p *indexedProvider) GetRetainedSizeTreemap(objectIDStr string, maxNodes int) (interface{}, error) {
+	var objectID uint64
+	if objectIDStr != "" && objectIDStr != "0" {
+		var err error
+		objectID, err = parseObjectID(objectIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid object ID: %w", err)
+		}
+	}
+	return p.engine.QueryRetainedSizeTreemap(objectID, maxNodes), nil
 }
 
 // ============================================================================

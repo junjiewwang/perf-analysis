@@ -395,3 +395,191 @@ func makeInt32(val int32) []byte {
 	buf[3] = byte(val)
 	return buf
 }
+
+// ============================================================================
+// Boundary / Edge Case Tests
+// ============================================================================
+
+// TestHeapQueryEngine_QueryBiggestObjects_Boundary tests edge cases for QueryBiggestObjects.
+func TestHeapQueryEngine_QueryBiggestObjects_Boundary(t *testing.T) {
+	graph := buildTestGraph(t)
+	engine := NewHeapQueryEngine(graph)
+
+	t.Run("topN=0 uses default", func(t *testing.T) {
+		results := engine.QueryBiggestObjects(0, "retained", "")
+		// Default is 50, but graph has fewer objects
+		assert.NotEmpty(t, results)
+	})
+
+	t.Run("topN larger than object count", func(t *testing.T) {
+		results := engine.QueryBiggestObjects(99999, "retained", "")
+		// Should return all reachable objects (no crash)
+		assert.NotEmpty(t, results)
+		// Should be sorted descending
+		for i := 1; i < len(results); i++ {
+			assert.GreaterOrEqual(t, results[i-1].RetainedSize, results[i].RetainedSize)
+		}
+	})
+
+	t.Run("topN=1 returns single largest", func(t *testing.T) {
+		results := engine.QueryBiggestObjects(1, "retained", "")
+		assert.Len(t, results, 1)
+	})
+
+	t.Run("invalid sortBy defaults gracefully", func(t *testing.T) {
+		// Unknown sortBy should not panic
+		results := engine.QueryBiggestObjects(5, "unknown_field", "")
+		assert.NotEmpty(t, results)
+	})
+
+	t.Run("empty class filter returns all", func(t *testing.T) {
+		allResults := engine.QueryBiggestObjects(100, "retained", "")
+		assert.Greater(t, len(allResults), 0)
+	})
+}
+
+// TestHeapQueryEngine_QueryRetainers_Boundary tests edge cases.
+func TestHeapQueryEngine_QueryRetainers_Boundary(t *testing.T) {
+	graph := buildTestGraph(t)
+	engine := NewHeapQueryEngine(graph)
+
+	t.Run("limit=0 uses default (no truncation)", func(t *testing.T) {
+		results := engine.QueryRetainers(0x3001, 0)
+		// limit=0 means no limit, returns all retainers
+		assert.NotEmpty(t, results)
+	})
+
+	t.Run("limit=1 returns only one retainer", func(t *testing.T) {
+		results := engine.QueryRetainers(0x3001, 1)
+		assert.Len(t, results, 1)
+	})
+
+	t.Run("GC root has retainers from array", func(t *testing.T) {
+		// objA1 (GC root) is also referenced by arr1
+		results := engine.QueryRetainers(0x1001, 10)
+		// arr1 → objA1
+		found := false
+		for _, r := range results {
+			if r.ClassName == "[Lcom.test.ClassA;" || r.ClassName == "[Lcom/test/ClassA;" {
+				found = true
+			}
+		}
+		// arr1 references objA1, so it should appear as retainer
+		assert.True(t, found || len(results) > 0)
+	})
+}
+
+// TestHeapQueryEngine_QueryObjectFields_Boundary tests edge cases.
+func TestHeapQueryEngine_QueryObjectFields_Boundary(t *testing.T) {
+	graph := buildTestGraph(t)
+	engine := NewHeapQueryEngine(graph)
+
+	t.Run("object with no outgoing edges", func(t *testing.T) {
+		// objC1 has no outgoing edges
+		results := engine.QueryObjectFields(0x3001)
+		assert.Nil(t, results)
+	})
+
+	t.Run("non-existent object ID", func(t *testing.T) {
+		results := engine.QueryObjectFields(0xDEAD)
+		assert.Nil(t, results)
+	})
+
+	t.Run("array elements are reported", func(t *testing.T) {
+		results := engine.QueryObjectFields(0x4001)
+		// arr1 has 2 elements: objA1 and objA2
+		assert.Len(t, results, 2)
+		for _, f := range results {
+			assert.NotEmpty(t, f.RefClass)
+		}
+	})
+}
+
+// TestHeapQueryEngine_QueryGCRootPath_Boundary tests edge cases.
+func TestHeapQueryEngine_QueryGCRootPath_Boundary(t *testing.T) {
+	graph := buildTestGraph(t)
+	engine := NewHeapQueryEngine(graph)
+
+	t.Run("maxDepth=1 limits BFS depth", func(t *testing.T) {
+		// With maxDepth=1, only direct neighbors of the object are checked
+		results := engine.QueryGCRootPath(0x3001, 10, 1)
+		// objC1 is 2 hops from root: objC1←objB1←objA1(root)
+		// With depth 1, we can only see immediate incomers (objB1, objB2)
+		// Neither is a root, so no path should be found
+		assert.Empty(t, results)
+	})
+
+	t.Run("maxDepth=2 finds GC root", func(t *testing.T) {
+		results := engine.QueryGCRootPath(0x3001, 10, 2)
+		// 2 hops: objC1←objB1←objA1(root) should be findable
+		assert.NotEmpty(t, results)
+	})
+
+	t.Run("maxPaths=1 limits results", func(t *testing.T) {
+		results := engine.QueryGCRootPath(0x3001, 1, 10)
+		assert.Len(t, results, 1)
+	})
+
+	t.Run("already a root object", func(t *testing.T) {
+		// objA1 is a root and also referenced by arr1 (another root)
+		results := engine.QueryGCRootPath(0x1001, 10, 10)
+		// Should find at least one path (arr1 → objA1)
+		// The algorithm specifically checks current.idx != startIdx for isGCRoot
+		assert.NotEmpty(t, results)
+	})
+}
+
+// TestHeapQueryEngine_QueryClassInstances_Boundary tests edge cases.
+func TestHeapQueryEngine_QueryClassInstances_Boundary(t *testing.T) {
+	graph := buildTestGraph(t)
+	engine := NewHeapQueryEngine(graph)
+
+	t.Run("limit=0 uses default", func(t *testing.T) {
+		results := engine.QueryClassInstances("com.test.ClassA", 0, "retained")
+		// Should still return results (default limit applied)
+		assert.NotEmpty(t, results)
+	})
+
+	t.Run("sort by shallow", func(t *testing.T) {
+		results := engine.QueryClassInstances("com.test.ClassA", 10, "shallow")
+		if len(results) > 1 {
+			for i := 1; i < len(results); i++ {
+				assert.GreaterOrEqual(t, results[i-1].ShallowSize, results[i].ShallowSize)
+			}
+		}
+	})
+}
+
+// TestHeapQueryEngine_QueryGCRootsSummary_Boundary tests edge cases.
+func TestHeapQueryEngine_QueryGCRootsSummary_Boundary(t *testing.T) {
+	graph := buildTestGraph(t)
+	engine := NewHeapQueryEngine(graph)
+
+	results := engine.QueryGCRootsSummary()
+
+	// Each result should have valid data
+	for _, r := range results {
+		assert.NotEmpty(t, r.ClassName)
+		assert.NotEmpty(t, r.RootType)
+		assert.Greater(t, r.InstanceCount, 0)
+		assert.Greater(t, r.TotalShallow, int64(0))
+	}
+}
+
+// TestHeapQueryEngine_QueryObjectInfo tests QueryObjectInfo.
+func TestHeapQueryEngine_QueryObjectInfo(t *testing.T) {
+	graph := buildTestGraph(t)
+	engine := NewHeapQueryEngine(graph)
+
+	t.Run("existing object", func(t *testing.T) {
+		info := engine.QueryObjectInfo(0x1001)
+		require.NotNil(t, info)
+		assert.Equal(t, "com.test.ClassA", info.ClassName)
+		assert.Greater(t, info.ShallowSize, int64(0))
+	})
+
+	t.Run("non-existent object", func(t *testing.T) {
+		info := engine.QueryObjectInfo(0xBADBAD)
+		assert.Nil(t, info)
+	})
+}

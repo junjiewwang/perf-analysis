@@ -1,12 +1,11 @@
 // Package webui provides the web UI server for performance analysis.
 // This file implements HeapQueryEngine - the on-demand query engine for heap analysis.
-// It operates on compact CSR-format data (IndexedReferenceGraph) and provides
+// It operates on the HeapGraph interface (backed by compact CSR-format data) and provides
 // efficient runtime queries without requiring full pre-computation.
 package webui
 
 import (
 	"container/heap"
-	"fmt"
 	"sort"
 	"sync"
 
@@ -14,20 +13,26 @@ import (
 )
 
 // HeapQueryEngine provides on-demand heap analysis queries using
-// pre-computed compact index data (CSR format). It replaces the
-// need for full pre-computation of GC root paths, retainers, etc.
+// pre-computed compact index data (CSR format). It depends on the
+// HeapGraph interface for decoupling from concrete graph implementations.
 type HeapQueryEngine struct {
-	graph *hprof.IndexedReferenceGraph
+	graph     hprof.HeapGraph
+	assembler *hprof.ObjectInfoAssembler
 
 	// Lazy-computed lookup tables
 	classNameToID     map[string]uint64
 	classNameToIDOnce sync.Once
+
+	// Lazy-computed dominator children set (which nodes have dominated children)
+	domHasChildren     map[int32]bool
+	domHasChildrenOnce sync.Once
 }
 
-// NewHeapQueryEngine creates a new HeapQueryEngine from an IndexedReferenceGraph.
-func NewHeapQueryEngine(graph *hprof.IndexedReferenceGraph) *HeapQueryEngine {
+// NewHeapQueryEngine creates a new HeapQueryEngine from a HeapGraph implementation.
+func NewHeapQueryEngine(graph hprof.HeapGraph) *HeapQueryEngine {
 	return &HeapQueryEngine{
-		graph: graph,
+		graph:     graph,
+		assembler: hprof.NewObjectInfoAssembler(graph),
 	}
 }
 
@@ -83,6 +88,12 @@ type GCRootSummaryResult struct {
 	TotalRetained int64  `json:"total_retained"`
 }
 
+// QueryObjectInfo returns basic information about a single object by its ID.
+// Returns nil if the object is not found.
+func (e *HeapQueryEngine) QueryObjectInfo(objectID uint64) *hprof.HeapObjectInfo {
+	return e.assembler.AssembleByObjectID(objectID)
+}
+
 // QueryBiggestObjects returns top N objects sorted by retained size.
 // Supports filtering by class name. Time: O(N) scan + O(topN log topN) sort.
 func (e *HeapQueryEngine) QueryBiggestObjects(topN int, sortBy string, classFilter string) []BiggestObjectResult {
@@ -112,13 +123,7 @@ func (e *HeapQueryEngine) QueryBiggestObjects(topN int, sortBy string, classFilt
 			continue
 		}
 
-		var sortValue int64
-		switch sortBy {
-		case "shallow":
-			sortValue = e.graph.GetShallowSize(i)
-		default: // "retained" or empty
-			sortValue = e.graph.GetRetainedSize(i)
-		}
+		sortValue := e.getSortValue(i, sortBy)
 
 		if h.Len() < topN {
 			heap.Push(h, biggestObjectEntry{idx: i, sortValue: sortValue})
@@ -132,12 +137,12 @@ func (e *HeapQueryEngine) QueryBiggestObjects(topN int, sortBy string, classFilt
 	results := make([]BiggestObjectResult, h.Len())
 	for i := len(results) - 1; i >= 0; i-- {
 		entry := heap.Pop(h).(biggestObjectEntry)
-		classID := e.graph.GetClassID(entry.idx)
+		info := e.assembler.AssembleByIndex(entry.idx)
 		results[i] = BiggestObjectResult{
-			ObjectID:     fmt.Sprintf("0x%x", e.graph.GetObjectID(entry.idx)),
-			ClassName:    e.graph.GetClassName(classID),
-			ShallowSize:  e.graph.GetShallowSize(entry.idx),
-			RetainedSize: e.graph.GetRetainedSize(entry.idx),
+			ObjectID:     info.ObjectID,
+			ClassName:    info.ClassName,
+			ShallowSize:  info.ShallowSize,
+			RetainedSize: info.RetainedSize,
 		}
 	}
 
@@ -204,10 +209,7 @@ func (e *HeapQueryEngine) QueryGCRootPath(objectID uint64, maxPaths int, maxDept
 			}
 			visited[sourceIdx] = true
 
-			fieldName := ""
-			if e.graph.GetOutgoing() != nil && fieldIDs != nil {
-				fieldName = e.graph.GetOutgoing().GetFieldName(fieldIDs[i])
-			}
+			fieldName := e.assembler.ResolveFieldName(fieldIDs, i)
 
 			parents[sourceIdx] = bfsNode{
 				idx:    sourceIdx,
@@ -233,11 +235,11 @@ func (e *HeapQueryEngine) reconstructPath(startIdx, rootIdx int32, parents map[i
 	// Walk from root back to start
 	current := rootIdx
 	for current != startIdx {
-		classID := e.graph.GetClassID(current)
+		info := e.assembler.AssembleByIndex(current)
 		node := GCRootPathNodeResult{
-			ObjectID:  fmt.Sprintf("0x%x", e.graph.GetObjectID(current)),
-			ClassName: e.graph.GetClassName(classID),
-			Size:      e.graph.GetRetainedSize(current),
+			ObjectID:  info.ObjectID,
+			ClassName: info.ClassName,
+			Size:      info.RetainedSize,
 		}
 		if parent, ok := parents[current]; ok {
 			node.FieldName = parent.field
@@ -249,11 +251,11 @@ func (e *HeapQueryEngine) reconstructPath(startIdx, rootIdx int32, parents map[i
 	}
 
 	// Add the start object
-	classID := e.graph.GetClassID(startIdx)
+	startInfo := e.assembler.AssembleByIndex(startIdx)
 	pathNodes = append(pathNodes, GCRootPathNodeResult{
-		ObjectID:  fmt.Sprintf("0x%x", e.graph.GetObjectID(startIdx)),
-		ClassName: e.graph.GetClassName(classID),
-		Size:      e.graph.GetRetainedSize(startIdx),
+		ObjectID:  startInfo.ObjectID,
+		ClassName: startInfo.ClassName,
+		Size:      startInfo.RetainedSize,
 	})
 
 	// Reverse to get root → object order
@@ -299,20 +301,15 @@ func (e *HeapQueryEngine) QueryRetainers(objectID uint64, maxRetainers int) []Re
 
 	results := make([]RetainerResult, 0, limit)
 	for i := 0; i < limit; i++ {
-		sourceIdx := sources[i]
-		classID := e.graph.GetClassID(sourceIdx)
-
-		fieldName := ""
-		if e.graph.GetOutgoing() != nil && fieldIDs != nil {
-			fieldName = e.graph.GetOutgoing().GetFieldName(fieldIDs[i])
-		}
+		info := e.assembler.AssembleByIndex(sources[i])
+		fieldName := e.assembler.ResolveFieldName(fieldIDs, i)
 
 		results = append(results, RetainerResult{
-			ObjectID:     fmt.Sprintf("0x%x", e.graph.GetObjectID(sourceIdx)),
-			ClassName:    e.graph.GetClassName(classID),
+			ObjectID:     info.ObjectID,
+			ClassName:    info.ClassName,
 			FieldName:    fieldName,
-			ShallowSize:  e.graph.GetShallowSize(sourceIdx),
-			RetainedSize: e.graph.GetRetainedSize(sourceIdx),
+			ShallowSize:  info.ShallowSize,
+			RetainedSize: info.RetainedSize,
 		})
 	}
 
@@ -343,13 +340,8 @@ func (e *HeapQueryEngine) QueryObjectFields(objectID uint64) []ObjectFieldResult
 			continue
 		}
 
-		classID := e.graph.GetClassID(targetIdx)
-		className := e.graph.GetClassName(classID)
-
-		fieldName := ""
-		if e.graph.GetOutgoing() != nil && fieldIDs != nil {
-			fieldName = e.graph.GetOutgoing().GetFieldName(fieldIDs[i])
-		}
+		info := e.assembler.AssembleByIndex(targetIdx)
+		fieldName := e.assembler.ResolveFieldName(fieldIDs, i)
 
 		// Check if target has outgoing edges (children)
 		_, tgtFieldIDs, _ := e.graph.GetOutgoingEdges(targetIdx)
@@ -357,11 +349,11 @@ func (e *HeapQueryEngine) QueryObjectFields(objectID uint64) []ObjectFieldResult
 
 		results = append(results, ObjectFieldResult{
 			Name:         fieldName,
-			Type:         className,
-			RefID:        fmt.Sprintf("0x%x", e.graph.GetObjectID(targetIdx)),
-			RefClass:     className,
-			ShallowSize:  e.graph.GetShallowSize(targetIdx),
-			RetainedSize: e.graph.GetRetainedSize(targetIdx),
+			Type:         info.ClassName,
+			RefID:        info.ObjectID,
+			RefClass:     info.ClassName,
+			ShallowSize:  info.ShallowSize,
+			RetainedSize: info.RetainedSize,
 			HasChildren:  hasChildren,
 		})
 	}
@@ -395,14 +387,7 @@ func (e *HeapQueryEngine) QueryClassInstances(className string, topN int, sortBy
 		if !e.graph.IsReachable(idx) {
 			continue
 		}
-		var sv int64
-		switch sortBy {
-		case "shallow":
-			sv = e.graph.GetShallowSize(idx)
-		default:
-			sv = e.graph.GetRetainedSize(idx)
-		}
-		sorted = append(sorted, indexedObj{idx: idx, sortValue: sv})
+		sorted = append(sorted, indexedObj{idx: idx, sortValue: e.getSortValue(idx, sortBy)})
 	}
 
 	sort.Slice(sorted, func(i, j int) bool {
@@ -415,11 +400,12 @@ func (e *HeapQueryEngine) QueryClassInstances(className string, topN int, sortBy
 
 	results := make([]BiggestObjectResult, len(sorted))
 	for i, obj := range sorted {
+		info := e.assembler.AssembleByIndex(obj.idx)
 		results[i] = BiggestObjectResult{
-			ObjectID:     fmt.Sprintf("0x%x", e.graph.GetObjectID(obj.idx)),
-			ClassName:    className,
-			ShallowSize:  e.graph.GetShallowSize(obj.idx),
-			RetainedSize: e.graph.GetRetainedSize(obj.idx),
+			ObjectID:     info.ObjectID,
+			ClassName:    info.ClassName,
+			ShallowSize:  info.ShallowSize,
+			RetainedSize: info.RetainedSize,
 		}
 	}
 
@@ -440,8 +426,7 @@ func (e *HeapQueryEngine) QueryGCRootsSummary() []GCRootSummaryResult {
 		if !e.graph.IsGCRoot(i) {
 			continue
 		}
-		classID := e.graph.GetClassID(i)
-		className := e.graph.GetClassName(classID)
+		className := e.assembler.GetClassNameByIndex(i)
 		if className == "" {
 			className = "<unknown>"
 		}
@@ -472,6 +457,272 @@ func (e *HeapQueryEngine) QueryGCRootsSummary() []GCRootSummaryResult {
 	})
 
 	return results
+}
+
+// DominatorChildResult represents a child node in the dominator tree.
+type DominatorChildResult struct {
+	ObjectID     string `json:"object_id"`
+	ClassName    string `json:"class_name"`
+	ShallowSize  int64  `json:"shallow_size"`
+	RetainedSize int64  `json:"retained_size"`
+	HasChildren  bool   `json:"has_children"`
+	IsGCRoot     bool   `json:"is_gc_root"`
+}
+
+// DominatorPathResult represents a node in the dominator path from root to object.
+type DominatorPathResult struct {
+	ObjectID     string `json:"object_id"`
+	ClassName    string `json:"class_name"`
+	ShallowSize  int64  `json:"shallow_size"`
+	RetainedSize int64  `json:"retained_size"`
+	Depth        int    `json:"depth"`
+}
+
+// TreemapNodeResult represents a node in the retained size treemap.
+type TreemapNodeResult struct {
+	Name     string              `json:"name"`
+	Value    int64               `json:"value"`
+	ObjectID string              `json:"object_id,omitempty"`
+	Children []TreemapNodeResult `json:"children,omitempty"`
+}
+
+// QueryDominatorChildren returns direct dominated children of a given object,
+// sorted by retained size descending. If idx == -1, returns the virtual root's
+// children (objects whose dominator is -1, i.e., directly dominated by super root).
+func (e *HeapQueryEngine) QueryDominatorChildren(objectID uint64, topN int, sortBy string) []DominatorChildResult {
+	if topN <= 0 {
+		topN = 50
+	}
+
+	parentIdx := int32(-1)
+	if objectID != 0 {
+		parentIdx = e.graph.GetObjectIndex(objectID)
+		if parentIdx < 0 {
+			return nil
+		}
+	}
+
+	// Use a min-heap to find top N children by retained size
+	h := &biggestObjectHeap{}
+	heap.Init(h)
+
+	objectCount := e.graph.ObjectCount()
+	for i := int32(0); i < objectCount; i++ {
+		if !e.graph.IsReachable(i) {
+			continue
+		}
+
+		dominator := e.graph.GetDominator(i)
+		if dominator != parentIdx {
+			continue
+		}
+
+		sortValue := e.getSortValue(i, sortBy)
+
+		if h.Len() < topN {
+			heap.Push(h, biggestObjectEntry{idx: i, sortValue: sortValue})
+		} else if sortValue > (*h)[0].sortValue {
+			(*h)[0] = biggestObjectEntry{idx: i, sortValue: sortValue}
+			heap.Fix(h, 0)
+		}
+	}
+
+	// Extract results in descending order
+	results := make([]DominatorChildResult, h.Len())
+	for i := len(results) - 1; i >= 0; i-- {
+		entry := heap.Pop(h).(biggestObjectEntry)
+		info := e.assembler.AssembleByIndex(entry.idx)
+		hasChildren := e.hasDominatedChildren(entry.idx)
+		results[i] = DominatorChildResult{
+			ObjectID:     info.ObjectID,
+			ClassName:    info.ClassName,
+			ShallowSize:  info.ShallowSize,
+			RetainedSize: info.RetainedSize,
+			HasChildren:  hasChildren,
+			IsGCRoot:     e.graph.IsGCRoot(entry.idx),
+		}
+	}
+
+	return results
+}
+
+// hasDominatedChildren checks if an object has at least one dominated child.
+// Uses lazy-computed lookup map for O(1) per query after first build.
+func (e *HeapQueryEngine) hasDominatedChildren(parentIdx int32) bool {
+	e.domHasChildrenOnce.Do(func() {
+		e.domHasChildren = make(map[int32]bool)
+		objectCount := e.graph.ObjectCount()
+		for i := int32(0); i < objectCount; i++ {
+			if !e.graph.IsReachable(i) {
+				continue
+			}
+			dominator := e.graph.GetDominator(i)
+			if dominator >= 0 {
+				e.domHasChildren[dominator] = true
+			} else {
+				// dominator == -1 means dominated by virtual root (-1)
+				e.domHasChildren[-1] = true
+			}
+		}
+	})
+	return e.domHasChildren[parentIdx]
+}
+
+// QueryDominatorPath returns the dominator chain from virtual root to the given object.
+func (e *HeapQueryEngine) QueryDominatorPath(objectID uint64) []DominatorPathResult {
+	startIdx := e.graph.GetObjectIndex(objectID)
+	if startIdx < 0 {
+		return nil
+	}
+
+	// Walk up the dominator tree
+	var path []DominatorPathResult
+	current := startIdx
+	depth := 0
+
+	for current >= 0 {
+		info := e.assembler.AssembleByIndex(current)
+		path = append(path, DominatorPathResult{
+			ObjectID:     info.ObjectID,
+			ClassName:    info.ClassName,
+			ShallowSize:  info.ShallowSize,
+			RetainedSize: info.RetainedSize,
+			Depth:        depth,
+		})
+		depth++
+
+		dominator := e.graph.GetDominator(current)
+		if dominator < 0 {
+			break
+		}
+		current = dominator
+
+		// Safety limit to prevent infinite loops
+		if depth > 100 {
+			break
+		}
+	}
+
+	// Reverse to get root → object order
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
+	}
+
+	// Fix depth values after reversal
+	for i := range path {
+		path[i].Depth = i
+	}
+
+	return path
+}
+
+// QueryRetainedSizeTreemap returns treemap data for retained size visualization.
+// It returns the top-level dominated children of the given root (or virtual root if objectID==0),
+// grouped by class for a hierarchical treemap visualization.
+func (e *HeapQueryEngine) QueryRetainedSizeTreemap(objectID uint64, maxNodes int) []TreemapNodeResult {
+	if maxNodes <= 0 {
+		maxNodes = 200
+	}
+
+	parentIdx := int32(-1)
+	if objectID != 0 {
+		parentIdx = e.graph.GetObjectIndex(objectID)
+		if parentIdx < 0 {
+			return nil
+		}
+	}
+
+	// Collect children grouped by class
+	type classGroup struct {
+		classID      uint64
+		className    string
+		totalRetained int64
+		objects      []int32
+	}
+
+	groups := make(map[uint64]*classGroup)
+	objectCount := e.graph.ObjectCount()
+
+	for i := int32(0); i < objectCount; i++ {
+		if !e.graph.IsReachable(i) {
+			continue
+		}
+		if e.graph.GetDominator(i) != parentIdx {
+			continue
+		}
+
+		classID := e.graph.GetClassID(i)
+		retained := e.graph.GetRetainedSize(i)
+
+		if g, ok := groups[classID]; ok {
+			g.totalRetained += retained
+			g.objects = append(g.objects, i)
+		} else {
+			groups[classID] = &classGroup{
+				classID:       classID,
+				className:     e.graph.GetClassName(classID),
+				totalRetained: retained,
+				objects:       []int32{i},
+			}
+		}
+	}
+
+	// Sort groups by total retained size
+	sortedGroups := make([]*classGroup, 0, len(groups))
+	for _, g := range groups {
+		sortedGroups = append(sortedGroups, g)
+	}
+	sort.Slice(sortedGroups, func(i, j int) bool {
+		return sortedGroups[i].totalRetained > sortedGroups[j].totalRetained
+	})
+
+	// Limit total nodes
+	totalNodes := 0
+	var results []TreemapNodeResult
+	for _, g := range sortedGroups {
+		if totalNodes >= maxNodes {
+			break
+		}
+
+		// Sort objects within group by retained size
+		sort.Slice(g.objects, func(i, j int) bool {
+			return e.graph.GetRetainedSize(g.objects[i]) > e.graph.GetRetainedSize(g.objects[j])
+		})
+
+		// Build children for this class group
+		var children []TreemapNodeResult
+		for _, idx := range g.objects {
+			if totalNodes >= maxNodes {
+				break
+			}
+			info := e.assembler.AssembleByIndex(idx)
+			children = append(children, TreemapNodeResult{
+				Name:     info.ClassName + " @" + info.ObjectID[2:], // Remove "0x" prefix for short display
+				Value:    info.RetainedSize,
+				ObjectID: info.ObjectID,
+			})
+			totalNodes++
+		}
+
+		node := TreemapNodeResult{
+			Name:     g.className,
+			Value:    g.totalRetained,
+			Children: children,
+		}
+		results = append(results, node)
+	}
+
+	return results
+}
+
+// getSortValue returns the appropriate size value for sorting.
+func (e *HeapQueryEngine) getSortValue(idx int32, sortBy string) int64 {
+	switch sortBy {
+	case "shallow":
+		return e.graph.GetShallowSize(idx)
+	default: // "retained" or empty
+		return e.graph.GetRetainedSize(idx)
+	}
 }
 
 // resolveClassID finds the classID for a given class name.
