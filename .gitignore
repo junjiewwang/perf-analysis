@@ -13,3 +13,4 @@ pprof-report/
 cache/
 cli
 bin/
+coverage.out
