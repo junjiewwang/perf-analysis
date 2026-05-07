@@ -532,10 +532,10 @@ WebUI 通过轮询或 SSE 检测新文件出现，逐步解锁 tab。
 |------|------|------|------|------|---------|------|
 | 1 | **P2** | `internal/parser/hprof` 瘦身 | 清理 legacy 类型别名和委托函数 | 无 | internal/parser/hprof | ✅ 已完成 |
 | 2 | **P4** | Build Pass 并行化 | Build Pass 5.8s → 3.37s | 无 | perflib/parser/hprof | ✅ 已完成 |
-| 3 | **P3** | heap_index.bin mmap 局部加载 | 内存 ~1.2GB → ~50-100MB | P4 后，格式可能微调 | index_format + reader/writer 重新设计 | 待设计 |
-| 4 | **P5** | 文档 + ARCHITECTURE.md | 记录 Two-Pass CSR + HeapQueryEngine | P2-P4 完成后 | docs/ | 待实施 |
-| 5 | **P6** | 单测补全 | 覆盖 dom_indexed / build_pass / heap_query_engine | P3 之后 | perflib/parser/hprof/*_test.go | 待实施 |
-| 6 | **P7** | WebUI 展示优化 | Dominator tree 视图、retained size treemap | P3 之后 | internal/webui/ | 待实施 |
+| 3 | **P3** | heap_index.bin mmap 局部加载 | 内存 ~1.2GB → ~50-100MB | P4 后，格式可能微调 | index_format + reader/writer 重新设计 | ✅ 已完成 |
+| 4 | **P5** | 文档 + ARCHITECTURE.md | 记录 Two-Pass CSR + HeapQueryEngine | P2-P4 完成后 | docs/ | ✅ 已完成 |
+| 5 | **P6** | 单测补全 | 覆盖 dom_indexed / build_pass / heap_query_engine | P3 之后 | perflib/parser/hprof/*_test.go | ✅ 已完成 |
+| 6 | **P7** | WebUI 展示优化 | Dominator tree 视图、retained size treemap | P3 之后 | internal/webui/ | ✅ 已完成 |
 
 ---
 
@@ -676,10 +676,14 @@ func (m *MmapHeapIndex) Close() error {
 
 #### API 兼容性
 
-`MmapHeapIndex` 需要实现一个接口使 `HeapQueryEngine` 无需修改即可切换：
+`MmapHeapIndex` 需要实现 `HeapGraph` 接口使 `HeapQueryEngine` 无需修改即可切换：
+
+> ✅ **已实现**：`HeapGraph` 接口已定义在 `perflib/parser/hprof/heap_graph.go`，
+> `IndexedReferenceGraph` 已实现该接口，`HeapQueryEngine` 已改为依赖接口。
+> P3 实现 `MmapHeapIndex` 时只需满足 `HeapGraph` 接口即可无缝接入。
 
 ```go
-// HeapGraph 是 HeapQueryEngine 需要的只读图接口
+// HeapGraph 是 HeapQueryEngine 需要的只读图接口 (perflib/parser/hprof/heap_graph.go)
 type HeapGraph interface {
     ObjectCount() int32
     GetObjectID(idx int32) uint64
@@ -689,23 +693,45 @@ type HeapGraph interface {
     GetRetainedSize(idx int32) int64
     GetDominator(idx int32) int32
     GetClassName(classID uint64) string
-    
-    GetOutgoingEdges(idx int32) (targets []int32, fieldIDs []int32, classIDs []uint64)
-    GetIncomingEdges(idx int32) (targets []int32, fieldIDs []int32, classIDs []uint64)
-    GetFieldName(fieldID int32) string
-    
     IsGCRoot(idx int32) bool
     IsReachable(idx int32) bool
+    IsClassObject(idx int32) bool
+    
+    GetOutgoingEdges(idx int32) (targets []int32, fieldIDs []int32, classIDs []uint64)
+    GetIncomingEdges(idx int32) (sources []int32, fieldIDs []int32, classIDs []uint64)
+    GetFieldName(fieldID int32) string
+    GetObjectsByClass(classID uint64) []int32
     GetGCRoots() []GCRoot
 }
 ```
 
+#### 辅助工具
+
+> ✅ **已实现**：`ObjectInfoAssembler` 定义在 `perflib/parser/hprof/object_info_assembler.go`
+
+```go
+// ObjectInfoAssembler 消除重复的对象信息组装代码
+type ObjectInfoAssembler struct { graph HeapGraph }
+
+// AssembleByIndex: idx → HeapObjectInfo{ObjectID(hex), ClassName, ShallowSize, RetainedSize}
+// AssembleByObjectID: objectID → HeapObjectInfo
+// GetClassNameByIndex: idx → className
+// ResolveFieldName: fieldIDs[i] → fieldName string
+```
+
 #### 实施步骤
 
-1. **Sprint 3.1**: 格式 v2 定义 + Section Table + Writer 适配
-2. **Sprint 3.2**: MmapHeapIndex Reader 实现 + unsafe.Slice 视图
-3. **Sprint 3.3**: HeapGraph 接口抽象 + HeapQueryEngine 适配
-4. **Sprint 3.4**: 版本兼容 (ReadHeapIndex 自动识别 v1/v2) + 性能验证
+1. ~~**Sprint 3.1**: 格式 v2 定义 + Section Table + Writer 适配~~ ✅ **已完成**
+   - `index_format_v2.go`: Header(48B) + SectionTableEntry(16B) + PageAlignment 常量
+   - `index_writer_v2.go`: `WriteHeapIndexV2` 两阶段写入（计算偏移 → 顺序写入）
+2. ~~**Sprint 3.2**: MmapHeapIndex Reader 实现 + unsafe.Slice 视图~~ ✅ **已完成**
+   - `index_reader_v2.go`: `OpenMmapHeapIndex` + `Close` + 完整 HeapGraph 实现
+   - 零拷贝 unsafe.Slice 视图 + zstd 解压 metadata + bitset 加载
+3. ~~**Sprint 3.3**: HeapGraph 接口抽象 + HeapQueryEngine 适配~~ ✅ **已提前完成**
+4. ~~**Sprint 3.4**: 版本兼容 (ReadHeapIndex 自动识别 v1/v2) + 测试验证~~ ✅ **已完成**
+   - `index_reader.go`: `ReadHeapIndex` peek version → v1(bufio) / v2(mmap) 自动路由
+   - `index_test.go`: `TestIndexV2Roundtrip` + `verifyHeapGraphEquality` 接口级验证
+   - nil vs empty slice 行为一致性修复
 
 #### 风险与缓解
 
@@ -750,14 +776,19 @@ type HeapGraph interface {
 
 #### 覆盖目标
 
-| 模块 | 当前覆盖 | 目标 | 关键测试场景 |
-|------|---------|------|-------------|
-| `dom_indexed.go` | 基础 | 边界 + 大图 | 断连子图、环路、深度链 |
-| `build_pass.go` | 顺序路径 | 边界 | 空文件、畸形数据、超大 dataSize |
-| `build_pass_parallel.go` | 基础正确性 | 边界 + 竞态 | segment 边界切割、context cancel、race detector |
-| `heap_query_engine.go` | 无 | 完整 | TopN、BFS paths、retainer 链、class filter |
-| `index_writer.go` + `index_reader.go` | roundtrip | 边界 | 空图、仅 1 对象、超大 fieldName |
-| `scan_pass.go` | 基础 | 边界 | 未知 sub-tag、Android 特有 tag、deferred instance |
+| 模块 | 当前覆盖 | 目标 | 关键测试场景 | 实施结果 |
+|------|---------|------|-------------|---------|
+| `dom_indexed.go` | 0% | 100% | 断连子图、环路、深度链 | ✅ 100% (15 用例) |
+| `build_pass.go` | ~80% | 边界 | 空文件、畸形数据、超大 dataSize | 已有覆盖 |
+| `build_pass_parallel.go` | 基础正确性 | 边界 + 竞态 | segment 边界切割、context cancel、race detector | 已有覆盖 |
+| `heap_query_engine.go` | 6 函数覆盖 | 边界补充 | TopN 边界、BFS depth 限制、empty filter | ✅ +7 组边界 |
+| `index_writer.go` + `index_reader.go` | roundtrip | 边界 | 空图、仅 1 对象、超大 fieldName | ✅ +6 个边界测试 |
+| `scan_pass.go` | 基础 | 边界 | 未知 sub-tag、Android 特有 tag、deferred instance | 未覆盖（低优先级） |
+
+#### 修复的 Bug
+
+1. **vertex 数组越界** (`dom_hierarchical.go`): `NewLevelDominatorState` 中 `vertex` 使用 1-based 索引但只分配了 `nodeCount` 长度，当所有节点可达时 `dfnNum` 达到 `nodeCount` 导致越界。修复：分配 `nodeCount+1`。
+2. **ancestor sentinel 值冲突** (`dom_hierarchical.go`): Lengauer-Tarjan 算法用 `ancestor[v]==0` 判断"未链接"，但 super root 的索引正好是 0。当节点被链接到 super root 时，算法错误判定其为未链接，导致多 GC root 场景下 idom 计算错误。修复：sentinel 改为 `-1`。
 
 #### 实施原则
 
@@ -806,14 +837,32 @@ GET /api/refgraph/treemap?root={idx}&maxNodes=500
 
 #### 前端技术选型
 
-- Treemap: D3.js `d3-hierarchy` + `treemapSquarify`
-- Dominator Tree: 懒加载虚拟滚动树组件（基于现有 Biggest Objects 树组件扩展）
+- Treemap: ECharts v5 `treemap` 系列（已集成）
+- Dominator Tree: 懒加载树组件（原生 DOM + fetch on expand）
 - 复用现有 Alpine.js + Tailwind CSS 架构
 
 #### 依赖
 
 - P3 (mmap) 提供高效的 dominator 随机访问能力
 - 需要后端 HeapQueryEngine 新增 `QueryDominatorChildren(idx, topN, sortBy)` 方法
+
+#### 实施结果 (2026-05-07)
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| HeapQueryEngine 扩展 | `internal/webui/heap_query_engine.go` | +3 方法：QueryDominatorChildren, QueryDominatorPath, QueryRetainedSizeTreemap |
+| API Handler | `internal/webui/server.go` | +3 路由：/api/refgraph/dominator-tree, /dominator-path, /treemap |
+| HeapDataProvider 扩展 | `internal/webui/refgraph_service.go` | +3 接口方法 + indexedProvider 实现 |
+| Dominator Tree 前端 | `internal/webui/static/js/heap-dominator-tree.js` | 可展开树视图，Path 弹窗 |
+| Retained Treemap 前端 | `internal/webui/static/js/heap-retained-treemap.js` | ECharts treemap + 钻取导航 |
+| HTML 模板 | `internal/webui/templates/index_modular.html` | +2 Tab + 2 Panel |
+| API 模块 | `internal/webui/static/js/api.js` | +3 方法：getDominatorChildren, getDominatorPath, getRetainedSizeTreemap |
+
+#### 性能优化
+
+- `hasDominatedChildren` 使用 `sync.Once` 懒计算全局 map，避免每次 O(N) 遍历
+- `QueryDominatorChildren` 使用 min-heap top-N 选择算法
+- `QueryRetainedSizeTreemap` 按类分组后截断，限制 maxNodes 避免前端渲染压力
 
 ### P4 实施结果：Build Pass 并行化
 
@@ -865,3 +914,7 @@ GET /api/refgraph/treemap?root={idx}&maxNodes=500
 | 2026-05-07 | 整理后续路线图（P2→P4→P3→P5→P6→P7） |
 | 2026-05-07 | **P4 Build Pass 并行化完成**：Build reference edges 5.78s→3.37s (1.72x)，总 Build Pass 8.12s→6.63s (1.23x) |
 | 2026-05-07 | **P3-P7 设计方案**：更新 heap_index.bin v2 mmap 详细设计、ARCHITECTURE.md 规划、单测策略、WebUI Dominator Tree 视图设计 |
+| 2026-05-07 | **perflib 查询接口重构**：HeapGraph 接口 + ObjectInfoAssembler + HeapQueryEngine 解耦（渐进式重构 Phase 1-4） |
+| 2026-05-07 | **P3 heap_index.bin v2 mmap 实施完成**：format v2(Section Table + page-aligned) + WriteHeapIndexV2 + MmapHeapIndex(unsafe.Slice zero-copy) + ReadHeapIndex auto-detect v1/v2 + roundtrip 测试通过 |
+| 2026-05-07 | **P5 文档完成**：docs/ARCHITECTURE.md (系统架构 + 数据流 + 设计决策) + perflib/parser/hprof/README.md (包文档 + API 指南 + 性能数据) + README.md 更新 |
+| 2026-05-07 | **P6 单测补全完成**：dom_indexed.go 0%→100% (15 个测试用例)，修复 2 个 bug (vertex 数组越界 + ancestor sentinel 值冲突)；index_test.go 新增 6 个边界测试（v2 空图、单对象、大 fieldName、Unicode 类名、极值 objectID）；heap_query_engine_test.go 新增 7 组边界测试 |
