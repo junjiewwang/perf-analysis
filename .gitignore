@@ -12,3 +12,4 @@ pprof-report/
 !perflib/parser/pprof/
 cache/
 cli
+bin/
