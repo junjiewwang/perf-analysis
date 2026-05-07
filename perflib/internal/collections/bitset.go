@@ -199,6 +199,19 @@ func (b *Bitset) Iterate(fn func(i int) bool) {
 	}
 }
 
+// Words returns the underlying uint64 slice for serialization.
+func (b *Bitset) Words() []uint64 {
+	return b.bits
+}
+
+// NewBitsetFromWords creates a Bitset from raw words and size.
+func NewBitsetFromWords(words []uint64, size int) *Bitset {
+	return &Bitset{
+		bits: words,
+		size: size,
+	}
+}
+
 // ToSlice returns a slice of all set bit indices.
 func (b *Bitset) ToSlice() []int {
 	result := make([]int, 0, b.Count())

@@ -502,3 +502,28 @@ func (g *IndexedReferenceGraph) GetObjectsByClass(classID uint64) []int32 {
 	g.BuildClassToObjectsIndex()
 	return g.classToObjects[classID]
 }
+
+// GetOutgoing returns the outgoing edge list (CSR format).
+func (g *IndexedReferenceGraph) GetOutgoing() *CompactEdgeList {
+	return g.outgoing
+}
+
+// GetIncoming returns the incoming edge list (CSR format).
+func (g *IndexedReferenceGraph) GetIncoming() *CompactEdgeList {
+	return g.incoming
+}
+
+// GetGCRoots returns the GC root entries.
+func (g *IndexedReferenceGraph) GetGCRoots() []GCRoot {
+	return g.gcRoots
+}
+
+// GetClassNames returns the classID to class name mapping.
+func (g *IndexedReferenceGraph) GetClassNames() map[uint64]string {
+	return g.classNames
+}
+
+// GetObjects returns the underlying IndexedObjectStore.
+func (g *IndexedReferenceGraph) GetObjects() *IndexedObjectStore {
+	return g.objects
+}

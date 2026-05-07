@@ -27,9 +27,10 @@
 //   - analysis_retained_calc.go: Retained size calculation strategies
 //   - analysis_retained_debug.go: Retained size debugging/comparison
 //
-// ## Serialization (serial_*.go)
-//   - serial_serializer.go: Protobuf serialization/deserialization
-//   - serial_async.go: Async serialization support
+// ## Index Serialization (index_*.go)
+//   - index_format.go: heap_index.bin binary format constants
+//   - index_writer.go: IndexedReferenceGraph → heap_index.bin serialization
+//   - index_reader.go: heap_index.bin → IndexedReferenceGraph deserialization
 //
 // ## Parallel Processing (parallel_*.go)
 //   - parallel_analyzer.go: Parallel analysis coordinator

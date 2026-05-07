@@ -13,6 +13,7 @@ type Reader struct {
 	r       *bufio.Reader
 	idSize  int
 	byteBuf []byte
+	pos     int64 // tracks total bytes consumed from the underlying reader
 }
 
 // NewReader creates a new HPROF reader.
@@ -22,6 +23,11 @@ func NewReader(r io.Reader) *Reader {
 		idSize:  8,                                // Default to 8, will be set from header
 		byteBuf: make([]byte, 8),
 	}
+}
+
+// Position returns the current byte position in the stream.
+func (r *Reader) Position() int64 {
+	return r.pos
 }
 
 // SetIDSize sets the identifier size (4 or 8 bytes).
@@ -85,13 +91,20 @@ func (r *Reader) ReadRecordHeader() (tag RecordTag, timeDelta uint32, length uin
 
 // ReadByte reads a single byte.
 func (r *Reader) ReadByte() (byte, error) {
-	return r.r.ReadByte()
+	b, err := r.r.ReadByte()
+	if err == nil {
+		r.pos++
+	}
+	return b, err
 }
 
 // ReadBytes reads n bytes into a new slice.
 func (r *Reader) ReadBytes(n int) ([]byte, error) {
 	buf := make([]byte, n)
 	_, err := io.ReadFull(r.r, buf)
+	if err == nil {
+		r.pos += int64(n)
+	}
 	return buf, err
 }
 
@@ -101,6 +114,7 @@ func (r *Reader) ReadUint16() (uint16, error) {
 	if err != nil {
 		return 0, err
 	}
+	r.pos += 2
 	return binary.BigEndian.Uint16(r.byteBuf[:2]), nil
 }
 
@@ -110,6 +124,7 @@ func (r *Reader) ReadUint32() (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	r.pos += 4
 	return binary.BigEndian.Uint32(r.byteBuf[:4]), nil
 }
 
@@ -119,6 +134,7 @@ func (r *Reader) ReadUint64() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	r.pos += 8
 	return binary.BigEndian.Uint64(r.byteBuf[:8]), nil
 }
 
@@ -133,7 +149,8 @@ func (r *Reader) ReadID() (uint64, error) {
 
 // Skip skips n bytes.
 func (r *Reader) Skip(n int64) error {
-	_, err := r.r.Discard(int(n))
+	discarded, err := r.r.Discard(int(n))
+	r.pos += int64(discarded)
 	return err
 }
 
@@ -145,6 +162,7 @@ func (r *Reader) readNullTerminatedString() (string, error) {
 		if err != nil {
 			return "", err
 		}
+		r.pos++
 		if b == 0 {
 			break
 		}
