@@ -137,6 +137,9 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/goroutine/stats", s.handleGoroutineStats)
 	mux.HandleFunc("/api/goroutine/issues", s.handleGoroutineIssues)
 
+	// Unified heap histogram API (supports both Java hprof and Go pprof)
+	mux.HandleFunc("/api/heap/histogram", s.handleHeapHistogram)
+
 	// Global search API
 	mux.HandleFunc("/api/search", s.handleSearch)
 
