@@ -13,6 +13,7 @@ import (
 	"github.com/junjiewwang/perf-analysis/perflib"
 	timerPkg "github.com/junjiewwang/perf-analysis/perflib/internal/timer"
 	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
 	"github.com/junjiewwang/perf-analysis/perflib/parser/hprof"
 )
 
@@ -222,7 +223,7 @@ func (a *JavaHeapAnalyzer) analyzeTwoPass(ctx context.Context, req *model.Analys
 	})
 
 	// Step 4: Write class histogram
-	histogramFile := filepath.Join(taskDir, "class_histogram.json")
+	histogramFile := filepath.Join(taskDir, output.FileClassHistogram)
 	if _, err = timer.TimeFuncWithError("Write class histogram", func() error {
 		histogram := &classHistogram{
 			TotalClasses:   scanResult.TotalClasses,
@@ -290,7 +291,7 @@ func (a *JavaHeapAnalyzer) analyzeTwoPass(ctx context.Context, req *model.Analys
 	})
 
 	// Step 9: Write heap_index.bin (for fast serve-time loading)
-	indexFile := filepath.Join(taskDir, "heap_index.bin")
+	indexFile := filepath.Join(taskDir, output.FileHeapIndex)
 	if _, err = timer.TimeFuncWithError("Write heap index", func() error {
 		return hprof.WriteHeapIndex(indexFile, graph)
 	}); err != nil {
@@ -320,7 +321,7 @@ func (a *JavaHeapAnalyzer) analyzeTwoPass(ctx context.Context, req *model.Analys
 		{
 			Name:         "Class Histogram",
 			LocalPath:    histogramFile,
-			RelativePath: "class_histogram.json",
+			RelativePath: output.FileClassHistogram,
 			ContentType:  "application/json",
 		},
 	}
@@ -329,7 +330,7 @@ func (a *JavaHeapAnalyzer) analyzeTwoPass(ctx context.Context, req *model.Analys
 		outputFiles = append(outputFiles, model.OutputFile{
 			Name:         "Heap Index",
 			LocalPath:    indexFile,
-			RelativePath: "heap_index.bin",
+			RelativePath: output.FileHeapIndex,
 			ContentType:  "application/octet-stream",
 		})
 	}

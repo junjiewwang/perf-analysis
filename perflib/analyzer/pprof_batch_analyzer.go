@@ -13,8 +13,9 @@ import (
 	"time"
 
 	"github.com/junjiewwang/perf-analysis/perflib"
-	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
+	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 )
 
 // PProfBatchAnalyzer analyzes a directory of pprof files.
@@ -161,12 +162,12 @@ type batchAnalysisResult struct {
 // discoverProfiles discovers pprof files organized by type.
 func (a *PProfBatchAnalyzer) discoverProfiles(baseDir string) map[string][]string {
 	profiles := map[string][]string{
-		"cpu":       {},
-		"heap":      {},
-		"goroutine": {},
-		"block":     {},
-		"mutex":     {},
-		"allocs":    {},
+		output.DirCPU:       {},
+		output.DirHeap:      {},
+		output.DirGoroutine: {},
+		output.DirBlock:     {},
+		output.DirMutex:     {},
+		"allocs":            {},
 	}
 
 	// Check for subdirectories
@@ -391,7 +392,7 @@ func extractTimestampFromFilename(filename string) time.Time {
 
 // saveBatchResults saves the batch analysis results to a JSON file.
 func (a *PProfBatchAnalyzer) saveBatchResults(results *batchAnalysisResult, outputDir string) error {
-	outputFile := filepath.Join(outputDir, "batch_analysis.json")
+	outputFile := filepath.Join(outputDir, output.FileBatchAnalysis)
 
 	data, err := json.MarshalIndent(results, "", "  ")
 	if err != nil {
@@ -473,7 +474,7 @@ func (a *PProfBatchAnalyzer) buildBatchData(results *batchAnalysisResult, output
 // extractTopFunctionsFromFlameGraph extracts top functions from a flame graph JSON file.
 func (a *PProfBatchAnalyzer) extractTopFunctionsFromFlameGraph(cpuDir string) []model.PProfTopFunc {
 	// Try to read the collapsed_data.json.gz file
-	flameGraphFile := filepath.Join(cpuDir, "collapsed_data.json.gz")
+	flameGraphFile := filepath.Join(cpuDir, output.FileCPUFlameGraph)
 
 	f, err := os.Open(flameGraphFile)
 	if err != nil {

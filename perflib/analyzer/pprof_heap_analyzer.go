@@ -7,8 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
+	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 )
 
 // PProfHeapAnalyzer analyzes Go pprof Heap profile data.
@@ -130,13 +131,13 @@ func (a *PProfHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.An
 		if err == nil && len(samples) > 0 {
 			fg, err := a.GenerateFlameGraphWithAnalysis(ctx, samples)
 			if err == nil {
-				flameGraphFile := filepath.Join(taskDir, fmt.Sprintf("%s_flamegraph.json.gz", st.filePrefix))
+				flameGraphFile := filepath.Join(taskDir, output.FlameGraphFileName(st.filePrefix))
 				if err := a.WriteFlameGraphGzip(fg, flameGraphFile); err == nil {
 					heapData.FlameGraphFiles[string(st.sampleType)] = flameGraphFile
 					outputFiles = append(outputFiles, model.OutputFile{
 						Name:         fmt.Sprintf("Flame Graph (%s)", st.filePrefix),
 						LocalPath:    flameGraphFile,
-						RelativePath: fmt.Sprintf("%s_flamegraph.json.gz", st.filePrefix),
+						RelativePath: output.FlameGraphFileName(st.filePrefix),
 						ContentType:  "application/gzip",
 					})
 				}

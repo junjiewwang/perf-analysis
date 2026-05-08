@@ -11,8 +11,9 @@ import (
 
 	"github.com/google/pprof/profile"
 
-	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
+	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 )
 
 // PProfGoroutineAnalyzer analyzes Go pprof Goroutine profile data.
@@ -94,12 +95,12 @@ func (a *PProfGoroutineAnalyzer) AnalyzeFromReader(ctx context.Context, req *mod
 	if err == nil && len(samples) > 0 {
 		fg, err := a.GenerateFlameGraphWithAnalysis(ctx, samples)
 		if err == nil {
-			flameGraphFile = filepath.Join(taskDir, "goroutine_flamegraph.json.gz")
+			flameGraphFile = filepath.Join(taskDir, output.FileGoroutineFlameGraph)
 			if err := a.WriteFlameGraphGzip(fg, flameGraphFile); err == nil {
 				outputFiles = append(outputFiles, model.OutputFile{
 					Name:         "Goroutine Flame Graph",
 					LocalPath:    flameGraphFile,
-					RelativePath: "goroutine_flamegraph.json.gz",
+					RelativePath: output.FileGoroutineFlameGraph,
 					ContentType:  "application/gzip",
 				})
 			}
@@ -114,7 +115,21 @@ func (a *PProfGoroutineAnalyzer) AnalyzeFromReader(ctx context.Context, req *mod
 		FlameGraphFile: flameGraphFile,
 	}
 
-	// Step 7: Build response
+	// Step 7: Persist goroutine analysis data as JSON for WebUI consumption
+	writer := output.NewWriter(taskDir)
+	if err := writer.WriteJSON(output.FileGoroutineAnalysis, goroutineData); err != nil {
+		// Non-fatal: log warning but don't fail the analysis
+		_ = err
+	} else {
+		outputFiles = append(outputFiles, model.OutputFile{
+			Name:         "Goroutine Analysis Data",
+			LocalPath:    writer.FilePath(output.FileGoroutineAnalysis),
+			RelativePath: output.FileGoroutineAnalysis,
+			ContentType:  "application/json",
+		})
+	}
+
+	// Step 8: Build response
 	return &model.AnalysisResponse{
 		Mode:         req.Mode,
 		TotalRecords: int(totalCount),

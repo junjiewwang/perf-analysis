@@ -7,8 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
+	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 )
 
 // PProfCPUAnalyzer analyzes Go pprof CPU profile data.
@@ -85,7 +86,7 @@ func (a *PProfCPUAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 	}
 
 	// Step 5: Write flame graph (gzipped JSON)
-	flameGraphFile := filepath.Join(taskDir, "collapsed_data.json.gz")
+	flameGraphFile := filepath.Join(taskDir, output.FileCPUFlameGraph)
 	if err := a.WriteFlameGraphGzip(fg, flameGraphFile); err != nil {
 		return nil, fmt.Errorf("failed to write flame graph: %w", err)
 	}
@@ -97,7 +98,7 @@ func (a *PProfCPUAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 	}
 
 	// Step 7: Write call graph
-	callGraphFile := filepath.Join(taskDir, "callgraph_data.json.gz")
+	callGraphFile := filepath.Join(taskDir, output.FileCPUCallGraph)
 	if err := a.WriteCallGraphGzip(cg, callGraphFile); err != nil {
 		return nil, fmt.Errorf("failed to write call graph: %w", err)
 	}
@@ -136,13 +137,13 @@ func (a *PProfCPUAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Ana
 		{
 			Name:         "Flame Graph",
 			LocalPath:    flameGraphFile,
-			RelativePath: "collapsed_data.json.gz",
+			RelativePath: output.FileCPUFlameGraph,
 			ContentType:  "application/gzip",
 		},
 		{
 			Name:         "Call Graph",
 			LocalPath:    callGraphFile,
-			RelativePath: "callgraph_data.json.gz",
+			RelativePath: output.FileCPUCallGraph,
 			ContentType:  "application/gzip",
 		},
 	}

@@ -7,8 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
+	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
 )
 
 // PProfContentionAnalyzer analyzes Go pprof Block/Mutex profile data.
@@ -123,12 +124,12 @@ func (a *PProfContentionAnalyzer) AnalyzeFromReader(ctx context.Context, req *mo
 	if err == nil && len(samples) > 0 {
 		fg, err := a.GenerateFlameGraphWithAnalysis(ctx, samples)
 		if err == nil {
-			flameGraphFile = filepath.Join(taskDir, fmt.Sprintf("%s_flamegraph.json.gz", a.analyzerType))
+			flameGraphFile = filepath.Join(taskDir, output.FlameGraphFileName(a.analyzerType))
 			if err := a.WriteFlameGraphGzip(fg, flameGraphFile); err == nil {
 				outputFiles = append(outputFiles, model.OutputFile{
 					Name:         fmt.Sprintf("%s Flame Graph", a.analyzerType),
 					LocalPath:    flameGraphFile,
-					RelativePath: fmt.Sprintf("%s_flamegraph.json.gz", a.analyzerType),
+					RelativePath: output.FlameGraphFileName(a.analyzerType),
 					ContentType:  "application/gzip",
 				})
 			}

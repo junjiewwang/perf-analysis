@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/junjiewwang/perf-analysis/perflib/model"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
 )
 
 // JavaMemAnalyzer analyzes Java async-profiler allocation/memory data.
@@ -73,7 +74,7 @@ func (a *JavaMemAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Anal
 		return nil, fmt.Errorf("failed to generate flame graph: %w", err)
 	}
 
-	flameGraphFile := filepath.Join(taskDir, "alloc_data.json.gz")
+	flameGraphFile := filepath.Join(taskDir, output.FileAllocData)
 	if err := a.WriteFlameGraphGzip(fg, flameGraphFile); err != nil {
 		return nil, fmt.Errorf("failed to write flame graph: %w", err)
 	}
@@ -85,7 +86,7 @@ func (a *JavaMemAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Anal
 	}
 
 	// Use gzip format for consistency with CPU analyzer
-	callGraphFile := filepath.Join(taskDir, "alloc_callgraph_data.json.gz")
+	callGraphFile := filepath.Join(taskDir, output.FileAllocCallGraph)
 	if err := a.WriteCallGraphGzip(cg, callGraphFile); err != nil {
 		return nil, fmt.Errorf("failed to write call graph: %w", err)
 	}
@@ -142,13 +143,13 @@ func (a *JavaMemAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.Anal
 		{
 			Name:         "Allocation Flame Graph",
 			LocalPath:    flameGraphFile,
-			RelativePath: "alloc_data.json.gz",
+			RelativePath: output.FileAllocData,
 			ContentType:  "application/gzip",
 		},
 		{
 			Name:         "Allocation Call Graph",
 			LocalPath:    callGraphFile,
-			RelativePath: "alloc_callgraph_data.json.gz",
+			RelativePath: output.FileAllocCallGraph,
 			ContentType:  "application/gzip",
 		},
 	}
