@@ -13,6 +13,7 @@ import (
 
 	"github.com/junjiewwang/perf-analysis/internal/flamegraph"
 	"github.com/junjiewwang/perf-analysis/internal/parser/collapsed"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
 )
 
 // FlameGraphType represents the type of flame graph analysis.
@@ -140,8 +141,8 @@ func (l *CPUFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flameg
 // loadFromFlameGraphFile loads flame graph from pre-computed JSON file.
 func (l *CPUFlameGraphLoader) loadFromFlameGraphFile(taskDir string) (*flamegraph.FlameGraph, error) {
 	// Try multiple locations: cpu subdirectory first (pprof batch analysis), then root
-	subDirs := []string{"cpu", "."}
-	fileNames := []string{"collapsed_data.json.gz", "cpu_flamegraph.json.gz"}
+	subDirs := []string{output.DirCPU, "."}
+	fileNames := []string{output.FileCPUFlameGraph, output.FileCPUFlameGraphAlt}
 
 	for _, subDir := range subDirs {
 		dir := filepath.Join(taskDir, subDir)
@@ -221,7 +222,7 @@ func (l *MemoryFlameGraphLoader) Load(ctx context.Context, taskDir string) (*fla
 	// Try to load from pre-computed flame graph file
 	// Priority order: alloc_data.json.gz (new format), memory_flamegraph.json.gz, alloc_flamegraph.json.gz
 	fileNames := []string{
-		"alloc_data.json.gz",        // New format from JavaMemAnalyzer
+		output.FileAllocData,        // New format from JavaMemAnalyzer
 		"memory_flamegraph.json.gz", // Legacy format
 		"alloc_flamegraph.json.gz",  // Legacy format
 		"heap_flamegraph.json.gz",   // Legacy format
@@ -320,8 +321,8 @@ func (l *PProfGoroutineFlameGraphLoader) SupportedType() FlameGraphType {
 // Load loads goroutine flame graph data for a task.
 func (l *PProfGoroutineFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
 	// Try pprof batch analysis subdirectory first
-	subDirs := []string{"goroutine", "."}
-	fileNames := []string{"goroutine_flamegraph.json.gz", "collapsed_data.json.gz"}
+	subDirs := []string{output.DirGoroutine, "."}
+	fileNames := []string{output.FileGoroutineFlameGraph, output.FileCPUFlameGraph}
 
 	for _, subDir := range subDirs {
 		dir := filepath.Join(taskDir, subDir)
@@ -351,8 +352,8 @@ func (l *PProfHeapInuseFlameGraphLoader) SupportedType() FlameGraphType {
 
 // Load loads heap inuse flame graph data for a task.
 func (l *PProfHeapInuseFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
-	subDirs := []string{"heap", "."}
-	fileNames := []string{"inuse_space_flamegraph.json.gz", "inuse_objects_flamegraph.json.gz"}
+	subDirs := []string{output.DirHeap, "."}
+	fileNames := []string{output.FileInuseSpaceFlameGraph, output.FileInuseObjectsFlameGraph}
 
 	for _, subDir := range subDirs {
 		dir := filepath.Join(taskDir, subDir)
@@ -382,8 +383,8 @@ func (l *PProfHeapAllocFlameGraphLoader) SupportedType() FlameGraphType {
 
 // Load loads heap alloc flame graph data for a task.
 func (l *PProfHeapAllocFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
-	subDirs := []string{"heap", "."}
-	fileNames := []string{"alloc_space_flamegraph.json.gz", "alloc_objects_flamegraph.json.gz"}
+	subDirs := []string{output.DirHeap, "."}
+	fileNames := []string{output.FileAllocSpaceFlameGraph, output.FileAllocObjectsFlameGraph}
 
 	for _, subDir := range subDirs {
 		dir := filepath.Join(taskDir, subDir)
@@ -413,8 +414,8 @@ func (l *PProfBlockFlameGraphLoader) SupportedType() FlameGraphType {
 
 // Load loads block flame graph data for a task.
 func (l *PProfBlockFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
-	subDirs := []string{"block", "."}
-	fileNames := []string{"block_flamegraph.json.gz", "collapsed_data.json.gz"}
+	subDirs := []string{output.DirBlock, "."}
+	fileNames := []string{output.FileBlockFlameGraph, output.FileCPUFlameGraph}
 
 	for _, subDir := range subDirs {
 		dir := filepath.Join(taskDir, subDir)
@@ -444,8 +445,8 @@ func (l *PProfMutexFlameGraphLoader) SupportedType() FlameGraphType {
 
 // Load loads mutex flame graph data for a task.
 func (l *PProfMutexFlameGraphLoader) Load(ctx context.Context, taskDir string) (*flamegraph.FlameGraph, error) {
-	subDirs := []string{"mutex", "."}
-	fileNames := []string{"mutex_flamegraph.json.gz", "collapsed_data.json.gz"}
+	subDirs := []string{output.DirMutex, "."}
+	fileNames := []string{output.FileMutexFlameGraph, output.FileCPUFlameGraph}
 
 	for _, subDir := range subDirs {
 		dir := filepath.Join(taskDir, subDir)

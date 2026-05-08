@@ -36,6 +36,11 @@ func NewHeapQueryEngine(graph hprof.HeapGraph) *HeapQueryEngine {
 	}
 }
 
+// GetGraph returns the underlying HeapGraph for use by external query utilities.
+func (e *HeapQueryEngine) GetGraph() hprof.HeapGraph {
+	return e.graph
+}
+
 // BiggestObjectResult represents a single result from biggest objects query.
 type BiggestObjectResult struct {
 	ObjectID     string `json:"object_id"`

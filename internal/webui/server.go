@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/junjiewwang/perf-analysis/internal/storage"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
 	"github.com/junjiewwang/perf-analysis/pkg/config"
 	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
@@ -123,9 +124,21 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/refgraph/dominator-path", s.handleRefGraphDominatorPath)
 	mux.HandleFunc("/api/refgraph/treemap", s.handleRefGraphTreemap)
 
+	// Heap class histogram and stats APIs
+	mux.HandleFunc("/api/refgraph/class-histogram", s.handleClassHistogram)
+	mux.HandleFunc("/api/refgraph/heap-stats", s.handleHeapStats)
+
 	// pprof analysis APIs
 	mux.HandleFunc("/api/pprof/leak-report", s.handlePProfLeakReport)
 	mux.HandleFunc("/api/pprof/batch-analysis", s.handlePProfBatchAnalysis)
+
+	// Goroutine analysis APIs
+	mux.HandleFunc("/api/goroutine/groups", s.handleGoroutineGroups)
+	mux.HandleFunc("/api/goroutine/stats", s.handleGoroutineStats)
+	mux.HandleFunc("/api/goroutine/issues", s.handleGoroutineIssues)
+
+	// Global search API
+	mux.HandleFunc("/api/search", s.handleSearch)
 
 	// Page routes
 	mux.HandleFunc("/", s.handleIndex)
@@ -212,7 +225,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	taskDir := s.resolveTaskDir(r.Context(), taskID)
-	summaryFile := filepath.Join(taskDir, "summary.json")
+	summaryFile := filepath.Join(taskDir, output.FileSummary)
 
 	data, err := os.ReadFile(summaryFile)
 	if err != nil {
@@ -274,6 +287,31 @@ func (s *Server) handleFlameGraph(w http.ResponseWriter, r *http.Request) {
 		// Fall back to legacy behavior for backward compatibility
 		s.handleFlameGraphLegacy(w, r, taskID)
 		return
+	}
+
+	// Filter by thread ID if specified
+	tidStr := r.URL.Query().Get("tid")
+	if tidStr != "" && fg.ThreadAnalysis != nil {
+		if tid, err := parseInt(tidStr); err == nil {
+			threadInfo := fg.GetThread(tid)
+			if threadInfo != nil && threadInfo.FlameRoot != nil {
+				// Return a filtered flame graph for the specific thread
+				filteredFG := &struct {
+					Root           interface{} `json:"root"`
+					TotalSamples   int64       `json:"total_samples"`
+					MaxDepth       int         `json:"max_depth,omitempty"`
+					ThreadInfo     interface{} `json:"thread_info,omitempty"`
+				}{
+					Root:         threadInfo.FlameRoot,
+					TotalSamples: threadInfo.Samples,
+					ThreadInfo:   threadInfo,
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				json.NewEncoder(w).Encode(filteredFG)
+				return
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -347,17 +385,17 @@ func (s *Server) handleCallGraph(w http.ResponseWriter, r *http.Request) {
 	var subDirs []string
 	switch strings.ToLower(cgType) {
 	case "memory", "alloc":
-		subDirs = []string{"heap", "."}
+		subDirs = []string{output.DirHeap, "."}
 		priorityFiles = []string{
-			"alloc_callgraph_data.json.gz", // New format for memory
-			"alloc_callgraph.json.gz",      // Alternative
-			"memory_callgraph.json.gz",     // Legacy
+			output.FileAllocCallGraph,  // New format for memory
+			"alloc_callgraph.json.gz",  // Alternative
+			"memory_callgraph.json.gz", // Legacy
 		}
 	default: // cpu or empty
-		subDirs = []string{"cpu", "."}
+		subDirs = []string{output.DirCPU, "."}
 		priorityFiles = []string{
-			"callgraph_data.json.gz", // New format for CPU
-			"callgraph.json",         // Legacy format
+			output.FileCPUCallGraph,       // New format for CPU
+			output.FileCPUCallGraphLegacy, // Legacy format
 		}
 	}
 
@@ -393,7 +431,7 @@ func (s *Server) handleCallGraph(w http.ResponseWriter, r *http.Request) {
 					callGraphFile = filepath.Join(taskDir, name)
 					isGzipped = true
 					break
-				} else if strings.HasSuffix(name, ".json") && name != "summary.json" {
+				} else if strings.HasSuffix(name, ".json") && name != output.FileSummary {
 					callGraphFile = filepath.Join(taskDir, name)
 					break
 				}
@@ -480,7 +518,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 			}
 
 			taskDir := filepath.Join(s.dataDir, entry.Name())
-			summaryFile := filepath.Join(taskDir, "summary.json")
+			summaryFile := filepath.Join(taskDir, output.FileSummary)
 
 			info, _ := entry.Info()
 			createdAt := ""
@@ -558,7 +596,7 @@ func (s *Server) handleRetainers(w http.ResponseWriter, r *http.Request) {
 		data, err = os.ReadFile(heapFile)
 		if err != nil {
 			// 3. Fall back to extracting from summary.json
-			summaryFile := filepath.Join(taskDir, "summary.json")
+			summaryFile := filepath.Join(taskDir, output.FileSummary)
 			summaryData, summaryErr := os.ReadFile(summaryFile)
 			if summaryErr != nil {
 				http.Error(w, "Retainer data not found", http.StatusNotFound)
@@ -661,7 +699,7 @@ func (s *Server) handleBiggestObjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Last resort: try extracting from summary.json
-	summaryFile := filepath.Join(taskDir, "summary.json")
+	summaryFile := filepath.Join(taskDir, output.FileSummary)
 	summaryData, summaryErr := os.ReadFile(summaryFile)
 	if summaryErr != nil {
 		http.Error(w, "Biggest objects data not found", http.StatusNotFound)
@@ -737,7 +775,7 @@ func (s *Server) handleObjectFields(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If cache doesn't exist, try to get from summary.json biggest_objects
-	summaryFile := filepath.Join(taskDir, "summary.json")
+	summaryFile := filepath.Join(taskDir, output.FileSummary)
 	summaryData, err := os.ReadFile(summaryFile)
 	if err != nil {
 		http.Error(w, "Summary data not found", http.StatusNotFound)
@@ -1172,7 +1210,7 @@ func (s *Server) handlePProfLeakReport(w http.ResponseWriter, r *http.Request) {
 
 	// Try to read batch_analysis.json which contains leak reports
 	// First try in the task directory, then in subdirectories
-	batchFile := filepath.Join(taskDir, "batch_analysis.json")
+	batchFile := filepath.Join(taskDir, output.FileBatchAnalysis)
 	data, err := os.ReadFile(batchFile)
 	if err != nil {
 		// No batch analysis file, return empty
@@ -1219,7 +1257,7 @@ func (s *Server) handlePProfBatchAnalysis(w http.ResponseWriter, r *http.Request
 	taskDir := s.resolveTaskDir(r.Context(), taskID)
 
 	// Try to read batch_analysis.json
-	batchFile := filepath.Join(taskDir, "batch_analysis.json")
+	batchFile := filepath.Join(taskDir, output.FileBatchAnalysis)
 	data, err := os.ReadFile(batchFile)
 	if err != nil {
 		http.Error(w, "Batch analysis not found", http.StatusNotFound)

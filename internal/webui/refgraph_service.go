@@ -9,7 +9,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/junjiewwang/perf-analysis/perflib/output"
 	perflibHprof "github.com/junjiewwang/perf-analysis/perflib/parser/hprof"
+	"github.com/junjiewwang/perf-analysis/perflib/query"
 )
 
 // HeapDataProvider abstracts different data sources for heap queries.
@@ -173,11 +175,28 @@ func (s *RefGraphService) GetRetainedSizeTreemap(taskID string, objectIDStr stri
 	return entry.provider.GetRetainedSizeTreemap(objectIDStr, maxNodes)
 }
 
+// GetHeapQueryHelper returns a HeapQueryHelper for class histogram and heap stats queries.
+// This bridges the webui layer to the perflib/query layer.
+func (s *RefGraphService) GetHeapQueryHelper(taskID string) (*query.HeapQueryHelper, error) {
+	entry, err := s.getOrLoadProvider(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	// The indexedProvider has access to the HeapGraph via its engine
+	indexed, ok := entry.provider.(*indexedProvider)
+	if !ok {
+		return nil, fmt.Errorf("heap query helper requires heap_index.bin data source")
+	}
+
+	return query.NewHeapQueryHelper(indexed.engine.GetGraph()), nil
+}
+
 // HasRefGraph checks if any heap data source exists for the given task.
 func (s *RefGraphService) HasRefGraph(taskID string) bool {
 	taskDir := s.getTaskDir(taskID)
 	// Check heap_index.bin first (preferred)
-	if _, err := os.Stat(filepath.Join(taskDir, "heap_index.bin")); err == nil {
+	if _, err := os.Stat(filepath.Join(taskDir, output.FileHeapIndex)); err == nil {
 		return true
 	}
 	// Fall back to legacy refgraph.bin
@@ -229,7 +248,7 @@ func (s *RefGraphService) loadProvider(taskID string) (*heapCacheEntry, error) {
 	taskDir := s.getTaskDir(taskID)
 
 	// Try heap_index.bin first (preferred - much faster to load)
-	indexFile := filepath.Join(taskDir, "heap_index.bin")
+	indexFile := filepath.Join(taskDir, output.FileHeapIndex)
 	if _, err := os.Stat(indexFile); err == nil {
 		provider, err := newIndexedProvider(indexFile)
 		if err == nil {
