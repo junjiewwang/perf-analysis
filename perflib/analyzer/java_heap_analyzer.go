@@ -301,6 +301,25 @@ func (a *JavaHeapAnalyzer) analyzeTwoPass(ctx context.Context, req *model.Analys
 		}
 	}
 
+	// Step 9b: Precompute class_stats.json and heap_stats.json for fast API serving
+	writer := output.NewWriter(taskDir)
+	timer.TimeFunc("Precompute class stats", func() {
+		classStats := a.buildPrecomputedClassStats(graph, scanResult)
+		if err := writer.WriteJSON(output.FileClassStats, classStats); err != nil {
+			if a.config.Logger != nil {
+				a.config.Logger.Warn("Failed to write class stats: %v", err)
+			}
+		}
+	})
+	timer.TimeFunc("Precompute heap stats", func() {
+		heapStats := a.buildPrecomputedHeapStats(graph, scanResult, topClasses)
+		if err := writer.WriteJSON(output.FileHeapStats, heapStats); err != nil {
+			if a.config.Logger != nil {
+				a.config.Logger.Warn("Failed to write heap stats: %v", err)
+			}
+		}
+	})
+
 	timer.PrintSummary()
 
 	if a.config.Logger != nil {
@@ -445,4 +464,136 @@ func generateTwoPassSuggestions(topClasses []*hprof.ClassStats, scanResult *hpro
 	}
 
 	return suggestions
+}
+
+// precomputedClassStats is the structure written to class_stats.json.
+type precomputedClassStats struct {
+	TotalClasses int                        `json:"total_classes"`
+	TotalObjects int64                      `json:"total_objects"`
+	TotalSize    int64                      `json:"total_size"`
+	Classes      []precomputedClassEntry    `json:"classes"`
+}
+
+// precomputedClassEntry is a single class entry in the precomputed stats.
+type precomputedClassEntry struct {
+	ClassName    string  `json:"class_name"`
+	ObjectCount  int64   `json:"object_count"`
+	ShallowSize  int64   `json:"shallow_size"`
+	RetainedSize int64   `json:"retained_size"`
+	Percentage   float64 `json:"percentage"`
+}
+
+// precomputedHeapStats is the structure written to heap_stats.json.
+type precomputedHeapStats struct {
+	TotalHeapSize   int64  `json:"total_heap_size"`
+	TotalObjects    int64  `json:"total_objects"`
+	TotalClasses    int    `json:"total_classes"`
+	TotalGCRoots    int    `json:"total_gc_roots"`
+	MaxObjectSize   int64  `json:"max_object_size"`
+	MaxRetainedSize int64  `json:"max_retained_size"`
+	TopClassName    string `json:"top_class_name"`
+}
+
+// buildPrecomputedClassStats builds the precomputed class statistics from the graph.
+func (a *JavaHeapAnalyzer) buildPrecomputedClassStats(graph *hprof.IndexedReferenceGraph, scanResult *hprof.ScanResult) *precomputedClassStats {
+	type classAgg struct {
+		className    string
+		objectCount  int64
+		shallowSize  int64
+		retainedSize int64
+	}
+
+	classMap := make(map[uint64]*classAgg)
+	var totalObjects int64
+	var totalRetained int64
+
+	objectCount := graph.ObjectCount()
+	for i := int32(0); i < objectCount; i++ {
+		if !graph.IsReachable(i) {
+			continue
+		}
+		classID := graph.GetClassID(i)
+		shallow := graph.GetShallowSize(i)
+		retained := graph.GetRetainedSize(i)
+		totalObjects++
+		totalRetained += retained
+
+		agg, ok := classMap[classID]
+		if !ok {
+			className := graph.GetClassName(classID)
+			if className == "" {
+				className = fmt.Sprintf("<class@0x%x>", classID)
+			}
+			agg = &classAgg{className: className}
+			classMap[classID] = agg
+		}
+		agg.objectCount++
+		agg.shallowSize += shallow
+		agg.retainedSize += retained
+	}
+
+	// Sort by retained size descending
+	entries := make([]precomputedClassEntry, 0, len(classMap))
+	for _, agg := range classMap {
+		var pct float64
+		if totalRetained > 0 {
+			pct = float64(agg.retainedSize) * 100.0 / float64(totalRetained)
+		}
+		entries = append(entries, precomputedClassEntry{
+			ClassName:    agg.className,
+			ObjectCount:  agg.objectCount,
+			ShallowSize:  agg.shallowSize,
+			RetainedSize: agg.retainedSize,
+			Percentage:   pct,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].RetainedSize > entries[j].RetainedSize
+	})
+
+	// Keep top 500 for the precomputed file
+	if len(entries) > 500 {
+		entries = entries[:500]
+	}
+
+	return &precomputedClassStats{
+		TotalClasses: len(classMap),
+		TotalObjects: totalObjects,
+		TotalSize:    totalRetained,
+		Classes:      entries,
+	}
+}
+
+// buildPrecomputedHeapStats builds the precomputed heap statistics.
+func (a *JavaHeapAnalyzer) buildPrecomputedHeapStats(graph *hprof.IndexedReferenceGraph, scanResult *hprof.ScanResult, topClasses []*hprof.ClassStats) *precomputedHeapStats {
+	result := &precomputedHeapStats{
+		TotalHeapSize: scanResult.TotalHeapSize,
+		TotalClasses:  scanResult.TotalClasses,
+		TotalGCRoots:  len(scanResult.GCRoots),
+	}
+
+	var maxShallow, maxRetained int64
+	objectCount := graph.ObjectCount()
+	var reachableCount int64
+	for i := int32(0); i < objectCount; i++ {
+		if !graph.IsReachable(i) {
+			continue
+		}
+		reachableCount++
+		shallow := graph.GetShallowSize(i)
+		retained := graph.GetRetainedSize(i)
+		if retained > maxRetained {
+			maxRetained = retained
+			maxShallow = shallow
+		}
+	}
+	result.TotalObjects = reachableCount
+	result.MaxObjectSize = maxShallow
+	result.MaxRetainedSize = maxRetained
+
+	if len(topClasses) > 0 {
+		result.TopClassName = topClasses[0].ClassName
+	}
+
+	return result
 }

@@ -150,7 +150,16 @@ func (a *PProfHeapAnalyzer) AnalyzeFromReader(ctx context.Context, req *model.An
 		return nil, ErrEmptyData
 	}
 
-	// Step 4: Build response
+	// Step 5: Persist heap analysis data for fast API serving
+	writer := output.NewWriter(taskDir)
+	if err := writer.WriteJSON(output.FilePProfHeapAnalysis, heapData); err != nil {
+		// Non-fatal: log but don't fail
+		if a.config.Logger != nil {
+			a.config.Logger.Warn("Failed to write pprof heap analysis file: %v", err)
+		}
+	}
+
+	// Step 6: Build response
 	return &model.AnalysisResponse{
 		Mode:         req.Mode,
 		TotalRecords: int(totalRecords),
