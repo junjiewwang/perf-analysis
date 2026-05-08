@@ -59,11 +59,13 @@ type StateDistribution struct {
 
 // GoroutineIssue represents a detected concurrency issue.
 type GoroutineIssue struct {
-	Severity    string `json:"severity"`    // "critical", "warning", "info"
-	Type        string `json:"type"`        // "leak_suspect", "blocking", "excessive"
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	GroupIndex  int    `json:"group_index,omitempty"`
+	Severity     string   `json:"severity"`               // "critical", "warning", "info"
+	Type         string   `json:"type"`                   // "excessive", "blocking", "io_wait", "mutex_contention", etc.
+	Title        string   `json:"title"`
+	Description  string   `json:"description"`
+	GroupIndex   int      `json:"group_index,omitempty"`
+	Suggestion   string   `json:"suggestion,omitempty"`    // Actionable remediation advice
+	RelatedFuncs []string `json:"related_funcs,omitempty"` // Related function names for context
 }
 
 // QueryGroups returns goroutine groups with optional sorting and limit.
@@ -155,77 +157,14 @@ func (e *GoroutineQueryEngine) QueryStats() *GoroutineStatsResult {
 }
 
 // QueryIssues detects potential concurrency issues from goroutine distribution.
+// It delegates to the GoroutineRuleEngine which runs all registered rules.
 func (e *GoroutineQueryEngine) QueryIssues() []GoroutineIssue {
 	if e.data == nil {
 		return nil
 	}
 
-	var issues []GoroutineIssue
-
-	// Rule 1: Excessive goroutine count (check critical first)
-	if e.data.TotalCount > 100000 {
-		issues = append(issues, GoroutineIssue{
-			Severity:    "critical",
-			Type:        "excessive",
-			Title:       "Extremely high goroutine count",
-			Description: fmt.Sprintf("Total goroutine count (%d) exceeds 100,000. This is likely a goroutine leak.", e.data.TotalCount),
-		})
-	} else if e.data.TotalCount > 10000 {
-		issues = append(issues, GoroutineIssue{
-			Severity:    "warning",
-			Type:        "excessive",
-			Title:       "High goroutine count",
-			Description: fmt.Sprintf("Total goroutine count (%d) exceeds 10,000. This may indicate a goroutine leak or insufficient backpressure.", e.data.TotalCount),
-		})
-	}
-
-	// Rule 2: Dominant single group (>50% of all goroutines in one stack)
-	for i := range e.data.Distribution {
-		g := &e.data.Distribution[i]
-		if g.Percentage > 50 && g.Count > 100 {
-			issues = append(issues, GoroutineIssue{
-				Severity:    "warning",
-				Type:        "blocking",
-				Title:       fmt.Sprintf("Dominant goroutine group: %s", truncateFunc(g.TopFunc, 60)),
-				Description: fmt.Sprintf("%.1f%% (%d) goroutines share the same call stack topped at %s. This may indicate a blocking bottleneck.", g.Percentage, g.Count, g.TopFunc),
-				GroupIndex:  i,
-			})
-		}
-	}
-
-	// Rule 3: Many groups with single goroutine (fragmentation)
-	singleCount := 0
-	for _, g := range e.data.Distribution {
-		if g.Count == 1 {
-			singleCount++
-		}
-	}
-	if singleCount > 50 && float64(singleCount)/float64(len(e.data.Distribution)) > 0.7 {
-		issues = append(issues, GoroutineIssue{
-			Severity:    "info",
-			Type:        "fragmentation",
-			Title:       "High goroutine stack diversity",
-			Description: fmt.Sprintf("%d out of %d groups have only 1 goroutine. This suggests high concurrency diversity, which may make debugging harder.", singleCount, len(e.data.Distribution)),
-		})
-	}
-
-	// Rule 4: Blocking-related functions in top functions
-	blockingPatterns := []string{"select", "chan", "Lock", "Wait", "Cond", "Semaphore"}
-	for _, tf := range e.data.TopFuncs {
-		for _, pattern := range blockingPatterns {
-			if strings.Contains(tf.Name, pattern) && tf.FlatPct > 20 {
-				issues = append(issues, GoroutineIssue{
-					Severity:    "warning",
-					Type:        "blocking",
-					Title:       fmt.Sprintf("High blocking at %s", truncateFunc(tf.Name, 50)),
-					Description: fmt.Sprintf("%.1f%% of goroutines are blocked at %s. Consider reviewing synchronization.", tf.FlatPct, tf.Name),
-				})
-				break
-			}
-		}
-	}
-
-	return issues
+	ruleEngine := NewGoroutineRuleEngine()
+	return ruleEngine.Evaluate(e.data)
 }
 
 // truncateFunc truncates a function name for display.
