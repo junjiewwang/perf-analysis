@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
 	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
@@ -60,14 +61,14 @@ func (a *JavaMemAnalyzer) GetOutputFiles(taskUUID, taskDir string) []model.Outpu
 	return []model.OutputFile{
 		{
 			Name:        "Allocation Flame Graph",
-			LocalPath:   filepath.Join(taskDir, "alloc_data.json.gz"),
-			COSKey:      taskUUID + "/alloc_data.json.gz",
+			LocalPath:   filepath.Join(taskDir, output.FileAllocData),
+			COSKey:      taskUUID + "/" + output.FileAllocData,
 			ContentType: "application/gzip",
 		},
 		{
 			Name:        "Allocation Call Graph",
-			LocalPath:   filepath.Join(taskDir, "alloc_callgraph_data.json.gz"),
-			COSKey:      taskUUID + "/alloc_callgraph_data.json.gz",
+			LocalPath:   filepath.Join(taskDir, output.FileAllocCallGraph),
+			COSKey:      taskUUID + "/" + output.FileAllocCallGraph,
 			ContentType: "application/gzip",
 		},
 	}

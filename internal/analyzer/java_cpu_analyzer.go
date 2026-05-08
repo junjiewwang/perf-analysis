@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
 	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
 
@@ -60,14 +61,14 @@ func (a *JavaCPUAnalyzer) GetOutputFiles(taskUUID, taskDir string) []model.Outpu
 	return []model.OutputFile{
 		{
 			Name:        "Flame Graph",
-			LocalPath:   filepath.Join(taskDir, "collapsed_data.json.gz"),
-			COSKey:      taskUUID + "/collapsed_data.json.gz",
+			LocalPath:   filepath.Join(taskDir, output.FileCPUFlameGraph),
+			COSKey:      taskUUID + "/" + output.FileCPUFlameGraph,
 			ContentType: "application/gzip",
 		},
 		{
 			Name:        "Call Graph",
-			LocalPath:   filepath.Join(taskDir, "callgraph_data.json.gz"),
-			COSKey:      taskUUID + "/callgraph_data.json.gz",
+			LocalPath:   filepath.Join(taskDir, output.FileCPUCallGraph),
+			COSKey:      taskUUID + "/" + output.FileCPUCallGraph,
 			ContentType: "application/gzip",
 		},
 	}

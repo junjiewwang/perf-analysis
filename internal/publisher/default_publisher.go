@@ -10,6 +10,7 @@ import (
 
 	"github.com/junjiewwang/perf-analysis/internal/formatter"
 	"github.com/junjiewwang/perf-analysis/internal/storage"
+	perflibOutput "github.com/junjiewwang/perf-analysis/perflib/output"
 	"github.com/junjiewwang/perf-analysis/pkg/model"
 	"github.com/junjiewwang/perf-analysis/pkg/utils"
 )
@@ -112,13 +113,13 @@ func (p *DefaultResultPublisher) publishSummary(ctx context.Context, req *Publis
 		return
 	}
 
-	localPath := filepath.Join(req.TaskDir, "summary.json")
+	localPath := filepath.Join(req.TaskDir, perflibOutput.FileSummary)
 	if err := os.WriteFile(localPath, data, 0644); err != nil {
 		p.logger.Warn("Failed to write summary file for task %s: %v", req.TaskUUID, err)
 		return
 	}
 
-	key := fmt.Sprintf("%s/summary.json", req.TaskUUID)
+	key := fmt.Sprintf("%s/%s", req.TaskUUID, perflibOutput.FileSummary)
 	if err := p.storage.UploadFile(ctx, key, localPath); err != nil {
 		p.logger.Warn("Failed to upload summary.json for task %s: %v", req.TaskUUID, err)
 	}

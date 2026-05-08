@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	libanalyzer "github.com/junjiewwang/perf-analysis/perflib/analyzer"
+	"github.com/junjiewwang/perf-analysis/perflib/output"
 	"github.com/junjiewwang/perf-analysis/perflib/parser/hprof"
 	"github.com/junjiewwang/perf-analysis/pkg/model"
 )
@@ -76,8 +77,8 @@ func (a *JavaHeapAnalyzer) GetOutputFiles(taskUUID, taskDir string) []model.Outp
 		},
 		{
 			Name:        "Class Histogram",
-			LocalPath:   filepath.Join(taskDir, "class_histogram.json"),
-			COSKey:      taskUUID + "/class_histogram.json",
+			LocalPath:   filepath.Join(taskDir, output.FileClassHistogram),
+			COSKey:      taskUUID + "/" + output.FileClassHistogram,
 			ContentType: "application/json",
 		},
 	}
