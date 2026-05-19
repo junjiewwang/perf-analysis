@@ -345,12 +345,17 @@ type HeapQueryEngine struct {
 
 | 方法 | 功能 |
 |------|------|
-| `BiggestObjects(topN, sortBy, classFilter)` | Top-N 大对象（按 retained/shallow size 排序） |
-| `GCRootPaths(objectID, maxPaths, maxDepth)` | BFS 查找从 GC Root 到目标的引用路径 |
-| `Retainers(objectID, maxRetainers)` | 谁持有该对象（incoming edges 递归） |
-| `ObjectFields(objectID)` | 对象的字段引用（outgoing edges） |
-| `GCRootsSummary()` | GC Root 按类型/类名分组统计 |
+| `QueryBiggestObjects(topN, sortBy, classFilter)` | Top-N 大对象（按 retained/shallow size 排序） |
+| `QueryGCRootPath(objectID, maxPaths, maxDepth)` | BFS 查找从 GC Root 到目标的引用路径 |
+| `QueryRetainers(objectID, maxRetainers)` | 谁持有该对象（incoming edges 递归） |
+| `QueryObjectFields(objectID)` | 对象的字段引用（outgoing edges） |
+| `QueryGCRootsSummary()` | GC Root 按类型/类名分组统计 |
 | `QueryObjectInfo(objectID)` | 单个对象的完整信息 |
+| `QueryClassInstances(className, topN, sortBy)` | 按类名查询实例列表 |
+| `QueryDominatorChildren(objectID, topN, sortBy)` | 支配树子节点查询 |
+| `QueryDominatorPath(objectID)` | 从对象到 GC Root 的支配树路径 |
+| `QueryRetainedSizeTreemap(objectID, maxNodes)` | Retained Size Treemap 数据 |
+| `GetGraph()` | 获取底层 HeapGraph 接口（供外部查询工具使用） |
 
 ---
 
@@ -379,14 +384,116 @@ RefGraphService
 
 **HTTP API 路由**：
 
-| Endpoint | 描述 |
-|----------|------|
-| `GET /api/refgraph/biggest-objects` | 最大对象列表 |
-| `GET /api/refgraph/gc-root-paths` | GC Root 引用路径 |
-| `GET /api/refgraph/retainers` | 对象持有者分析 |
-| `GET /api/refgraph/object-fields` | 对象字段详情 |
-| `GET /api/refgraph/gc-roots-summary` | GC Root 统计 |
-| `GET /api/refgraph/object-info` | 对象元信息 |
+| 分组 | Endpoint | 描述 |
+|------|----------|------|
+| 通用 | `GET /api/summary` | 分析结果摘要 |
+| 通用 | `GET /api/flamegraph` | 火焰图数据 |
+| 通用 | `GET /api/callgraph` | 调用图数据 |
+| 通用 | `GET /api/tasks` | 任务列表 |
+| 通用 | `GET /api/search` | 全文搜索 |
+| Heap (顶层) | `GET /api/biggest-objects` | 最大对象列表 |
+| Heap (顶层) | `GET /api/retainers` | 对象持有者分析 |
+| Heap (顶层) | `GET /api/object-fields` | 对象字段详情 |
+| Heap (RefGraph) | `GET /api/refgraph/fields` | 引用图字段 |
+| Heap (RefGraph) | `GET /api/refgraph/info` | 对象元信息 |
+| Heap (RefGraph) | `GET /api/refgraph/gc-roots` | GC Root 引用路径 |
+| Heap (RefGraph) | `GET /api/refgraph/gc-roots-summary` | GC Root 统计 |
+| Heap (RefGraph) | `GET /api/refgraph/gc-roots-list` | GC Root 列表 |
+| Heap (RefGraph) | `GET /api/refgraph/gc-root-retained` | GC Root Retained Size |
+| Heap (RefGraph) | `GET /api/refgraph/retainers` | 引用图 Retainer 查询 |
+| Heap (RefGraph) | `GET /api/refgraph/biggest-by-class` | 按类名查最大实例 |
+| Heap (RefGraph) | `GET /api/refgraph/dominator-tree` | 支配树子节点 |
+| Heap (RefGraph) | `GET /api/refgraph/dominator-path` | 支配树路径 |
+| Heap (RefGraph) | `GET /api/refgraph/treemap` | Retained Size Treemap |
+| Heap (RefGraph) | `GET /api/refgraph/class-histogram` | 类直方图 |
+| Heap (RefGraph) | `GET /api/refgraph/heap-stats` | 堆统计数据 |
+| Heap | `GET /api/heap/histogram` | 堆直方图（统一入口） |
+| pprof | `GET /api/pprof/leak-report` | 泄漏报告（旧，需 batch） |
+| pprof | `GET /api/pprof/batch-analysis` | 批量分析数据 |
+| Leak | `GET /api/leak-suspects` | 统一泄漏检测（新） |
+| Goroutine | `GET /api/goroutine/groups` | Goroutine 分组 |
+| Goroutine | `GET /api/goroutine/stats` | Goroutine 统计 |
+| Goroutine | `GET /api/goroutine/issues` | Goroutine 问题检测 |
+
+---
+
+### 3.8 LeakSuspect Provider 架构
+
+统一泄漏检测系统，基于 **策略模式 + Provider Chain**，支持多种检测策略产出一致的结果模型。
+
+```
+perflib/query/
+├── leak_suspect.go              ← 统一模型 + Engine
+├── leak_suspect_timeseries.go   ← TimeSeriesLeakProvider
+└── leak_suspect_hprof.go        ← HprofSnapshotLeakProvider
+```
+
+#### 统一数据模型
+
+```go
+// perflib/query/leak_suspect.go
+type LeakSuspect struct {
+    Type        string        // 泄漏类别 (heap/goroutine/class_accumulation...)
+    Source      LeakSource    // 检测来源 (time_series/snapshot_heuristic/static_analysis)
+    Severity    LeakSeverity  // 严重程度 (info/warning/critical)
+    Title       string        // 一行摘要
+    Description string        // 详细说明
+    Evidence    []LeakEvidence
+    Metrics     *LeakMetrics
+    Suggestions []string
+}
+```
+
+#### Provider 接口
+
+```go
+type LeakSuspectProvider interface {
+    Name() string
+    CanDetect(outputDir string) bool
+    Detect(outputDir string) ([]LeakSuspect, error)
+}
+```
+
+#### Engine 编排
+
+```go
+type LeakSuspectEngine struct {
+    providers []LeakSuspectProvider
+}
+
+func (e *LeakSuspectEngine) Detect(outputDir string) *LeakSuspectsResult {
+    // 遍历所有 Provider → CanDetect() → Detect() → 聚合 + 排序
+}
+```
+
+#### 当前 Provider 实现
+
+| Provider | 数据来源 | 检测策略 |
+|----------|---------|---------|
+| `TimeSeriesLeakProvider` | `batch_analysis.json` | 比较多次 profile 的增长趋势 |
+| `HprofSnapshotLeakProvider` | `heap_stats.json` | 单快照启发式（3 条规则） |
+
+**HprofSnapshotLeakProvider 启发式规则**：
+
+| 规则 | 检测目标 | 阈值 |
+|------|---------|------|
+| DominantClassRule | 单类占堆比例过高 | >25% warning, >40% critical |
+| CollectionAccumulationRule | 集合类实例数异常 | >50K info, >100K warning, >500K critical |
+| ClassLoaderLeakRule | ClassLoader 泄漏 | >30K info, >50K warning, >80K critical |
+
+#### 数据流
+
+```
+分析时（Analyzer）：
+  java_heap_analyzer / pprof_batch_analyzer
+      → LeakSuspectEngine.Detect(outputDir)
+      → 写入 leak_suspects.json（预计算）
+
+服务时（WebUI）：
+  /api/leak-suspects
+      → 读取 leak_suspects.json（快路径）
+      → 若不存在，运行 Provider Chain（降级路径）
+```
 
 ---
 
@@ -425,7 +532,7 @@ RefGraphService
 
 ## 五、扩展点
 
-### 新增分析能力
+### 新增 Heap 分析能力
 
 1. 实现新的分析算法 → 通过 `HeapGraph` 接口读取数据
 2. 在 `HeapQueryEngine` 中添加新方法
@@ -442,6 +549,29 @@ RefGraphService
 1. 在 `HeapDataProvider` 接口中添加方法
 2. `indexedProvider` 和 `legacyProvider` 分别实现
 3. 前端新增对应的视图组件
+
+### 新增泄漏检测策略
+
+1. 实现 `LeakSuspectProvider` 接口（`Name()`、`CanDetect()`、`Detect()`）
+2. 在 `LeakSuspectEngine` 的 providers 列表中注册
+3. 无需修改 API 层 — 所有 Provider 的输出自动聚合到 `/api/leak-suspects`
+
+示例：新增 Goroutine 泄漏检测
+
+```go
+// perflib/query/leak_suspect_goroutine.go
+type GoroutineLeakProvider struct{}
+
+func (p *GoroutineLeakProvider) Name() string { return "goroutine_snapshot" }
+
+func (p *GoroutineLeakProvider) CanDetect(outputDir string) bool {
+    // 检查 goroutine_analysis.json 是否存在
+}
+
+func (p *GoroutineLeakProvider) Detect(outputDir string) ([]LeakSuspect, error) {
+    // 分析 goroutine 数据，产出 []LeakSuspect
+}
+```
 
 ---
 
