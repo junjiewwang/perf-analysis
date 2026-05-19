@@ -132,6 +132,9 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/pprof/leak-report", s.handlePProfLeakReport)
 	mux.HandleFunc("/api/pprof/batch-analysis", s.handlePProfBatchAnalysis)
 
+	// Unified leak suspects API (replaces /api/pprof/leak-report for new clients)
+	mux.HandleFunc("/api/leak-suspects", s.handleLeakSuspects)
+
 	// Goroutine analysis APIs
 	mux.HandleFunc("/api/goroutine/groups", s.handleGoroutineGroups)
 	mux.HandleFunc("/api/goroutine/stats", s.handleGoroutineStats)

@@ -460,3 +460,55 @@ func (s *Server) buildCPUAnalysisFromFlameGraph(fg *flamegraph.FlameGraph) *flam
 
 	return result
 }
+
+// handleLeakSuspects is the unified leak detection API.
+// It aggregates results from all applicable LeakSuspectProviders using a Chain of Responsibility.
+// GET /api/leak-suspects?task=<id>&type=<heap|goroutine|all>&severity=<info|warning|critical>
+func (s *Server) handleLeakSuspects(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	leakType := r.URL.Query().Get("type")
+	minSeverity := r.URL.Query().Get("severity")
+
+	taskDir := s.resolveTaskDir(r.Context(), taskID)
+
+	// Strategy 1: Try precomputed leak_suspects.json (fast path)
+	suspectsFile := filepath.Join(taskDir, output.FileLeakSuspects)
+	if data, err := os.ReadFile(suspectsFile); err == nil {
+		var result query.LeakSuspectsResult
+		if json.Unmarshal(data, &result) == nil {
+			filtered := applyLeakSuspectsFilter(&result, leakType, minSeverity)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			json.NewEncoder(w).Encode(filtered)
+			return
+		}
+	}
+
+	// Strategy 2: Runtime detection via Provider chain
+	engine := query.NewLeakSuspectEngine(
+		query.NewTimeSeriesLeakProvider(),
+		query.NewHprofSnapshotLeakProvider(),
+	)
+
+	result := engine.Detect(taskDir)
+	filtered := applyLeakSuspectsFilter(result, leakType, minSeverity)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(filtered)
+}
+
+// applyLeakSuspectsFilter applies type and severity filters to the result.
+func applyLeakSuspectsFilter(result *query.LeakSuspectsResult, leakType, minSeverity string) *query.LeakSuspectsResult {
+	if leakType != "" && leakType != "all" {
+		result = result.FilterByType(leakType)
+	}
+	if minSeverity != "" {
+		result = result.FilterBySeverity(query.LeakSeverity(minSeverity))
+	}
+	return result
+}
