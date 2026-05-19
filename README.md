@@ -286,7 +286,7 @@ HTTP Ingress 支持 **降级保存**：当任务未携带 `callback_url` 时，�
 
 ### Heap Dump 解析性能
 
-基于 Two-Pass CSR 引擎（详见 [Architecture Guide](docs/ARCHITECTURE.md)）：
+基于 Two-Pass CSR 引擎（详见 [Architecture Guide](docs/architecture.md)）：
 
 | 测试文件 | 大小 | 对象数 | 边数 | 分析耗时 | 峰值内存 |
 |----------|------|--------|------|----------|---------|
@@ -302,7 +302,7 @@ HTTP Ingress 支持 **降级保存**：当任务未携带 `callback_url` 时，�
 
 | 文档 | 说明 |
 |------|------|
-| [Architecture Guide](docs/ARCHITECTURE.md) | Heap Dump 分析子系统架构、Two-Pass CSR 引擎、HeapGraph 接口、数据流 |
+| [Architecture Guide](docs/architecture.md) | Heap Dump 分析子系统架构、Two-Pass CSR 引擎、HeapGraph 接口、数据流 |
 | [Analysis Modes Reference](docs/analysis-modes.md) | 所有分析模式详解、HTTP API 接口定义、请求示例 |
 | [Callback API Protocol](docs/callback-api-protocol.md) | 入站接口、出站回调协议、重试机制、接收方实现指南 |
 | [HPROF Performance Optimization](docs/hprof-performance-optimization.md) | Heap Dump 解析性能优化方案、实施记录 |
