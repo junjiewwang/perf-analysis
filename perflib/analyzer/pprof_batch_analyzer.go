@@ -16,6 +16,7 @@ import (
 	"github.com/junjiewwang/perf-analysis/perflib/model"
 	"github.com/junjiewwang/perf-analysis/perflib/output"
 	pprofparser "github.com/junjiewwang/perf-analysis/perflib/parser/pprof"
+	"github.com/junjiewwang/perf-analysis/perflib/query"
 )
 
 // PProfBatchAnalyzer analyzes a directory of pprof files.
@@ -126,6 +127,9 @@ func (a *PProfBatchAnalyzer) analyzeDirectory(ctx context.Context, req *model.An
 	if err := a.saveBatchResults(results, outputDir); err != nil {
 		a.logger.Warn("Failed to save batch results: %v", err)
 	}
+
+	// Precompute leak_suspects.json using the unified Provider chain
+	a.precomputeLeakSuspects(outputDir)
 
 	// Build PProfBatchData for response
 	batchData := a.buildBatchData(results, outputDir)
@@ -404,6 +408,24 @@ func (a *PProfBatchAnalyzer) saveBatchResults(results *batchAnalysisResult, outp
 	}
 
 	return nil
+}
+
+// precomputeLeakSuspects runs the unified Provider chain and writes leak_suspects.json.
+func (a *PProfBatchAnalyzer) precomputeLeakSuspects(outputDir string) {
+	engine := query.NewLeakSuspectEngine(
+		query.NewTimeSeriesLeakProvider(),
+		query.NewHprofSnapshotLeakProvider(),
+	)
+
+	result := engine.Detect(outputDir)
+	if result.TotalCount == 0 {
+		return
+	}
+
+	writer := output.NewWriter(outputDir)
+	if err := writer.WriteJSON(output.FileLeakSuspects, result); err != nil {
+		a.logger.Warn("Failed to write leak suspects: %v", err)
+	}
 }
 
 // buildBatchData builds PProfBatchData from analysis results.

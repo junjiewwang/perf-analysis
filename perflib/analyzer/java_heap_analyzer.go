@@ -15,6 +15,7 @@ import (
 	"github.com/junjiewwang/perf-analysis/perflib/model"
 	"github.com/junjiewwang/perf-analysis/perflib/output"
 	"github.com/junjiewwang/perf-analysis/perflib/parser/hprof"
+	"github.com/junjiewwang/perf-analysis/perflib/query"
 )
 
 // JavaHeapAnalyzer analyzes Java heap dump (HPROF) files.
@@ -316,6 +317,25 @@ func (a *JavaHeapAnalyzer) analyzeTwoPass(ctx context.Context, req *model.Analys
 		if err := writer.WriteJSON(output.FileHeapStats, heapStats); err != nil {
 			if a.config.Logger != nil {
 				a.config.Logger.Warn("Failed to write heap stats: %v", err)
+			}
+		}
+	})
+
+	// Step 9c: Precompute leak_suspects.json using HprofSnapshotLeakProvider
+	timer.TimeFunc("Precompute leak suspects", func() {
+		provider := query.NewHprofSnapshotLeakProvider()
+		if provider.CanDetect(taskDir) {
+			suspects, err := provider.Detect(taskDir)
+			if err == nil && len(suspects) > 0 {
+				result := &query.LeakSuspectsResult{
+					TotalCount: len(suspects),
+					Suspects:   suspects,
+				}
+				if writeErr := writer.WriteJSON(output.FileLeakSuspects, result); writeErr != nil {
+					if a.config.Logger != nil {
+						a.config.Logger.Warn("Failed to write leak suspects: %v", writeErr)
+					}
+				}
 			}
 		}
 	})
