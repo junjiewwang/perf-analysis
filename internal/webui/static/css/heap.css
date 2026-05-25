@@ -1134,24 +1134,37 @@
 
 .field-item {
     display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 2px 0;
+    font-size: 12px;
+}
+
+.field-item > .field-row {
+    display: flex;
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
     background: rgb(var(--color-bg-card));
     border-radius: 4px;
-    font-size: 12px;
 }
 
-.field-item.expandable {
+.field-item.expandable > .field-row {
     cursor: pointer;
 }
 
-.field-item.expandable:hover {
+.field-item.expandable > .field-row:hover {
     background: rgb(var(--color-bg-hover));
 }
 
-.field-item.business-class {
+.field-item.business-class > .field-row {
     background: rgb(var(--color-warning) / 0.1);
+}
+
+.field-children {
+    margin-left: 16px;
+    border-left: 1px solid rgb(var(--color-border) / 0.3);
+    padding-left: 4px;
 }
 
 .field-expand {

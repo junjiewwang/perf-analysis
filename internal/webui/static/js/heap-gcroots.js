@@ -3,7 +3,7 @@
  * GC Roots 分析模块：负责 GC Root 的展示和分析
  * 
  * 职责：
- * - 从 gc_roots.json API 加载数据
+ * - 通过 HeapQueryEngine API 加载 GC Roots 数据
  * - 渲染按类分组的 GC Roots 表格（类似 IDEA）
  * - 处理过滤和展开/折叠
  * - 支持展开查看具体实例和引用链
@@ -369,42 +369,94 @@ const HeapGCRoots = (function() {
     }
 
     /**
-     * 渲染实例字段
+     * 渲染实例字段（支持递归展开）
+     * @param {HTMLElement} container - 容器元素
+     * @param {Array} fields - 字段数据
+     * @param {string} parentId - 父节点 ID（用于生成唯一子容器 ID）
+     * @param {number} depth - 当前递归深度
      */
-    function renderInstanceFields(container, fields, parentId) {
+    function renderInstanceFields(container, fields, parentId, depth = 0) {
         if (!fields || fields.length === 0) {
             container.innerHTML = '<div class="no-fields">No fields available</div>';
             return;
         }
+
+        const maxDepth = 10;
 
         container.innerHTML = `
             <div class="fields-list">
                 ${fields.map((field, idx) => {
                     const hasChildren = field.has_children && field.ref_id;
                     const isBusinessClass = field.ref_class ? checkIsBusinessClass(field.ref_class) : false;
+                    const fieldNodeId = `${parentId}-f${idx}`;
+                    const canExpand = hasChildren && depth < maxDepth;
                     
                     return `
-                        <div class="field-item ${hasChildren ? 'expandable' : ''} ${isBusinessClass ? 'business-class' : ''}">
-                            <span class="field-expand">${hasChildren ? '▶' : '─'}</span>
-                            <span class="field-name">${Utils.escapeHtml(field.name)}</span>
-                            <span class="field-type">${Utils.escapeHtml(field.type)}</span>
-                            ${field.ref_class ? `
-                                <span class="field-ref-class ${isBusinessClass ? 'highlight' : ''}" 
-                                      title="${Utils.escapeHtml(field.ref_class)}">
-                                    → ${Utils.escapeHtml(Utils.getShortClassName(field.ref_class))}
-                                </span>
-                            ` : ''}
-                            ${field.value !== undefined && field.value !== null ? `
-                                <span class="field-value">${Utils.escapeHtml(String(field.value))}</span>
-                            ` : ''}
-                            ${field.retained_size ? `
-                                <span class="field-size">${Utils.formatBytes(field.retained_size)}</span>
-                            ` : ''}
+                        <div class="field-item ${canExpand ? 'expandable' : ''} ${isBusinessClass ? 'business-class' : ''}"
+                             data-field-node-id="${fieldNodeId}">
+                            <div class="field-row" ${canExpand ? `onclick="HeapGCRoots.toggleFieldNode('${fieldNodeId}', '${Utils.escapeHtml(field.ref_id)}', ${depth})"` : ''}>
+                                <span class="field-expand">${canExpand ? '▶' : '─'}</span>
+                                <span class="field-name">${Utils.escapeHtml(field.name)}</span>
+                                <span class="field-type">${Utils.escapeHtml(field.type)}</span>
+                                ${field.ref_class ? `
+                                    <span class="field-ref-class ${isBusinessClass ? 'highlight' : ''}" 
+                                          title="${Utils.escapeHtml(field.ref_class)}">
+                                        → ${Utils.escapeHtml(Utils.getShortClassName(field.ref_class))}
+                                    </span>
+                                ` : ''}
+                                ${field.value !== undefined && field.value !== null ? `
+                                    <span class="field-value">${Utils.escapeHtml(String(field.value))}</span>
+                                ` : ''}
+                                ${field.retained_size ? `
+                                    <span class="field-size">${Utils.formatBytes(field.retained_size)}</span>
+                                ` : ''}
+                            </div>
+                            ${canExpand ? `<div id="${fieldNodeId}-children" class="field-children" style="display: none;"></div>` : ''}
                         </div>
                     `;
                 }).join('')}
             </div>
         `;
+    }
+
+    /**
+     * 展开/折叠字段节点（递归加载子对象的字段）
+     * @param {string} nodeId - 节点 ID
+     * @param {string} refId - 引用对象 ID
+     * @param {number} depth - 当前深度
+     */
+    async function toggleFieldNode(nodeId, refId, depth) {
+        const childrenContainer = document.getElementById(`${nodeId}-children`);
+        const fieldItem = document.querySelector(`[data-field-node-id="${nodeId}"]`);
+        const expandIcon = fieldItem?.querySelector('.field-expand');
+
+        if (!childrenContainer) return;
+
+        const isHidden = childrenContainer.style.display === 'none';
+
+        if (isHidden) {
+            childrenContainer.style.display = 'block';
+            if (expandIcon) expandIcon.textContent = '▼';
+
+            // 如果尚未加载子字段，按需加载
+            if (childrenContainer.innerHTML.trim() === '') {
+                childrenContainer.innerHTML = '<div class="loading" style="padding-left: 16px;">Loading...</div>';
+
+                try {
+                    const fields = await API.getObjectFields(currentTaskId, refId);
+                    renderInstanceFields(childrenContainer, fields, nodeId, depth + 1);
+                } catch (error) {
+                    childrenContainer.innerHTML = `
+                        <div class="error-message" style="padding-left: 16px;">
+                            Failed to load: ${Utils.escapeHtml(error.message)}
+                        </div>
+                    `;
+                }
+            }
+        } else {
+            childrenContainer.style.display = 'none';
+            if (expandIcon) expandIcon.textContent = '▶';
+        }
     }
 
     /**
@@ -596,6 +648,7 @@ const HeapGCRoots = (function() {
         filter,
         toggleClassRow,
         toggleInstanceRow,
+        toggleFieldNode,
         getData,
         refresh
     };
