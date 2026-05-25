@@ -22,6 +22,7 @@ type HeapDataProvider interface {
 	GetBiggestObjects(topN int, sortBy string, classFilter string) ([]map[string]interface{}, error)
 	GetGCRootPaths(objectIDStr string, maxPaths int, maxDepth int) (interface{}, error)
 	GetRetainers(objectIDStr string, maxRetainers int) ([]*ObjectRetainerInfo, error)
+	GetClassRetainers(className string, topN int) ([]ClassRetainerResult, error)
 	GetGCRootsSummary() (interface{}, error)
 	GetGCRootsList() (interface{}, error)
 	GetRetainedObjectsByGCRoot(objectIDStr string, maxObjects int) (interface{}, error)
@@ -119,6 +120,15 @@ func (s *RefGraphService) GetRetainers(taskID string, objectIDStr string, maxRet
 		return nil, err
 	}
 	return entry.provider.GetRetainers(objectIDStr, maxRetainers)
+}
+
+// GetClassRetainers returns class-level retainers for a given class.
+func (s *RefGraphService) GetClassRetainers(taskID string, className string, topN int) ([]ClassRetainerResult, error) {
+	entry, err := s.getOrLoadProvider(taskID)
+	if err != nil {
+		return nil, err
+	}
+	return entry.provider.GetClassRetainers(className, topN)
 }
 
 // GetGCRootsSummary returns GC roots grouped by class (like IDEA).
@@ -384,6 +394,10 @@ func (p *indexedProvider) GetRetainers(objectIDStr string, maxRetainers int) ([]
 
 func (p *indexedProvider) GetGCRootsSummary() (interface{}, error) {
 	return p.engine.QueryGCRootsSummary(), nil
+}
+
+func (p *indexedProvider) GetClassRetainers(className string, topN int) ([]ClassRetainerResult, error) {
+	return p.engine.QueryClassRetainers(className, topN), nil
 }
 
 func (p *indexedProvider) GetGCRootsList() (interface{}, error) {

@@ -86,11 +86,19 @@ type ObjectFieldResult struct {
 
 // GCRootSummaryResult represents a group of GC roots by class/type.
 type GCRootSummaryResult struct {
-	ClassName     string `json:"class_name"`
-	RootType      string `json:"root_type"`
-	InstanceCount int    `json:"instance_count"`
-	TotalShallow  int64  `json:"total_shallow"`
-	TotalRetained int64  `json:"total_retained"`
+	ClassName     string           `json:"class_name"`
+	RootType      string           `json:"root_type"`
+	InstanceCount int              `json:"instance_count"`
+	TotalShallow  int64            `json:"total_shallow"`
+	TotalRetained int64            `json:"total_retained"`
+	Roots         []GCRootInstance `json:"roots,omitempty"`
+}
+
+// GCRootInstance represents a single GC root object instance within a class group.
+type GCRootInstance struct {
+	ObjectID     string `json:"object_id"`
+	ShallowSize  int64  `json:"shallow_size"`
+	RetainedSize int64  `json:"retained_size"`
 }
 
 // QueryObjectInfo returns basic information about a single object by its ID.
@@ -417,14 +425,107 @@ func (e *HeapQueryEngine) QueryClassInstances(className string, topN int, sortBy
 	return results
 }
 
+// ClassRetainerResult represents a class that retains (holds references to) instances of a target class.
+// This is class-level aggregation: "which classes hold references to instances of the target class?"
+type ClassRetainerResult struct {
+	RetainerClass string  `json:"retainer_class"`
+	FieldName     string  `json:"field_name,omitempty"`
+	RetainedSize  int64   `json:"retained_size"`
+	RetainedCount int64   `json:"retained_count"`
+	Percentage    float64 `json:"percentage"`
+}
+
+// QueryClassRetainers returns class-level retainers for a given target class.
+// It finds all instances of the target class, then aggregates their incoming edges
+// by source class name. This answers: "who holds references to instances of this class?"
+// Complexity: O(instances_of_class × avg_in_degree) — efficient with CSR format.
+func (e *HeapQueryEngine) QueryClassRetainers(className string, topN int) []ClassRetainerResult {
+	if topN <= 0 {
+		topN = 20
+	}
+
+	classID := e.resolveClassID(className)
+	if classID == 0 {
+		return nil
+	}
+
+	objects := e.graph.GetObjectsByClass(classID)
+	if len(objects) == 0 {
+		return nil
+	}
+
+	// Aggregate retainers by (retainerClassName, fieldName)
+	type retainerKey struct {
+		className string
+		fieldName string
+	}
+	aggMap := make(map[retainerKey]*ClassRetainerResult)
+	var totalRetainedSize int64
+
+	for _, objIdx := range objects {
+		if !e.graph.IsReachable(objIdx) {
+			continue
+		}
+
+		objShallow := e.graph.GetShallowSize(objIdx)
+		totalRetainedSize += objShallow
+
+		sources, fieldIDs, _ := e.graph.GetIncomingEdges(objIdx)
+		for i, srcIdx := range sources {
+			srcClassName := e.assembler.GetClassNameByIndex(srcIdx)
+			if srcClassName == "" {
+				srcClassName = "<unknown>"
+			}
+			fieldName := e.assembler.ResolveFieldName(fieldIDs, i)
+
+			key := retainerKey{className: srcClassName, fieldName: fieldName}
+			if agg, ok := aggMap[key]; ok {
+				agg.RetainedCount++
+				agg.RetainedSize += objShallow
+			} else {
+				aggMap[key] = &ClassRetainerResult{
+					RetainerClass: srcClassName,
+					FieldName:     fieldName,
+					RetainedCount: 1,
+					RetainedSize:  objShallow,
+				}
+			}
+		}
+	}
+
+	// Convert to slice, compute percentages, and sort
+	results := make([]ClassRetainerResult, 0, len(aggMap))
+	for _, r := range aggMap {
+		if totalRetainedSize > 0 {
+			r.Percentage = float64(r.RetainedSize) * 100.0 / float64(totalRetainedSize)
+		}
+		results = append(results, *r)
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].RetainedSize > results[j].RetainedSize
+	})
+
+	if len(results) > topN {
+		results = results[:topN]
+	}
+
+	return results
+}
+
 // QueryGCRootsSummary returns GC roots grouped by class and type.
+// Each class group includes up to maxInstancesPerClass concrete instances for drill-down.
 func (e *HeapQueryEngine) QueryGCRootsSummary() []GCRootSummaryResult {
+	const maxInstancesPerClass = 50
+
 	// Group GC roots by class
 	type key struct {
 		className string
 		rootType  string
 	}
 	groups := make(map[key]*GCRootSummaryResult)
+	// Collect instance indices per class for later assembly
+	instanceIndices := make(map[key][]int32)
 
 	objectCount := e.graph.ObjectCount()
 	for i := int32(0); i < objectCount; i++ {
@@ -450,11 +551,29 @@ func (e *HeapQueryEngine) QueryGCRootsSummary() []GCRootSummaryResult {
 				TotalRetained: e.graph.GetRetainedSize(i),
 			}
 		}
+
+		// Collect instance indices (cap at maxInstancesPerClass)
+		if indices := instanceIndices[k]; len(indices) < maxInstancesPerClass {
+			instanceIndices[k] = append(indices, i)
+		}
 	}
 
-	// Convert to slice and sort by total retained descending
+	// Convert to slice, attach instance details, and sort by total retained descending
 	results := make([]GCRootSummaryResult, 0, len(groups))
-	for _, r := range groups {
+	for k, r := range groups {
+		// Assemble instance details for this class group
+		indices := instanceIndices[k]
+		if len(indices) > 0 {
+			r.Roots = make([]GCRootInstance, 0, len(indices))
+			for _, idx := range indices {
+				info := e.assembler.AssembleByIndex(idx)
+				r.Roots = append(r.Roots, GCRootInstance{
+					ObjectID:     info.ObjectID,
+					ShallowSize:  info.ShallowSize,
+					RetainedSize: info.RetainedSize,
+				})
+			}
+		}
 		results = append(results, *r)
 	}
 	sort.Slice(results, func(i, j int) bool {
