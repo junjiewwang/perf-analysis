@@ -117,6 +117,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/refgraph/gc-roots-list", s.handleRefGraphGCRootsList)
 	mux.HandleFunc("/api/refgraph/gc-root-retained", s.handleRefGraphGCRootRetained)
 	mux.HandleFunc("/api/refgraph/retainers", s.handleRefGraphRetainers)
+	mux.HandleFunc("/api/refgraph/class-retainers", s.handleRefGraphClassRetainers)
 	mux.HandleFunc("/api/refgraph/biggest-by-class", s.handleRefGraphBiggestByClass)
 
 	// Dominator tree and treemap APIs
@@ -971,33 +972,106 @@ func (s *Server) handleRefGraphGCRoots(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRefGraphGCRootsSummary returns GC roots grouped by class (like IDEA).
-// First tries to read from gc_roots.json, falls back to refgraph if not available.
+// Uses HeapQueryEngine for on-demand computation, returns unified {summary, classes} format.
 func (s *Server) handleRefGraphGCRootsSummary(w http.ResponseWriter, r *http.Request) {
 	taskID := r.URL.Query().Get("task")
 	if taskID == "" {
 		taskID = s.getDefaultTask()
 	}
 
-	// Try to read from gc_roots.json first (fast path)
-	taskDir := s.resolveTaskDir(r.Context(), taskID)
-	gcRootsFile := filepath.Join(taskDir, "gc_roots.json")
-	if data, err := os.ReadFile(gcRootsFile); err == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Write(data)
-		return
-	}
-
-	// Fall back to refgraph (slow path - requires loading refgraph.bin)
-	summary, err := s.refGraphService.GetGCRootsSummary(taskID)
+	// Query GC roots via HeapQueryEngine (on-demand, backed by heap_index.bin CSR)
+	rawResult, err := s.refGraphService.GetGCRootsSummary(taskID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
+	// Adapt the result to the frontend-expected {summary, classes} format.
+	// The provider returns []GCRootSummaryResult; we wrap it into a structured response.
+	response := buildGCRootsSummaryResponse(rawResult)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	json.NewEncoder(w).Encode(summary)
+	json.NewEncoder(w).Encode(response)
+}
+
+// gcRootsSummaryResponse is the API response format for GC roots summary.
+// This matches the frontend expectation: { summary: {...}, classes: [...] }.
+type gcRootsSummaryResponse struct {
+	Summary gcRootsSummaryStats   `json:"summary"`
+	Classes []gcRootClassResponse `json:"classes"`
+}
+
+// gcRootsSummaryStats holds aggregate statistics.
+type gcRootsSummaryStats struct {
+	TotalRoots    int   `json:"total_roots"`
+	TotalClasses  int   `json:"total_classes"`
+	TotalRetained int64 `json:"total_retained"`
+	TotalShallow  int64 `json:"total_shallow"`
+}
+
+// gcRootClassResponse represents a single GC root class group in the API response.
+type gcRootClassResponse struct {
+	ClassName     string                  `json:"class_name"`
+	RootType      string                  `json:"root_type"`
+	InstanceCount int                     `json:"instance_count"`
+	TotalShallow  int64                   `json:"total_shallow"`
+	TotalRetained int64                   `json:"total_retained"`
+	Roots         []gcRootInstanceResponse `json:"roots,omitempty"`
+}
+
+// gcRootInstanceResponse represents a single GC root instance in the API response.
+type gcRootInstanceResponse struct {
+	ObjectID     string `json:"object_id"`
+	ShallowSize  int64  `json:"shallow_size"`
+	RetainedSize int64  `json:"retained_size"`
+}
+
+// buildGCRootsSummaryResponse adapts the raw provider result into the frontend API contract.
+func buildGCRootsSummaryResponse(rawResult interface{}) *gcRootsSummaryResponse {
+	response := &gcRootsSummaryResponse{
+		Classes: make([]gcRootClassResponse, 0),
+	}
+
+	switch results := rawResult.(type) {
+	case []GCRootSummaryResult:
+		for _, r := range results {
+			response.Summary.TotalRoots += r.InstanceCount
+			response.Summary.TotalRetained += r.TotalRetained
+			response.Summary.TotalShallow += r.TotalShallow
+
+			classResp := gcRootClassResponse{
+				ClassName:     r.ClassName,
+				RootType:      r.RootType,
+				InstanceCount: r.InstanceCount,
+				TotalShallow:  r.TotalShallow,
+				TotalRetained: r.TotalRetained,
+			}
+
+			// Attach instance details if available
+			if len(r.Roots) > 0 {
+				classResp.Roots = make([]gcRootInstanceResponse, 0, len(r.Roots))
+				for _, inst := range r.Roots {
+					classResp.Roots = append(classResp.Roots, gcRootInstanceResponse{
+						ObjectID:     inst.ObjectID,
+						ShallowSize:  inst.ShallowSize,
+						RetainedSize: inst.RetainedSize,
+					})
+				}
+			}
+
+			response.Classes = append(response.Classes, classResp)
+		}
+		response.Summary.TotalClasses = len(response.Classes)
+	default:
+		// If the provider already returns a structured response (e.g., from legacy refgraph),
+		// attempt JSON round-trip adaptation.
+		if data, err := json.Marshal(rawResult); err == nil {
+			json.Unmarshal(data, response)
+		}
+	}
+
+	return response
 }
 
 // handleRefGraphGCRootsList returns all GC roots with their information.
@@ -1078,6 +1152,39 @@ func (s *Server) handleRefGraphRetainers(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(retainers)
+}
+
+// handleRefGraphClassRetainers returns class-level retainers for a given class.
+// This answers: "which classes hold references to instances of this class?"
+// Used by the Merged Paths frontend module for on-demand lazy loading.
+func (s *Server) handleRefGraphClassRetainers(w http.ResponseWriter, r *http.Request) {
+	taskID := r.URL.Query().Get("task")
+	if taskID == "" {
+		taskID = s.getDefaultTask()
+	}
+
+	className := r.URL.Query().Get("class")
+	if className == "" {
+		http.Error(w, "Class name is required (use ?class=com.example.Foo)", http.StatusBadRequest)
+		return
+	}
+
+	topN := 20
+	if t := r.URL.Query().Get("top"); t != "" {
+		if n, err := parseInt(t); err == nil && n > 0 {
+			topN = n
+		}
+	}
+
+	results, err := s.refGraphService.GetClassRetainers(taskID, className, topN)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(results)
 }
 
 // handleRefGraphBiggestByClass returns the biggest objects for a specific class.
