@@ -58,7 +58,7 @@ const API = {
         return response.json();
     },
 
-    // Fetch GC roots summary (from gc_roots.json or refgraph)
+    // Fetch GC roots summary (via HeapQueryEngine on-demand computation)
     async getGCRootsSummary(taskId) {
         const response = await fetch(`/api/refgraph/gc-roots-summary?task=${taskId}`);
         if (!response.ok) {
@@ -123,6 +123,15 @@ const API = {
             url += `&root=${encodeURIComponent(rootId)}`;
         }
         const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    },
+
+    // Fetch class-level retainers (who holds references to instances of this class)
+    async getClassRetainers(taskId, className, topN = 20) {
+        const response = await fetch(`/api/refgraph/class-retainers?task=${taskId}&class=${encodeURIComponent(className)}&top=${topN}`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
