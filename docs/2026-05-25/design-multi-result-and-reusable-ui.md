@@ -1,7 +1,7 @@
 # PerfScope — 多结果展示与可复用 UI 设计方案
 
 > 创建日期: 2026-05-25  
-> 状态: 方案讨论阶段  
+> 状态: 原型导航已实施，React 架构待启动  
 > 关联文档: [后端 API 设计](../2026-05-08/design-backend-api-for-prototype.md) | [原型文件](../../prototype/)
 
 ## 1. 背景与目标
@@ -380,7 +380,59 @@ Go 后端增加逻辑：优先 serve `web/dist/`，不存在则 fallback 到旧 
 
 ---
 
-## 10. 遗留问题
+## 10. 原型导航重设计 — Session-Driven Navigation (2026-05-25 已实施)
+
+### 10.1 问题发现
+
+原始原型存在**双重导航入口**冗余：
+- 左侧 Session 列表（按类型点击切换面板）
+- 右上角 Profile Selector 按钮（CPU / Heap / Goroutine）
+
+两者功能完全重叠，违反"Single Source of Truth"设计原则。
+
+### 10.2 专家分析
+
+| 视角 | 判断 |
+|------|------|
+| 性能剖析专家 | 用户心智模型是"先选时间点/事件，再选分析维度"，Session 列表已天然包含类型信息 |
+| 前端设计专家 | 参考 Chrome DevTools、IntelliJ Profiler、Grafana Pyroscope、Eclipse MAT，均使用单入口导航 |
+
+**核心结论**：保留左侧 Session 列表作为唯一导航源，移除 Profile Selector。
+
+### 10.3 实施方案
+
+| 变更 | 描述 |
+|------|------|
+| 移除 Profile Selector | top-bar-right 区域不再显示 CPU/Heap/Goroutine 按钮 |
+| 新增 Compare + Share | 用更有价值的操作替代原有位置 |
+| Session 时间分组 | 左侧 Session 按时间分组（Today 10:30 / Today 09:15 / Yesterday） |
+| Session 作为唯一入口 | `app.js` 中只保留 session click 的面板切换逻辑 |
+| ViewRouter 增强 | `switchPanel()` 同时切换 analysis panel + context panel |
+
+### 10.4 导航模型
+
+```
+Session (左侧, 按时间分组)  →  View (面板内 Tab 栏)
+     "今天 10:30 CPU"           Flame Graph | Top Down | Treemap | Timeline
+     "今天 10:30 Heap"          Histogram | Treemap | Dominator | GC Roots | Merged Paths
+     "今天 09:15 CPU"           ...
+```
+
+**两级导航**：Session 选择 → View Tab 切换。清晰、无歧义。
+
+### 10.5 文件变更清单
+
+| 文件 | 变更 |
+|------|------|
+| `prototype/index.html` | 移除 `.profile-selector`，新增 Compare/Share 按钮，Session 列表增加时间分组 |
+| `prototype/style.css` | 新增 `.action-btn-top`、`.top-bar-sep`、`.session-group-header`、`.session-badge.ok`；移除旧 profile 样式 |
+| `prototype/js/app.js` | 重写为 Session-only 导航逻辑，移除 profileBtns 绑定 |
+| `prototype/js/router.js` | `switchPanel()` 新增 context-body 联动切换 |
+| `prototype/interactions.js` | **已删除** — 功能被 router.js + app.js 完全取代 |
+
+---
+
+## 11. 遗留问题
 
 1. **FlameGraph Canvas 渲染方案** — 是基于 d3-flame-graph 二次开发还是纯自研 Canvas，需 Phase 1 POC 验证性能后决策
 2. **组件间联动** — 如 FlameGraph 点击 frame 后 ContextPanel 显示详情，跨组件通信用 Zustand store 还是 React Context
@@ -390,7 +442,7 @@ Go 后端增加逻辑：优先 serve `web/dist/`，不存在则 fallback 到旧 
 
 ---
 
-## 11. 对外消费者集成方式总结
+## 12. 对外消费者集成方式总结
 
 | 方式 | 适用场景 | 集成成本 | 灵活度 |
 |------|---------|---------|--------|

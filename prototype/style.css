@@ -199,21 +199,18 @@ body {
   gap: 12px;
 }
 
-.profile-selector {
+.top-bar-actions {
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--color-bg-input);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-subtle);
+  align-items: center;
+  gap: 6px;
 }
 
-.profile-btn {
+.action-btn-top {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  border: none;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
@@ -223,30 +220,17 @@ body {
   transition: all 0.15s ease;
 }
 
-.profile-btn:hover {
-  color: var(--color-text-secondary);
+.action-btn-top:hover {
   background: var(--color-bg-hover);
-}
-
-.profile-btn.active {
-  background: var(--color-bg-active);
+  border-color: var(--color-accent);
   color: var(--color-text-primary);
-  box-shadow: var(--shadow-sm);
 }
 
-.profile-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-
-.profile-dot.cpu { background: var(--color-orange); }
-.profile-dot.heap { background: var(--color-green); }
-.profile-dot.goroutine { background: var(--color-purple); }
-
-.top-bar-actions {
-  display: flex;
-  gap: 4px;
+.top-bar-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+  margin: 0 4px;
 }
 
 .icon-btn {
@@ -325,6 +309,21 @@ body {
   padding: 4px 8px;
 }
 
+.session-group-header {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+  padding: 12px 10px 4px;
+  margin-top: 4px;
+}
+
+.session-group-header:first-child {
+  margin-top: 0;
+  padding-top: 6px;
+}
+
 .session-item {
   display: flex;
   align-items: center;
@@ -401,6 +400,11 @@ body {
   color: var(--color-warn);
 }
 
+.session-badge.ok {
+  background: rgba(16,185,129,0.15);
+  color: var(--color-green);
+}
+
 .sidebar-footer {
   padding: 10px 14px;
   border-top: 1px solid var(--color-border-subtle);
@@ -440,6 +444,12 @@ body {
   border-bottom: 1px solid var(--color-border);
   gap: 2px;
   flex-shrink: 0;
+}
+
+.view-tabs-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .view-tab {

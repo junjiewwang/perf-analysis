@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="views.css">
 </head>
 <body>
   <!-- Command Bar (Spotlight-style) -->
@@ -55,25 +56,22 @@
         </button>
       </div>
       <div class="top-bar-right">
-        <div class="profile-selector">
-          <button class="profile-btn active" data-type="cpu">
-            <span class="profile-dot cpu"></span>CPU
-          </button>
-          <button class="profile-btn" data-type="heap">
-            <span class="profile-dot heap"></span>Heap
-          </button>
-          <button class="profile-btn" data-type="goroutine">
-            <span class="profile-dot goroutine"></span>Goroutine
-          </button>
-        </div>
         <div class="top-bar-actions">
-          <button class="icon-btn" title="Compare profiles">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M8 1v14M1 8h14"/>
+          <button class="action-btn-top" title="Compare two profiles">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 1v12M10 1v12M1 4h6M7 10h6"/>
             </svg>
+            <span>Compare</span>
           </button>
+          <button class="action-btn-top" title="Share this analysis">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 8l3-3 3 3M7 5v7"/><path d="M2 10v2a1 1 0 001 1h8a1 1 0 001-1v-2"/>
+            </svg>
+            <span>Share</span>
+          </button>
+          <div class="top-bar-sep"></div>
           <button class="icon-btn" title="Settings">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
               <circle cx="8" cy="8" r="3"/><path d="M8 1v2m0 10v2m-5-7H1m14 0h-2m-1.5-4.5 1.5-1.5m-10 0L4.5 3.5m0 9 -1.5 1.5m10 0-1.5-1.5"/>
             </svg>
           </button>
@@ -94,11 +92,12 @@
           </button>
         </div>
         <div class="session-list">
+          <div class="session-group-header">Today 10:30 — Diagnostic</div>
           <div class="session-item active" data-session="cpu">
             <div class="session-icon cpu"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
             <div class="session-info">
               <span class="session-name">CPU Profile</span>
-              <span class="session-meta">10:30 · 30s · 48 threads</span>
+              <span class="session-meta">30s · 48 threads · 99Hz</span>
             </div>
             <span class="session-badge hot">4.2s</span>
           </div>
@@ -106,25 +105,37 @@
             <div class="session-icon heap"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="3"/></svg></div>
             <div class="session-info">
               <span class="session-name">Heap Dump</span>
-              <span class="session-meta">10:32 · 256MB · 1.2M objects</span>
+              <span class="session-meta">512MB · 1.2M objects</span>
             </div>
-            <span class="session-badge warn">256M</span>
+            <span class="session-badge warn">512M</span>
           </div>
           <div class="session-item" data-session="goroutine">
             <div class="session-icon goroutine"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/></svg></div>
             <div class="session-info">
               <span class="session-name">Goroutine Dump</span>
-              <span class="session-meta">10:35 · 847 goroutines</span>
+              <span class="session-meta">1,847 goroutines · 312 blocked</span>
             </div>
-            <span class="session-badge">847</span>
+            <span class="session-badge">1.8K</span>
           </div>
+
+          <div class="session-group-header">Today 09:15</div>
           <div class="session-item" data-session="cpu">
             <div class="session-icon cpu"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
             <div class="session-info">
               <span class="session-name">CPU Profile</span>
-              <span class="session-meta">09:15 · 60s · 32 threads</span>
+              <span class="session-meta">60s · 32 threads · 99Hz</span>
             </div>
             <span class="session-badge">2.1s</span>
+          </div>
+
+          <div class="session-group-header">Yesterday 16:40</div>
+          <div class="session-item" data-session="cpu">
+            <div class="session-icon cpu"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+            <div class="session-info">
+              <span class="session-name">CPU Profile</span>
+              <span class="session-meta">30s · baseline</span>
+            </div>
+            <span class="session-badge ok">1.8s</span>
           </div>
         </div>
         <div class="sidebar-footer">
@@ -136,46 +147,10 @@
       </aside>
 
       <!-- ============================================================ -->
-      <!-- CENTER: CPU Analysis Panel -->
+      <!-- CENTER: CPU Analysis Panel                                    -->
+      <!-- Tabs and content are rendered dynamically by ViewRouter       -->
       <!-- ============================================================ -->
       <main class="analysis-area" id="panel-cpu">
-        <!-- View Tabs -->
-        <div class="view-tabs">
-          <button class="view-tab active">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="6" width="12" height="7" rx="1"/><path d="M3 6V3a4 4 0 0 1 8 0v3"/></svg>
-            Flame Graph
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M7 4v3l2 2"/></svg>
-            Top Down
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 13h12M3 9h8M5 5h4"/></svg>
-            Call Tree
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="5" height="5"/><rect x="8" y="1" width="5" height="5"/><rect x="1" y="8" width="5" height="5"/><rect x="8" y="8" width="5" height="5"/></svg>
-            Treemap
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1v12h12"/><path d="M4 9l3-3 2 2 4-5"/></svg>
-            Timeline
-          </button>
-          <div class="view-tabs-spacer"></div>
-          <div class="view-actions">
-            <select class="filter-select">
-              <option>All Threads</option>
-              <option>main</option>
-              <option>pool-worker-1</option>
-              <option>GC Thread</option>
-            </select>
-            <button class="action-btn">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h8M3 10h5"/></svg>
-              Filter
-            </button>
-          </div>
-        </div>
-
         <!-- Summary Strip -->
         <div class="summary-strip">
           <div class="metric-card">
@@ -200,187 +175,53 @@
             <span class="metric-value hotpath">json.Marshal</span>
           </div>
         </div>
-
-        <!-- Flame Graph Visualization -->
-        <div class="visualization-container">
-          <div class="viz-toolbar">
-            <div class="viz-search">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5">
-                <circle cx="6" cy="6" r="5"/><path d="m10 10 3 3"/>
-              </svg>
-              <input type="text" placeholder="Highlight: type function name..." class="viz-search-input">
-            </div>
-            <div class="viz-controls">
-              <button class="viz-btn" title="Reset zoom">
-                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 7h12M7 1v12"/></svg>
-                Reset
-              </button>
-              <button class="viz-btn" title="Reverse call stacks">
-                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 1v12m0-12L4 4m3-3l3 3m-3 9L4 10m3 3l3-3"/></svg>
-                Reverse
-              </button>
-              <div class="viz-separator"></div>
-              <div class="legend-items">
-                <span class="legend-item"><span class="legend-dot" style="background:#ff6b35"></span>Application</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#10b981"></span>Runtime</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#6366f1"></span>Kernel</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span>GC</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Flame Graph Canvas -->
-          <div class="flamegraph-container">
-            <div class="flame-row root">
-              <div class="flame-frame app" style="width:100%" data-name="all" data-pct="100%">
-                <span class="frame-text">all (100%)</span>
-              </div>
-            </div>
-            <div class="flame-row">
-              <div class="flame-frame app" style="width:62%" data-name="main.handleRequest" data-pct="62%">
-                <span class="frame-text">main.handleRequest (62%)</span>
-              </div>
-              <div class="flame-frame runtime" style="width:23%" data-name="runtime.gcBgMarkWorker" data-pct="23%">
-                <span class="frame-text">runtime.gcBgMarkWorker (23%)</span>
-              </div>
-              <div class="flame-frame kernel" style="width:15%" data-name="syscall.Read" data-pct="15%">
-                <span class="frame-text">syscall.Read (15%)</span>
-              </div>
-            </div>
-            <div class="flame-row">
-              <div class="flame-frame app hot" style="width:38%" data-name="service.ProcessOrder" data-pct="38%">
-                <span class="frame-text">service.ProcessOrder (38%)</span>
-              </div>
-              <div class="flame-frame app" style="width:24%" data-name="middleware.Auth" data-pct="24%">
-                <span class="frame-text">middleware.Auth (24%)</span>
-              </div>
-              <div class="flame-frame gc" style="width:23%" data-name="runtime.scanobject" data-pct="23%">
-                <span class="frame-text">runtime.scanobject (23%)</span>
-              </div>
-              <div class="flame-frame kernel" style="width:15%">
-                <span class="frame-text">net.(*conn).Read (15%)</span>
-              </div>
-            </div>
-            <div class="flame-row">
-              <div class="flame-frame app very-hot" style="width:28%" data-name="json.Marshal" data-pct="28%">
-                <span class="frame-text">🔥 json.Marshal (28%)</span>
-              </div>
-              <div class="flame-frame app" style="width:10%" data-name="db.Query" data-pct="10%">
-                <span class="frame-text">db.Query (10%)</span>
-              </div>
-              <div class="flame-frame app" style="width:14%" data-name="crypto.Verify" data-pct="14%">
-                <span class="frame-text">crypto/tls.Verify (14%)</span>
-              </div>
-              <div class="flame-frame app" style="width:10%" data-name="jwt.Parse" data-pct="10%">
-                <span class="frame-text">jwt.Parse (10%)</span>
-              </div>
-              <div class="flame-frame gc" style="width:23%">
-                <span class="frame-text">runtime.mallocgc (23%)</span>
-              </div>
-              <div class="flame-frame kernel dim" style="width:15%">
-                <span class="frame-text">epoll_wait (15%)</span>
-              </div>
-            </div>
-            <div class="flame-row">
-              <div class="flame-frame app very-hot" style="width:18%">
-                <span class="frame-text">reflect.Value.call (18%)</span>
-              </div>
-              <div class="flame-frame app" style="width:10%">
-                <span class="frame-text">encoding.encodeStruct (10%)</span>
-              </div>
-              <div class="flame-frame app" style="width:10%">
-                <span class="frame-text">sql.(*DB).queryContext (10%)</span>
-              </div>
-              <div class="flame-frame app" style="width:14%">
-                <span class="frame-text">x509.parseCertificate (14%)</span>
-              </div>
-              <div class="flame-frame app" style="width:10%">
-                <span class="frame-text">hmac.verify (10%)</span>
-              </div>
-              <div class="flame-frame gc dim" style="width:23%">
-                <span class="frame-text">runtime.heapBits (23%)</span>
-              </div>
-              <div class="flame-frame kernel dim" style="width:15%">
-                <span class="frame-text">futex (15%)</span>
-              </div>
-            </div>
-            <div class="flame-row">
-              <div class="flame-frame app" style="width:12%">
-                <span class="frame-text">reflect.call (12%)</span>
-              </div>
-              <div class="flame-frame app" style="width:6%">
-                <span class="frame-text">fmt.Sprintf (6%)</span>
-              </div>
-              <div class="flame-frame app dim" style="width:10%">
-                <span class="frame-text">...</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Tooltip -->
-          <div class="flame-tooltip" id="flameTooltip">
-            <div class="tooltip-header">json.Marshal</div>
-            <div class="tooltip-body">
-              <div class="tooltip-row"><span class="tooltip-label">Self</span><span class="tooltip-value">1,247 samples (12.8%)</span></div>
-              <div class="tooltip-row"><span class="tooltip-label">Total</span><span class="tooltip-value">2,718 samples (28.0%)</span></div>
-              <div class="tooltip-row"><span class="tooltip-label">Package</span><span class="tooltip-value">encoding/json</span></div>
-            </div>
+        <!-- ViewRouter Tab Bar -->
+        <div class="view-tabs">
+          <div class="view-tabs-list"></div>
+          <div class="view-tabs-spacer"></div>
+          <div class="view-actions">
+            <select class="filter-select">
+              <option>All Threads</option>
+              <option>main</option>
+              <option>pool-worker-1</option>
+              <option>GC Thread</option>
+            </select>
           </div>
         </div>
-
-        <!-- Hot Functions Table -->
-        <div class="hot-functions">
-          <div class="hf-header">
-            <h4>🔥 Hot Functions</h4>
-            <div class="hf-tabs">
-              <button class="hf-tab active">By Self Time</button>
-              <button class="hf-tab">By Total Time</button>
-              <button class="hf-tab">By Call Count</button>
-            </div>
-          </div>
-          <div class="hf-table">
-            <div class="hf-row header">
-              <span class="hf-col rank">#</span>
-              <span class="hf-col name">Function</span>
-              <span class="hf-col self">Self</span>
-              <span class="hf-col total">Total</span>
-              <span class="hf-col bar">Distribution</span>
-            </div>
-            <div class="hf-row"><span class="hf-col rank">1</span><span class="hf-col name"><code>json.Marshal</code></span><span class="hf-col self hot">28.0%</span><span class="hf-col total">28.0%</span><span class="hf-col bar"><div class="bar-fill very-hot" style="width:28%"></div></span></div>
-            <div class="hf-row"><span class="hf-col rank">2</span><span class="hf-col name"><code>runtime.scanobject</code></span><span class="hf-col self warn">18.2%</span><span class="hf-col total">23.0%</span><span class="hf-col bar"><div class="bar-fill hot" style="width:23%"></div></span></div>
-            <div class="hf-row"><span class="hf-col rank">3</span><span class="hf-col name"><code>syscall.Read</code></span><span class="hf-col self">15.0%</span><span class="hf-col total">15.0%</span><span class="hf-col bar"><div class="bar-fill" style="width:15%"></div></span></div>
-            <div class="hf-row"><span class="hf-col rank">4</span><span class="hf-col name"><code>crypto/tls.Verify</code></span><span class="hf-col self">14.0%</span><span class="hf-col total">14.0%</span><span class="hf-col bar"><div class="bar-fill" style="width:14%"></div></span></div>
-            <div class="hf-row"><span class="hf-col rank">5</span><span class="hf-col name"><code>db.Query</code></span><span class="hf-col self">10.0%</span><span class="hf-col total">10.0%</span><span class="hf-col bar"><div class="bar-fill" style="width:10%"></div></span></div>
-          </div>
-        </div>
+        <!-- Dynamic View Content (rendered by view modules) -->
+        <div class="view-content"></div>
       </main>
 
       <!-- ============================================================ -->
-      <!-- CENTER: Heap Analysis Panel -->
+      <!-- CENTER: Heap Analysis Panel                                   -->
       <!-- ============================================================ -->
       <main class="analysis-area" id="panel-heap" style="display:none">
-        <!-- Heap Tabs -->
+        <!-- Summary Strip -->
+        <div class="summary-strip">
+          <div class="metric-card highlight" style="border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.05);">
+            <span class="metric-label">Heap Used</span>
+            <span class="metric-value">512 MB</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Objects</span>
+            <span class="metric-value">1,247,893</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Classes</span>
+            <span class="metric-value">1,247</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">GC Roots</span>
+            <span class="metric-value">2,847</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Biggest</span>
+            <span class="metric-value hotpath">byte[]</span>
+          </div>
+        </div>
+        <!-- ViewRouter Tab Bar -->
         <div class="view-tabs">
-          <button class="view-tab active">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="10" height="10" rx="2"/><path d="M5 6h4M5 8h2"/></svg>
-            Class Histogram
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="5" height="5"/><rect x="8" y="1" width="5" height="5"/><rect x="1" y="8" width="5" height="5"/><rect x="8" y="8" width="5" height="5"/></svg>
-            Treemap
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 2v10M4 5l3-3 3 3M2 12h10"/></svg>
-            Dominator Tree
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="4" r="2"/><circle cx="4" cy="10" r="2"/><circle cx="10" cy="10" r="2"/><path d="M7 6v2M5.5 8.5 7 8M8.5 8.5 7 8"/></svg>
-            GC Roots
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2h10M4 5h6M6 8h4M7 11h3"/></svg>
-            Merged Paths
-          </button>
+          <div class="view-tabs-list"></div>
           <div class="view-tabs-spacer"></div>
           <div class="view-actions">
             <button class="action-btn">
@@ -389,183 +230,40 @@
             </button>
           </div>
         </div>
-
-        <!-- Heap Summary Strip -->
-        <div class="summary-strip">
-          <div class="metric-card highlight" style="border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.05);">
-            <span class="metric-label">Heap Used</span>
-            <span class="metric-value">256 MB</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">Objects</span>
-            <span class="metric-value">1,247,893</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">Classes</span>
-            <span class="metric-value">3,412</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">GC Roots</span>
-            <span class="metric-value">2,847</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">Biggest Class</span>
-            <span class="metric-value hotpath">byte[]</span>
-          </div>
-        </div>
-
-        <!-- Heap Histogram View -->
-        <div class="visualization-container">
-          <div class="viz-toolbar">
-            <div class="viz-search">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5">
-                <circle cx="6" cy="6" r="5"/><path d="m10 10 3 3"/>
-              </svg>
-              <input type="text" placeholder="Filter classes: e.g. java.lang.String..." class="viz-search-input">
-            </div>
-            <div class="viz-controls">
-              <button class="viz-btn active">
-                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h8v8H3z"/></svg>
-                Retained
-              </button>
-              <button class="viz-btn">
-                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h8v8H3z" stroke-dasharray="2"/></svg>
-                Shallow
-              </button>
-              <div class="viz-separator"></div>
-              <span class="legend-item" style="font-size:11px; color: var(--color-text-secondary);">Sorted by Retained Size ↓</span>
-            </div>
-          </div>
-
-          <!-- Class Histogram Table -->
-          <div class="heap-histogram">
-            <div class="histogram-row header">
-              <span class="hist-col rank">#</span>
-              <span class="hist-col name">Class Name</span>
-              <span class="hist-col count">Count</span>
-              <span class="hist-col shallow">Shallow</span>
-              <span class="hist-col retained">Retained</span>
-              <span class="hist-col bar">% of Heap</span>
-            </div>
-            <div class="histogram-row">
-              <span class="hist-col rank">1</span>
-              <span class="hist-col name"><code>byte[]</code></span>
-              <span class="hist-col count">342,891</span>
-              <span class="hist-col shallow">68.2 MB</span>
-              <span class="hist-col retained hot">89.4 MB</span>
-              <span class="hist-col bar"><div class="bar-bg"><div class="bar-fill-heap" style="width:35%"></div></div><span class="bar-pct">34.9%</span></span>
-            </div>
-            <div class="histogram-row">
-              <span class="hist-col rank">2</span>
-              <span class="hist-col name"><code>java.lang.String</code></span>
-              <span class="hist-col count">287,432</span>
-              <span class="hist-col shallow">9.2 MB</span>
-              <span class="hist-col retained warn">52.3 MB</span>
-              <span class="hist-col bar"><div class="bar-bg"><div class="bar-fill-heap" style="width:20%"></div></div><span class="bar-pct">20.4%</span></span>
-            </div>
-            <div class="histogram-row">
-              <span class="hist-col rank">3</span>
-              <span class="hist-col name"><code>com.app.model.Order</code></span>
-              <span class="hist-col count">84,521</span>
-              <span class="hist-col shallow">5.4 MB</span>
-              <span class="hist-col retained warn">38.7 MB</span>
-              <span class="hist-col bar"><div class="bar-bg"><div class="bar-fill-heap" style="width:15%"></div></div><span class="bar-pct">15.1%</span></span>
-            </div>
-            <div class="histogram-row">
-              <span class="hist-col rank">4</span>
-              <span class="hist-col name"><code>java.util.HashMap$Node</code></span>
-              <span class="hist-col count">156,283</span>
-              <span class="hist-col shallow">5.0 MB</span>
-              <span class="hist-col retained">24.1 MB</span>
-              <span class="hist-col bar"><div class="bar-bg"><div class="bar-fill-heap" style="width:9.4%"></div></div><span class="bar-pct">9.4%</span></span>
-            </div>
-            <div class="histogram-row">
-              <span class="hist-col rank">5</span>
-              <span class="hist-col name"><code>java.util.ArrayList</code></span>
-              <span class="hist-col count">93,847</span>
-              <span class="hist-col shallow">3.0 MB</span>
-              <span class="hist-col retained">18.9 MB</span>
-              <span class="hist-col bar"><div class="bar-bg"><div class="bar-fill-heap" style="width:7.4%"></div></div><span class="bar-pct">7.4%</span></span>
-            </div>
-            <div class="histogram-row">
-              <span class="hist-col rank">6</span>
-              <span class="hist-col name"><code>com.app.cache.CacheEntry</code></span>
-              <span class="hist-col count">45,210</span>
-              <span class="hist-col shallow">2.9 MB</span>
-              <span class="hist-col retained">15.2 MB</span>
-              <span class="hist-col bar"><div class="bar-bg"><div class="bar-fill-heap" style="width:5.9%"></div></div><span class="bar-pct">5.9%</span></span>
-            </div>
-            <div class="histogram-row">
-              <span class="hist-col rank">7</span>
-              <span class="hist-col name"><code>Object[]</code></span>
-              <span class="hist-col count">78,432</span>
-              <span class="hist-col shallow">4.1 MB</span>
-              <span class="hist-col retained">12.8 MB</span>
-              <span class="hist-col bar"><div class="bar-bg"><div class="bar-fill-heap" style="width:5%"></div></div><span class="bar-pct">5.0%</span></span>
-            </div>
-            <div class="histogram-row">
-              <span class="hist-col rank">8</span>
-              <span class="hist-col name"><code>io.netty.buffer.PooledByteBuf</code></span>
-              <span class="hist-col count">12,847</span>
-              <span class="hist-col shallow">0.8 MB</span>
-              <span class="hist-col retained">8.4 MB</span>
-              <span class="hist-col bar"><div class="bar-bg"><div class="bar-fill-heap" style="width:3.3%"></div></div><span class="bar-pct">3.3%</span></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Heap Leak Suspects -->
-        <div class="hot-functions">
-          <div class="hf-header">
-            <h4>⚠️ Leak Suspects</h4>
-            <div class="hf-tabs">
-              <button class="hf-tab active">By Retained Size</button>
-              <button class="hf-tab">By Growth Rate</button>
-            </div>
-          </div>
-          <div class="leak-suspects">
-            <div class="leak-item">
-              <div class="leak-icon">⚠️</div>
-              <div class="leak-info">
-                <span class="leak-name">com.app.cache.CacheEntry — Never evicted</span>
-                <span class="leak-detail">45,210 instances · 15.2 MB retained · Growing +2.1 MB/min</span>
-              </div>
-              <span class="leak-severity high">HIGH</span>
-            </div>
-            <div class="leak-item">
-              <div class="leak-icon">⚠️</div>
-              <div class="leak-info">
-                <span class="leak-name">io.netty.buffer.PooledByteBuf — Unreleased buffers</span>
-                <span class="leak-detail">12,847 instances · 8.4 MB retained · 3,241 not released</span>
-              </div>
-              <span class="leak-severity medium">MED</span>
-            </div>
-          </div>
-        </div>
+        <!-- Dynamic View Content -->
+        <div class="view-content"></div>
       </main>
 
       <!-- ============================================================ -->
-      <!-- CENTER: Goroutine Analysis Panel -->
+      <!-- CENTER: Goroutine Analysis Panel                              -->
       <!-- ============================================================ -->
       <main class="analysis-area" id="panel-goroutine" style="display:none">
-        <!-- Goroutine Tabs -->
+        <!-- Summary Strip -->
+        <div class="summary-strip">
+          <div class="metric-card highlight" style="border-color: rgba(139,92,246,0.3); background: rgba(139,92,246,0.05);">
+            <span class="metric-label">Total</span>
+            <span class="metric-value">1,847</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Running</span>
+            <span class="metric-value" style="color:var(--color-green)">4</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Waiting</span>
+            <span class="metric-value" style="color:var(--color-amber)">1,456</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Blocked</span>
+            <span class="metric-value" style="color:var(--color-red)">312</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Max Wait</span>
+            <span class="metric-value hotpath">45.2s</span>
+          </div>
+        </div>
+        <!-- ViewRouter Tab Bar -->
         <div class="view-tabs">
-          <button class="view-tab active">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h10M2 7h10M2 11h10"/></svg>
-            Goroutine List
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="6" width="12" height="7" rx="1"/><path d="M3 6V3a4 4 0 0 1 8 0v3"/></svg>
-            Flame Graph
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M7 4v3h3"/></svg>
-            Block Profile
-          </button>
-          <button class="view-tab">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1v12h12"/><path d="M3 10l3-4 3 2 3-5"/></svg>
-            Timeline
-          </button>
+          <div class="view-tabs-list"></div>
           <div class="view-tabs-spacer"></div>
           <div class="view-actions">
             <select class="filter-select">
@@ -573,144 +271,15 @@
               <option>Running</option>
               <option>Waiting</option>
               <option>Blocked</option>
-              <option>Sleeping</option>
             </select>
           </div>
         </div>
-
-        <!-- Goroutine Summary -->
-        <div class="summary-strip">
-          <div class="metric-card highlight" style="border-color: rgba(139,92,246,0.3); background: rgba(139,92,246,0.05);">
-            <span class="metric-label">Total</span>
-            <span class="metric-value">847</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">Running</span>
-            <span class="metric-value" style="color:var(--color-green)">12</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">Waiting</span>
-            <span class="metric-value" style="color:var(--color-amber)">623</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">Blocked</span>
-            <span class="metric-value" style="color:var(--color-red)">184</span>
-          </div>
-          <div class="metric-card">
-            <span class="metric-label">Max Wait</span>
-            <span class="metric-value hotpath">42.3s</span>
-          </div>
-        </div>
-
-        <!-- Goroutine Groups -->
-        <div class="visualization-container">
-          <div class="viz-toolbar">
-            <div class="viz-search">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5">
-                <circle cx="6" cy="6" r="5"/><path d="m10 10 3 3"/>
-              </svg>
-              <input type="text" placeholder="Filter by function or package..." class="viz-search-input">
-            </div>
-            <div class="viz-controls">
-              <button class="viz-btn active">Group by Stack</button>
-              <button class="viz-btn">Group by State</button>
-              <button class="viz-btn">Individual</button>
-            </div>
-          </div>
-
-          <!-- Goroutine Group List -->
-          <div class="goroutine-list">
-            <div class="gr-group">
-              <div class="gr-group-header">
-                <div class="gr-state-badge blocked">BLOCKED</div>
-                <span class="gr-group-count">184 goroutines</span>
-                <span class="gr-group-wait">waiting 12.4s ~ 42.3s</span>
-                <span class="gr-group-expand">▼</span>
-              </div>
-              <div class="gr-stack">
-                <div class="gr-stack-frame hot">sync.(*Mutex).Lock</div>
-                <div class="gr-stack-frame">sync.(*Mutex).lockSlow</div>
-                <div class="gr-stack-frame">com/app/service.(*OrderService).ProcessBatch</div>
-                <div class="gr-stack-frame">com/app/handler.(*Handler).HandleBulkOrder</div>
-                <div class="gr-stack-frame dim">runtime.goexit</div>
-              </div>
-            </div>
-
-            <div class="gr-group">
-              <div class="gr-group-header">
-                <div class="gr-state-badge waiting">IO WAIT</div>
-                <span class="gr-group-count">342 goroutines</span>
-                <span class="gr-group-wait">waiting 0.1s ~ 5.2s</span>
-                <span class="gr-group-expand">▼</span>
-              </div>
-              <div class="gr-stack">
-                <div class="gr-stack-frame">net/http.(*persistConn).readLoop</div>
-                <div class="gr-stack-frame">bufio.(*Reader).ReadLine</div>
-                <div class="gr-stack-frame">net.(*conn).Read</div>
-                <div class="gr-stack-frame dim">internal/poll.(*FD).Read</div>
-                <div class="gr-stack-frame dim">runtime.goexit</div>
-              </div>
-            </div>
-
-            <div class="gr-group">
-              <div class="gr-group-header">
-                <div class="gr-state-badge waiting">CHAN RECV</div>
-                <span class="gr-group-count">281 goroutines</span>
-                <span class="gr-group-wait">waiting 0.5s ~ 8.7s</span>
-                <span class="gr-group-expand">▼</span>
-              </div>
-              <div class="gr-stack">
-                <div class="gr-stack-frame">runtime.chanrecv1</div>
-                <div class="gr-stack-frame">com/app/worker.(*Pool).dispatch</div>
-                <div class="gr-stack-frame">com/app/worker.(*Pool).Run</div>
-                <div class="gr-stack-frame dim">runtime.goexit</div>
-              </div>
-            </div>
-
-            <div class="gr-group">
-              <div class="gr-group-header">
-                <div class="gr-state-badge running">RUNNING</div>
-                <span class="gr-group-count">12 goroutines</span>
-                <span class="gr-group-wait">active</span>
-                <span class="gr-group-expand">▼</span>
-              </div>
-              <div class="gr-stack">
-                <div class="gr-stack-frame">runtime.gcBgMarkWorker</div>
-                <div class="gr-stack-frame">runtime.gcDrain</div>
-                <div class="gr-stack-frame dim">runtime.goexit</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Goroutine Insights -->
-        <div class="hot-functions">
-          <div class="hf-header">
-            <h4>🚨 Concurrency Issues</h4>
-          </div>
-          <div class="leak-suspects">
-            <div class="leak-item">
-              <div class="leak-icon">🔒</div>
-              <div class="leak-info">
-                <span class="leak-name">Mutex Contention — sync.(*Mutex).Lock</span>
-                <span class="leak-detail">184 goroutines blocked · max wait 42.3s · service.ProcessBatch</span>
-              </div>
-              <span class="leak-severity high">HIGH</span>
-            </div>
-            <div class="leak-item">
-              <div class="leak-icon">📈</div>
-              <div class="leak-info">
-                <span class="leak-name">Goroutine Leak — worker.(*Pool).dispatch</span>
-                <span class="leak-detail">281 goroutines waiting on channel · growing +5/min</span>
-              </div>
-              <span class="leak-severity medium">MED</span>
-            </div>
-          </div>
-        </div>
+        <!-- Dynamic View Content -->
+        <div class="view-content"></div>
       </main>
 
       <!-- ============================================================ -->
-      <!-- Right Sidebar: Context Panel -->
+      <!-- Right Sidebar: Context Panel                                  -->
       <!-- ============================================================ -->
       <aside class="sidebar-right">
         <div class="context-panel">
@@ -783,17 +352,17 @@
               <div class="detail-stats">
                 <div class="stat-row">
                   <span class="stat-label">Instances</span>
-                  <span class="stat-value-only">342,891</span>
+                  <span class="stat-value-only">845,231</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">Shallow</span>
-                  <div class="stat-bar-wrap"><div class="stat-bar" style="width:26%"></div></div>
-                  <span class="stat-value">68.2 MB</span>
+                  <div class="stat-bar-wrap"><div class="stat-bar" style="width:25%"></div></div>
+                  <span class="stat-value">128.4 MB</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">Retained</span>
-                  <div class="stat-bar-wrap"><div class="stat-bar hot" style="width:35%"></div></div>
-                  <span class="stat-value">89.4 MB</span>
+                  <div class="stat-bar-wrap"><div class="stat-bar hot" style="width:39%"></div></div>
+                  <span class="stat-value">198.7 MB</span>
                 </div>
               </div>
             </div>
@@ -802,18 +371,8 @@
               <div class="caller-list">
                 <div class="caller-item"><div class="caller-bar" style="width:45%"></div><span class="caller-name">java.lang.String</span><span class="caller-pct">45%</span></div>
                 <div class="caller-item"><div class="caller-bar" style="width:22%"></div><span class="caller-name">io.netty.buffer.ByteBuf</span><span class="caller-pct">22%</span></div>
-                <div class="caller-item"><div class="caller-bar" style="width:18%"></div><span class="caller-name">com.app.model.Order</span><span class="caller-pct">18%</span></div>
+                <div class="caller-item"><div class="caller-bar" style="width:18%"></div><span class="caller-name">com.app.model.OrderItem</span><span class="caller-pct">18%</span></div>
                 <div class="caller-item"><div class="caller-bar" style="width:15%"></div><span class="caller-name">java.util.Arrays</span><span class="caller-pct">15%</span></div>
-              </div>
-            </div>
-            <div class="detail-section">
-              <h5 class="detail-subtitle">Size Distribution</h5>
-              <div class="size-distribution">
-                <div class="size-row"><span class="size-range">0 - 64B</span><div class="size-bar-wrap"><div class="size-bar" style="width:15%"></div></div><span class="size-count">51K</span></div>
-                <div class="size-row"><span class="size-range">64B - 1KB</span><div class="size-bar-wrap"><div class="size-bar" style="width:42%"></div></div><span class="size-count">144K</span></div>
-                <div class="size-row"><span class="size-range">1KB - 16KB</span><div class="size-bar-wrap"><div class="size-bar" style="width:30%"></div></div><span class="size-count">103K</span></div>
-                <div class="size-row"><span class="size-range">16KB - 1MB</span><div class="size-bar-wrap"><div class="size-bar" style="width:10%"></div></div><span class="size-count">38K</span></div>
-                <div class="size-row"><span class="size-range">> 1MB</span><div class="size-bar-wrap"><div class="size-bar hot" style="width:3%"></div></div><span class="size-count">6K</span></div>
               </div>
             </div>
             <div class="detail-section insight">
@@ -821,11 +380,11 @@
                 <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 1v2m0 8v2m-6-6h2m8 0h2M3.5 3.5l1.5 1.5m5 5 1.5 1.5M3.5 10.5l1.5-1.5m5-5L11.5 2.5"/></svg>
                 <span>AI Insight</span>
               </div>
-              <p class="insight-text"><strong>byte[]</strong> dominates at 34.9% of heap. Main holders are String instances and Netty buffers.</p>
+              <p class="insight-text"><strong>byte[]</strong> dominates at 38.8% of heap. Primary retainer is <code>OrderService.orderCache</code>.</p>
               <ul class="insight-tips">
-                <li>Check for <code>CacheEntry</code> objects never being evicted</li>
+                <li>Check <code>CacheEntry</code> eviction — objects never released</li>
                 <li>Consider <code>ByteBuf.release()</code> in Netty pipelines</li>
-                <li>Use string interning for repeated values</li>
+                <li>Use WeakReference for cache values</li>
               </ul>
             </div>
           </div>
@@ -833,40 +392,30 @@
           <!-- Goroutine Context -->
           <div class="context-body" id="context-goroutine" style="display:none">
             <div class="detail-section">
-              <div class="detail-fn-name">sync.(*Mutex).Lock</div>
-              <div class="detail-pkg">sync</div>
+              <div class="detail-fn-name">queue.(*Queue).Dequeue</div>
+              <div class="detail-pkg">com/app/queue — chan recv</div>
               <div class="detail-stats">
                 <div class="stat-row">
                   <span class="stat-label">Blocked</span>
-                  <span class="stat-value-only" style="color:var(--color-red)">184</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">Max Wait</span>
-                  <span class="stat-value-only" style="color:var(--color-red)">42.3s</span>
+                  <span class="stat-value-only" style="color:var(--color-red)">256</span>
                 </div>
                 <div class="stat-row">
                   <span class="stat-label">Avg Wait</span>
-                  <span class="stat-value-only">18.7s</span>
+                  <span class="stat-value-only" style="color:var(--color-red)">45.2s</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">% Total</span>
+                  <span class="stat-value-only">13.9%</span>
                 </div>
               </div>
             </div>
             <div class="detail-section">
-              <h5 class="detail-subtitle">Lock Holder</h5>
+              <h5 class="detail-subtitle">Stack Trace</h5>
               <div class="caller-list">
-                <div class="caller-item"><div class="caller-bar callee" style="width:100%"></div><span class="caller-name">goroutine #47</span><span class="caller-pct">owner</span></div>
-              </div>
-              <div class="gr-stack" style="margin-top:8px;">
-                <div class="gr-stack-frame hot">service.(*OrderService).ProcessBatch</div>
-                <div class="gr-stack-frame">service.(*OrderService).validateOrder</div>
-                <div class="gr-stack-frame">db.(*Conn).QueryRow</div>
-              </div>
-            </div>
-            <div class="detail-section">
-              <h5 class="detail-subtitle">Waiters (sample)</h5>
-              <div class="caller-list">
-                <div class="caller-item"><div class="caller-bar" style="width:60%"></div><span class="caller-name">goroutine #102 — 38.2s</span><span class="caller-pct">wait</span></div>
-                <div class="caller-item"><div class="caller-bar" style="width:45%"></div><span class="caller-name">goroutine #156 — 29.1s</span><span class="caller-pct">wait</span></div>
-                <div class="caller-item"><div class="caller-bar" style="width:30%"></div><span class="caller-name">goroutine #203 — 18.4s</span><span class="caller-pct">wait</span></div>
+                <div class="caller-item"><div class="caller-bar callee" style="width:100%"></div><span class="caller-name">runtime.gopark</span><span class="caller-pct">park</span></div>
+                <div class="caller-item"><div class="caller-bar callee" style="width:100%"></div><span class="caller-name">runtime.chanrecv</span><span class="caller-pct">recv</span></div>
+                <div class="caller-item"><div class="caller-bar" style="width:100%"></div><span class="caller-name">queue.(*Queue).Dequeue</span><span class="caller-pct">block</span></div>
+                <div class="caller-item"><div class="caller-bar" style="width:80%"></div><span class="caller-name">worker.(*Pool).processTask</span><span class="caller-pct">caller</span></div>
               </div>
             </div>
             <div class="detail-section insight">
@@ -874,11 +423,11 @@
                 <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 1v2m0 8v2m-6-6h2m8 0h2M3.5 3.5l1.5 1.5m5 5 1.5 1.5M3.5 10.5l1.5-1.5m5-5L11.5 2.5"/></svg>
                 <span>AI Insight</span>
               </div>
-              <p class="insight-text"><strong>Critical mutex contention</strong> in ProcessBatch — 184 goroutines starved while one holds the lock during a slow DB query.</p>
+              <p class="insight-text"><strong>Critical goroutine starvation</strong> — 256 workers blocked on empty queue channel.</p>
               <ul class="insight-tips">
-                <li>Replace mutex with <code>sync.RWMutex</code> if reads dominate</li>
-                <li>Move DB call outside the critical section</li>
-                <li>Consider sharding by order ID to reduce contention</li>
+                <li>Producer rate < consumer capacity → right-size pool</li>
+                <li>Consider buffered channel with backpressure</li>
+                <li>Add <code>context.WithTimeout</code> to prevent indefinite blocking</li>
               </ul>
             </div>
           </div>
@@ -890,17 +439,49 @@
     <footer class="status-bar">
       <div class="status-left">
         <span class="status-item"><span class="status-dot green"></span>Connected</span>
-        <span class="status-item" id="statusRuntime">Go 1.22 · linux/amd64</span>
-        <span class="status-item" id="statusProfile">Profile: CPU (30s @ 99Hz)</span>
+        <span class="status-item">Go 1.22 · linux/amd64</span>
+        <span class="status-item">Profile: CPU (30s @ 99Hz)</span>
       </div>
       <div class="status-right">
-        <span class="status-item" id="statusSamples">42,847 samples</span>
-        <span class="status-item" id="statusFrames">1,284 unique frames</span>
+        <span class="status-item">42,847 samples</span>
+        <span class="status-item">1,284 unique frames</span>
         <span class="status-item">Rendered in 128ms</span>
       </div>
     </footer>
   </div>
 
-  <script src="interactions.js"></script>
+  <!-- ============================================================ -->
+  <!-- Module Loading (order matters: router → views → components → app) -->
+  <!-- ============================================================ -->
+  
+  <!-- Core: ViewRouter -->
+  <script src="js/router.js"></script>
+  
+  <!-- CPU Views -->
+  <script src="js/views/cpu-flamegraph.js"></script>
+  <script src="js/views/cpu-topdown.js"></script>
+  <script src="js/views/cpu-calltree.js"></script>
+  <script src="js/views/cpu-treemap.js"></script>
+  <script src="js/views/cpu-timeline.js"></script>
+  
+  <!-- Heap Views -->
+  <script src="js/views/heap-histogram.js"></script>
+  <script src="js/views/heap-treemap.js"></script>
+  <script src="js/views/heap-dominator.js"></script>
+  <script src="js/views/heap-gcroots.js"></script>
+  <script src="js/views/heap-mergedpaths.js"></script>
+  
+  <!-- Goroutine Views -->
+  <script src="js/views/goroutine-list.js"></script>
+  <script src="js/views/goroutine-flamegraph.js"></script>
+  <script src="js/views/goroutine-block.js"></script>
+  <script src="js/views/goroutine-timeline.js"></script>
+  
+  <!-- Components -->
+  <script src="js/components/command-palette.js"></script>
+  <script src="js/components/context-panel.js"></script>
+  
+  <!-- App Entry Point (must be last) -->
+  <script src="js/app.js"></script>
 </body>
 </html>
